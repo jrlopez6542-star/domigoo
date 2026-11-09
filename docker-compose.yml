@@ -1,0 +1,25 @@
+# Base local de desarrollo. No es un entorno de producción.
+# El puerto se publica solo en 127.0.0.1. Usuario y contraseña son de esta máquina.
+#
+# En la VM del agente systemd no deja el daemon encendido. Si no existe
+# /var/run/docker.sock, el arranque que ya funcionó es:
+#   sudo apt-get update
+#   sudo DEBIAN_FRONTEND=noninteractive apt-get install -y docker.io docker-compose-v2
+#   sudo dockerd --host=unix:///var/run/docker.sock
+# El detalle está en docs/entorno.md.
+# CI no usa este archivo: el workflow levanta la misma imagen como servicio.
+
+services:
+  postgis:
+    image: postgis/postgis:17-3.5
+    environment:
+      POSTGRES_USER: domigoo
+      POSTGRES_PASSWORD: domigoo
+      POSTGRES_DB: domigoo
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U domigoo -d domigoo"]
+      interval: 5s
+      timeout: 5s
+      retries: 20

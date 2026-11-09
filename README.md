@@ -8,7 +8,7 @@ El restaurante paga una suscripción a DOMIGOO. El domiciliario no paga por reci
 
 ## Estado
 
-M01 deja el monorepo y la calidad estática. Todavía no hay aplicaciones de negocio. La próxima misión es **M02**: PostGIS en local y en CI.
+M02 deja PostgreSQL 17 con PostGIS 3.5 en `docker-compose.yml` y la misma imagen como servicio de CI. Todavía no hay API. La próxima misión es **M03**: el esqueleto de NestJS.
 
 ## Calidad
 
@@ -16,6 +16,8 @@ M01 deja el monorepo y la calidad estática. Todavía no hay aplicaciones de neg
 pnpm install
 pnpm lint
 pnpm typecheck
+docker compose up -d
+./scripts/postgis-version.sh
 ```
 
 El compilador es TypeScript 6.0.3. La versión 7.0 no entra todavía: `typescript-eslint` 8.72 exige `typescript` anterior a 6.1.

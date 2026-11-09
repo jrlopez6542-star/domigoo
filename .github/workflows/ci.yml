@@ -34,3 +34,30 @@ jobs:
 
       - name: Typecheck
         run: pnpm typecheck
+
+  postgis:
+    name: PostGIS
+    runs-on: ubuntu-latest
+    services:
+      postgis:
+        image: postgis/postgis:17-3.5
+        env:
+          POSTGRES_USER: domigoo
+          POSTGRES_PASSWORD: domigoo
+          POSTGRES_DB: domigoo
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U domigoo -d domigoo"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Cliente de PostgreSQL
+        run: sudo apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y postgresql-client
+
+      - name: Consultar PostGIS_Version
+        run: ./scripts/postgis-version.sh
