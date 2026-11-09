@@ -8,7 +8,7 @@ El restaurante paga una suscripción a DOMIGOO. El domiciliario no paga por reci
 
 ## Estado
 
-M05 deja el registro y la sesión: Argon2id, cookie HttpOnly y token de móvil hasheado. La próxima misión es **M06**: autorización.
+M06 deja las guardas de membresía y de administración. Un restaurante ajeno responde 404, igual que si no existe. La próxima misión es **M07**: auditoría de identidad.
 
 ## Calidad
 

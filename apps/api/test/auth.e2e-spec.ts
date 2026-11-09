@@ -2,6 +2,7 @@ import type { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { Pool } from "pg";
 import request from "supertest";
+import { resetDatabase } from "./reset-db.js";
 import { AppModule } from "../src/app.module.js";
 import { APP_ENV, readEnv, type AppEnv } from "../src/config/env.js";
 import { applyHttpSecurity } from "../src/http.js";
@@ -43,13 +44,7 @@ async function createApp(env: AppEnv): Promise<INestApplication> {
 }
 
 async function clearAccounts(): Promise<void> {
-  const pool = new Pool({ connectionString: databaseUrl });
-  try {
-    await pool.query(`DELETE FROM sessions`);
-    await pool.query(`DELETE FROM users`);
-  } finally {
-    await pool.end();
-  }
+  await resetDatabase(databaseUrl);
 }
 
 async function storedSecrets(
