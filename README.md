@@ -8,16 +8,26 @@ El restaurante paga una suscripción a DOMIGOO. El domiciliario no paga por reci
 
 ## Estado
 
-Fase 0: diseño, sin funcionalidad implementada. La próxima misión de implementación es **M01**, el monorepo y la calidad estática.
+M01 deja el monorepo y la calidad estática. Todavía no hay aplicaciones de negocio. La próxima misión es **M02**: PostGIS en local y en CI.
+
+## Calidad
+
+```bash
+pnpm install
+pnpm lint
+pnpm typecheck
+```
+
+El compilador es TypeScript 6.0.3. La versión 7.0 no entra todavía: `typescript-eslint` 8.72 exige `typescript` anterior a 6.1.
 
 ## Superficies
 
-| Superficie | Uso | Cliente previsto |
-| --- | --- | --- |
-| DOMIGOO Restaurantes | Establecimientos, sucursales, solicitudes directas y abiertas, seguimiento, suscripción | Web |
-| DOMIGOO Domiciliarios | Registro abierto o por invitación, solo motocicleta en V1, verificación, disponibilidad, servicios | Android (Expo) |
-| DOMIGOO Admin | Verificación, tarifas, suscripciones, incidentes, estadísticas | Web, origen aparte |
-| DOMIGOO Tracking | Seguimiento con enlace privado, sin instalar una app | Página pública |
+| Superficie            | Uso                                                                                                | Cliente previsto   |
+| --------------------- | -------------------------------------------------------------------------------------------------- | ------------------ |
+| DOMIGOO Restaurantes  | Establecimientos, sucursales, solicitudes directas y abiertas, seguimiento, suscripción            | Web                |
+| DOMIGOO Domiciliarios | Registro abierto o por invitación, solo motocicleta en V1, verificación, disponibilidad, servicios | Android (Expo)     |
+| DOMIGOO Admin         | Verificación, tarifas, suscripciones, incidentes, estadísticas                                     | Web, origen aparte |
+| DOMIGOO Tracking      | Seguimiento con enlace privado, sin instalar una app                                               | Página pública     |
 
 La verificación documental combina reglas automáticas y aprobación humana. Hay PIN de recogida, PIN de entrega, GPS con consentimiento, incidentes y auditoría. El tratamiento de datos personales sigue la Ley 1581 de 2012.
 
@@ -35,4 +45,4 @@ La verificación documental combina reglas automáticas y aprobación humana. Ha
 
 Monorepo con pnpm. Next.js para las webs, Expo para Android, NestJS como única fuente de reglas, PostgreSQL con PostGIS, Prisma 7 y OpenAPI. Redis no entra en V1. El push va detrás de un puerto: en CI se usa un adaptador en memoria, sin credenciales de Firebase.
 
-No hay aplicación que arrancar en este commit.
+No hay servidor ni aplicación de negocio que arrancar en este commit.
