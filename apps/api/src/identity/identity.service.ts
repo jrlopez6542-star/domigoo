@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common";
+import { AuditRecorder } from "../audit/audit.service.js";
 import { hashPassword, verifyPassword } from "./password.js";
 import { parseColombianPhone } from "./phone.js";
 import {
@@ -35,7 +36,10 @@ const DUMMY_PASSWORD = hashPassword("marcador-interno-no-es-una-clave");
 
 @Injectable()
 export class IdentityService {
-  constructor(private readonly repository: IdentityRepository) {}
+  constructor(
+    private readonly repository: IdentityRepository,
+    private readonly audit: AuditRecorder,
+  ) {}
 
   async register(input: Credentials): Promise<{ user: PublicUser; token: string }> {
     const passwordHash = hashPassword(input.password);
@@ -66,6 +70,14 @@ export class IdentityService {
     const matches = verifyPassword(input.password, hash);
     if (stored === null || stored.passwordHash === null || !matches || stored.status !== "ACTIVE") {
       recordLoginFailure(key);
+      await this.audit.record({
+        actorId: stored?.id ?? null,
+        actorKind: "SYSTEM",
+        action: "auth.login_failed",
+        entityType: "user",
+        entityId: stored?.id ?? "00000000-0000-0000-0000-000000000000",
+        reason: "invalid_credentials",
+      });
       throw new AuthError(401, INVALID);
     }
     clearLoginFailures(key);

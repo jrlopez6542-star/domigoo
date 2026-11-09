@@ -8,7 +8,7 @@ El restaurante paga una suscripción a DOMIGOO. El domiciliario no paga por reci
 
 ## Estado
 
-M06 deja las guardas de membresía y de administración. Un restaurante ajeno responde 404, igual que si no existe. La próxima misión es **M07**: auditoría de identidad.
+M07 deja la auditoría de identidad: el ingreso fallido no guarda la contraseña y el cambio de papel queda en un diff. La próxima misión es **M08**: avisos y consentimiento.
 
 ## Calidad
 
