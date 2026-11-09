@@ -8,7 +8,7 @@ El restaurante paga una suscripción a DOMIGOO. El domiciliario no paga por reci
 
 ## Estado
 
-M08 deja los documentos legales versionados y el consentimiento revocable. La próxima misión es **M09**: la semilla local de administración.
+M09 cierra la fase 2. La semilla de administración solo corre si el entorno trae `SEED_ADMIN_EMAIL` y `SEED_ADMIN_PASSWORD`. La próxima misión es **M10**: restaurante, establecimiento y sucursal.
 
 ## Calidad
 
