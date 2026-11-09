@@ -61,3 +61,44 @@ jobs:
 
       - name: Consultar PostGIS_Version
         run: ./scripts/postgis-version.sh
+
+  api:
+    name: API
+    runs-on: ubuntu-latest
+    services:
+      postgis:
+        image: postgis/postgis:17-3.5
+        env:
+          POSTGRES_USER: domigoo
+          POSTGRES_PASSWORD: domigoo
+          POSTGRES_DB: domigoo
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U domigoo -d domigoo"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.33.4
+
+      - name: Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Instalar
+        run: pnpm install --frozen-lockfile
+
+      - name: Probar health, ready y OpenAPI
+        run: pnpm --filter @domigoo/api test
+        env:
+          DATABASE_URL: postgresql://domigoo:domigoo@127.0.0.1:5432/domigoo
+          APP_NAME: DOMIGOO

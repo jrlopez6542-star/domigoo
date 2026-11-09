@@ -33,4 +33,10 @@ export default tseslint.config(
     files: ["**/*.js", "**/*.mjs"],
     extends: [tseslint.configs.disableTypeChecked],
   },
+  {
+    files: ["apps/**/*.module.ts"],
+    rules: {
+      "@typescript-eslint/no-extraneous-class": "off",
+    },
+  },
 );

@@ -8,7 +8,7 @@ El restaurante paga una suscripción a DOMIGOO. El domiciliario no paga por reci
 
 ## Estado
 
-M02 deja PostgreSQL 17 con PostGIS 3.5 en `docker-compose.yml` y la misma imagen como servicio de CI. Todavía no hay API. La próxima misión es **M03**: el esqueleto de NestJS.
+M03 deja el esqueleto de la API en `apps/api`: `GET /health`, `GET /ready` contra PostGIS y OpenAPI en `/docs` y `/openapi.json`. No hay módulos de dominio. La próxima misión es **M04**: la migración del contrato de datos.
 
 ## Calidad
 
@@ -18,6 +18,7 @@ pnpm lint
 pnpm typecheck
 docker compose up -d
 ./scripts/postgis-version.sh
+DATABASE_URL=postgresql://domigoo:domigoo@127.0.0.1:5432/domigoo pnpm --filter @domigoo/api test
 ```
 
 El compilador es TypeScript 6.0.3. La versión 7.0 no entra todavía: `typescript-eslint` 8.72 exige `typescript` anterior a 6.1.
