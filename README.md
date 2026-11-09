@@ -8,7 +8,7 @@ El restaurante paga una suscripción a DOMIGOO. El domiciliario no paga por reci
 
 ## Estado
 
-M04 deja el contrato de datos migrado en `apps/api` sobre PostGIS. La fase 1 de cimientos queda cerrada. La próxima misión es **M05**: cuenta y sesión.
+M05 deja el registro y la sesión: Argon2id, cookie HttpOnly y token de móvil hasheado. La próxima misión es **M06**: autorización.
 
 ## Calidad
 

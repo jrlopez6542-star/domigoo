@@ -2,6 +2,7 @@ export type AppEnv = {
   readonly databaseUrl: string;
   readonly appName: string;
   readonly port: number;
+  readonly cookieSecure: boolean;
 };
 
 export const APP_ENV = Symbol("APP_ENV");
@@ -21,6 +22,7 @@ export function readEnv(env: NodeJS.ProcessEnv): AppEnv {
     databaseUrl,
     appName,
     port: readPort(env["PORT"]),
+    cookieSecure: env["NODE_ENV"] === "production",
   };
 }
 

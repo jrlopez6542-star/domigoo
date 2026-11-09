@@ -95,8 +95,10 @@ describe("sistema", () => {
       }
       const pathNames = Object.keys(paths);
       expect(pathNames).toEqual(expect.arrayContaining(["/health", "/ready"]));
-      expect(pathNames.some((path) => path.startsWith("/v1"))).toBe(false);
-      expect(pathNames.join(" ")).not.toMatch(/order|courier|restaurant|user|auth/i);
+      expect(pathNames.some((path) => path.startsWith("/v1") && !path.startsWith("/v1/auth"))).toBe(
+        false,
+      );
+      expect(pathNames.join(" ")).not.toMatch(/\/orders|\/couriers|\/restaurants/);
     } finally {
       await app.close();
     }

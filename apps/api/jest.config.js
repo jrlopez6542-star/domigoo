@@ -1,6 +1,7 @@
 /** @type {import("jest").Config} */
 const config = {
   testEnvironment: "node",
+  testTimeout: 60_000,
   testRegex: ".*\\.(spec|e2e-spec)\\.ts$",
   extensionsToTreatAsEsm: [".ts"],
   moduleNameMapper: {

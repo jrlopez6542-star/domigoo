@@ -1,16 +1,12 @@
 import { Module } from "@nestjs/common";
-import { APP_ENV, readEnv, type AppEnv } from "./config/env.js";
+import { ConfigModule } from "./config/config.module.js";
 import { HealthController } from "./health/health.controller.js";
 import { ReadinessService } from "./health/readiness.service.js";
+import { IdentityModule } from "./identity/identity.module.js";
 
 @Module({
+  imports: [ConfigModule, IdentityModule],
   controllers: [HealthController],
-  providers: [
-    ReadinessService,
-    {
-      provide: APP_ENV,
-      useFactory: (): AppEnv => readEnv(process.env),
-    },
-  ],
+  providers: [ReadinessService],
 })
 export class AppModule {}
