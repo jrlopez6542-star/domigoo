@@ -8,7 +8,7 @@ El restaurante paga una suscripción a DOMIGOO. El domiciliario no paga por reci
 
 ## Estado
 
-M07 deja la auditoría de identidad: el ingreso fallido no guarda la contraseña y el cambio de papel queda en un diff. La próxima misión es **M08**: avisos y consentimiento.
+M08 deja los documentos legales versionados y el consentimiento revocable. La próxima misión es **M09**: la semilla local de administración.
 
 ## Calidad
 

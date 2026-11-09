@@ -5,10 +5,18 @@ import { DatabaseModule } from "./database.module.js";
 import { HealthController } from "./health/health.controller.js";
 import { ReadinessService } from "./health/readiness.service.js";
 import { IdentityModule } from "./identity/identity.module.js";
+import { PrivacyModule } from "./privacy/privacy.module.js";
 import { RestaurantsModule } from "./restaurants/restaurants.module.js";
 
 @Module({
-  imports: [ConfigModule, DatabaseModule, AuditModule, IdentityModule, RestaurantsModule],
+  imports: [
+    ConfigModule,
+    DatabaseModule,
+    AuditModule,
+    IdentityModule,
+    RestaurantsModule,
+    PrivacyModule,
+  ],
   controllers: [HealthController],
   providers: [ReadinessService],
 })
