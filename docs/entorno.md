@@ -34,7 +34,7 @@ sudo dockerd --host=unix:///var/run/docker.sock
 
 Con el daemon en marcha se probó `postgis/postgis:17-3.5` (PostGIS 3.5, `USE_GEOS=1 USE_PROJ=1 USE_STATS=1`). Dos puntos de ejemplo en la zona de Tocancipá, `POINT(-73.9132 4.9655)` y `POINT(-73.9200 4.9700)`, dieron `ST_Distance` ≈ 903,5 m y `ST_DWithin` a 2 km verdadero.
 
-El SQL generado desde [schema.prisma](schema.prisma) con Prisma 7.10.1 (`migrate diff --from-empty --script`) se aplicó sobre esa imagen después de `CREATE EXTENSION postgis`. Creó las 42 tablas de la aplicación y los índices GiST. El contenedor de la prueba se eliminó. No quedó una base de datos escuchando.
+El contrato ejecutable está en [apps/api/prisma/schema.prisma](../apps/api/prisma/schema.prisma). `scripts/check-contract.sh` lo migra sobre esta imagen y comprueba tablas, índices GiST y una distancia en metros.
 
 Conclusión para las misiones: la integración con PostGIS se puede ejecutar en esta VM si el daemon se arranca así, y en GitHub Actions con un contenedor de servicio, sin instalar el daemon a mano. M02 fija esa imagen en `docker-compose.yml` y en el job `PostGIS` del workflow. La consulta es `scripts/postgis-version.sh`.
 

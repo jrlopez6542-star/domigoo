@@ -8,7 +8,7 @@ El restaurante paga una suscripción a DOMIGOO. El domiciliario no paga por reci
 
 ## Estado
 
-M03 deja el esqueleto de la API en `apps/api`: `GET /health`, `GET /ready` contra PostGIS y OpenAPI en `/docs` y `/openapi.json`. No hay módulos de dominio. La próxima misión es **M04**: la migración del contrato de datos.
+M04 deja el contrato de datos migrado en `apps/api` sobre PostGIS. La fase 1 de cimientos queda cerrada. La próxima misión es **M05**: cuenta y sesión.
 
 ## Calidad
 
@@ -19,6 +19,7 @@ pnpm typecheck
 docker compose up -d
 ./scripts/postgis-version.sh
 DATABASE_URL=postgresql://domigoo:domigoo@127.0.0.1:5432/domigoo pnpm --filter @domigoo/api test
+./scripts/check-contract.sh
 ```
 
 El compilador es TypeScript 6.0.3. La versión 7.0 no entra todavía: `typescript-eslint` 8.72 exige `typescript` anterior a 6.1.
@@ -38,7 +39,7 @@ La verificación documental combina reglas automáticas y aprobación humana. Ha
 
 - [Entorno de desarrollo y CI](docs/entorno.md): qué se pudo probar en esta VM (PostGIS 17/3.5 en Docker) y qué no (FCM real, emulador Android).
 - [Arquitectura](docs/arquitectura.md): contenedores, despacho, dinero y los ajustes a la propuesta técnica.
-- [Modelo de datos](docs/modelo-datos.md) y el borrador validado [docs/schema.prisma](docs/schema.prisma).
+- [Modelo de datos](docs/modelo-datos.md) y el contrato [apps/api/prisma/schema.prisma](apps/api/prisma/schema.prisma).
 - [Módulos y máquinas de estado](docs/modulos.md).
 - [Plan de misiones](docs/plan-misiones.md): M01 en adelante, con pruebas y criterios de aceptación.
 - [Pruebas y seguridad](docs/pruebas-y-seguridad.md).

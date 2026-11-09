@@ -285,7 +285,7 @@ La API futura se publica bajo el mismo sitio que la web (`/api` hacia Nest) para
 
 ## 16. Lectura siguiente
 
-- Datos: [modelo-datos.md](modelo-datos.md) y [schema.prisma](schema.prisma)
+- Datos: [modelo-datos.md](modelo-datos.md) y [apps/api/prisma/schema.prisma](../apps/api/prisma/schema.prisma)
 - Módulos y estados: [modulos.md](modulos.md)
 - Misiones: [plan-misiones.md](plan-misiones.md)
 - Pruebas y seguridad: [pruebas-y-seguridad.md](pruebas-y-seguridad.md)
