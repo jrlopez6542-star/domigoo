@@ -8,7 +8,7 @@ El restaurante paga una suscripción a DOMIGOO. El domiciliario no paga por reci
 
 ## Estado
 
-M22 publica en directo solo a un domiciliario elegible, con los seis documentos aceptados. La próxima misión es **M23**: la solicitud abierta.
+M23 abre una ola y acepta una sola oferta a la vez. La próxima misión es **M24**: el recorrido del pedido.
 
 ## Calidad
 

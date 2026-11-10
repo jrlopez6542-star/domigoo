@@ -34,4 +34,5 @@ WHERE c.status = 'APPROVED'
         'DELIVERED', 'EXPIRED', 'CANCELLED_RESTAURANT', 'CANCELLED_COURIER', 'CANCELLED_ADMIN', 'FAILED'
       )
   )
+ORDER BY ST_Distance(a.location, b.location)
 `;

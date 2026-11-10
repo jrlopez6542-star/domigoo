@@ -101,6 +101,11 @@ export class GeoRepository {
     return ids.includes(courierId);
   }
 
+  async listEligible(branchId: string, radiusMeters: number, limit: number): Promise<string[]> {
+    const ids = await this.idsInRadius(branchId, radiusMeters);
+    return ids.slice(0, limit);
+  }
+
   private async idsInRadius(branchId: string, radiusMeters: number): Promise<string[]> {
     const policy = await this.database.pool.query<{ seconds: number }>(
       `SELECT "locationFreshnessSeconds" AS seconds
