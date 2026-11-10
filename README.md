@@ -8,7 +8,7 @@ El restaurante paga una suscripción a DOMIGOO. El domiciliario no paga por reci
 
 ## Estado
 
-M23 abre una ola y acepta una sola oferta a la vez. La próxima misión es **M24**: el recorrido del pedido.
+El preview de Vercel compila la API y migra solo la base de Preview. La próxima misión es **M24**: el recorrido del pedido.
 
 ## Calidad
 
