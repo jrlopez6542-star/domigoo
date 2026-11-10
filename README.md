@@ -8,7 +8,7 @@ El restaurante paga una suscripción a DOMIGOO. El domiciliario no paga por reci
 
 ## Estado
 
-M11 activa la sucursal solo con punto y horario, y el admin pasa el restaurante de revisión a activo. La próxima misión es **M12**: el motor de tarifas.
+M12 cotiza el domicilio en pesos enteros con zonas y una regla por defecto. La próxima misión es **M13**: la política operativa.
 
 ## Calidad
 
