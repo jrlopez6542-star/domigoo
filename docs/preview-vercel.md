@@ -6,7 +6,7 @@ La base Neon `domigoo-preview` está conectada solo a Preview y Development. Pro
 
 ## Qué hace el build
 
-`vercel.json` en la raíz instala con pnpm y ejecuta `scripts/vercel-build.sh`.
+`vercel.json` en la raíz instala con pnpm, ejecuta `scripts/vercel-build.sh` y publica la carpeta vacía `public` junto con la función de `api/`.
 
 - Si `VERCEL_ENV` es `preview`, el script asigna `DATABASE_URL` al valor de `DATABASE_URL_UNPOOLED` solo para el proceso de `prisma migrate deploy`. Esa URL no se imprime.
 - En Production, Development y en local el script no migra. Compila igual.

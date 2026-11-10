@@ -3,5 +3,6 @@
   "framework": null,
   "installCommand": "pnpm install --frozen-lockfile",
   "buildCommand": "sh scripts/vercel-build.sh",
+  "outputDirectory": "public",
   "rewrites": [{ "source": "/((?!api/).*)", "destination": "/api" }]
 }
