@@ -8,7 +8,7 @@ El restaurante paga una suscripción a DOMIGOO. El domiciliario no paga por reci
 
 ## Estado
 
-M18 corre las reglas automáticas y no aprueba a nadie. La próxima misión es **M19**: la decisión humana.
+M19 deja la aprobación en manos de un revisor y la audita. La próxima misión es **M20**: disponibilidad y radio.
 
 ## Calidad
 

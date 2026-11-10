@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import type { PoolClient } from "pg";
+import { redactDiff } from "../audit/redact-diff.js";
 import { Database } from "../database.js";
 import {
   decideCase,
@@ -95,6 +96,94 @@ export class VerificationRepository {
       );
       await client.query("COMMIT");
       return { id: caseId, status, courierStatus };
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async platformRole(userId: string): Promise<string | null> {
+    const result = await this.database.pool.query<{ role: string }>(
+      `SELECT role::text AS role FROM admin_profiles WHERE "userId" = $1`,
+      [userId],
+    );
+    return result.rows[0]?.role ?? null;
+  }
+
+  async listPending(): Promise<{ id: string; courierId: string; status: "PENDING_HUMAN" }[]> {
+    const result = await this.database.pool.query<{ id: string; courierId: string }>(
+      `SELECT id, "courierId"
+       FROM verification_cases
+       WHERE status = 'PENDING_HUMAN'
+       ORDER BY "submittedAt" ASC NULLS LAST`,
+    );
+    return result.rows.map((row) => ({ ...row, status: "PENDING_HUMAN" }));
+  }
+
+  async decide(input: {
+    caseId: string;
+    reviewerId: string;
+    outcome: "APPROVED" | "REJECTED" | "NEEDS_CHANGES";
+    reasonCode: string;
+    comment: string;
+  }): Promise<boolean> {
+    const client = await this.database.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const found = await client.query<{ courierId: string; status: string }>(
+        `SELECT "courierId", status::text AS status
+         FROM verification_cases WHERE id = $1 FOR UPDATE`,
+        [input.caseId],
+      );
+      const current = found.rows[0];
+      if (current === undefined || current.status !== "PENDING_HUMAN") {
+        await client.query("ROLLBACK");
+        return false;
+      }
+      await client.query(
+        `INSERT INTO verification_decisions (
+           id, "caseId", "reviewerId", outcome, "reasonCode", comment, "createdAt"
+         ) VALUES (
+           gen_random_uuid(), $1, $2, $3::"DecisionOutcome", $4, $5, now()
+         )`,
+        [input.caseId, input.reviewerId, input.outcome, input.reasonCode, input.comment],
+      );
+      const courierStatus =
+        input.outcome === "APPROVED"
+          ? "APPROVED"
+          : input.outcome === "REJECTED"
+            ? "REJECTED"
+            : "NEEDS_CHANGES";
+      if (input.outcome === "NEEDS_CHANGES") {
+        await client.query(
+          `UPDATE verification_cases
+           SET status = 'NEEDS_CHANGES', "updatedAt" = now()
+           WHERE id = $1`,
+          [input.caseId],
+        );
+      } else {
+        await client.query(
+          `UPDATE verification_cases
+           SET status = $2::"VerificationStatus", "resolvedAt" = now(), "updatedAt" = now()
+           WHERE id = $1`,
+          [input.caseId, input.outcome],
+        );
+      }
+      await client.query(
+        `UPDATE couriers SET status = $2::"CourierStatus", "updatedAt" = now() WHERE id = $1`,
+        [current.courierId, courierStatus],
+      );
+      const diff = redactDiff({ from: "PENDING_HUMAN", to: input.outcome });
+      await client.query(
+        `INSERT INTO audit_logs
+          (id, "actorId", "actorKind", action, "entityType", "entityId", reason, diff, "createdAt")
+         VALUES (gen_random_uuid(), $1, 'ADMIN', 'verification.decided', 'verification_case', $2, $3, $4::jsonb, now())`,
+        [input.reviewerId, input.caseId, input.reasonCode, JSON.stringify(diff)],
+      );
+      await client.query("COMMIT");
+      return true;
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;
