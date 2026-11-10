@@ -13,7 +13,7 @@ Impacto y probabilidad en escala baja, media o alta. Dueño `ingeniería` si el 
 | R07 | IVA, retención y factura de la suscripción no están modelados | Alto | Alta | No se cobra de verdad en estas misiones. Los montos son enteros en pesos, sin impuesto calculado. | Negocio |
 | R08 | No hay polígono oficial de Tocancipá | Medio | Alta | Semilla marcada como envolvente de desarrollo. El motor ya admite reemplazar la versión publicada. | Negocio aporta el polígono; ingeniería ya dejó el cauce |
 | R09 | PIN de 6 dígitos si se filtra el pepper | Alto | Baja | Tope de intentos, vida corta, pepper fuera de la base. ADR-007. | Ingeniería |
-| R10 | Alguien levanta una segunda réplica y el rate limit deja de servir | Medio | Baja | ADR-004 prohíbe la segunda réplica. El despliegue de producción no existe todavía. | Ingeniería |
+| R10 | Alguien levanta una segunda réplica y el rate limit deja de servir | Medio | Baja | El límite de intentos de ingreso vive en memoria y debe pasar a PostgreSQL antes de tener más de una réplica. ADR-004 prohíbe esa segunda réplica mientras tanto. No se resuelve en la fase 3. | Ingeniería |
 | R11 | El enlace de tracking se reenvía y quien lo tiene ve el recorrido | Medio | Alta | Token largo, revocación, vencimiento, datos mínimos. Es un secreto al portador por diseño. | Ingeniería |
 | R12 | Documentos de identidad en disco local | Alto | Alta | Solo desarrollo y CI. Producción no se abre con ese adaptador. | Ingeniería |
 | R13 | La primera aceptación gana, sin reputación | Medio | Alta | Decisión de V1. No hay tabla de puntuación a propósito. | Negocio, si quiere cambiarlo antes de M23 |
