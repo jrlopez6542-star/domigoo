@@ -101,7 +101,9 @@ describe("sistema", () => {
           (path) =>
             path.startsWith("/v1/auth") ||
             path.startsWith("/v1/restaurants") ||
-            path.startsWith("/v1/admin"),
+            path.startsWith("/v1/admin") ||
+            path.startsWith("/v1/legal-documents") ||
+            path.startsWith("/v1/consents"),
         ),
       ).toBe(true);
       expect(pathNames.join(" ")).not.toMatch(/\/orders|\/couriers/);
