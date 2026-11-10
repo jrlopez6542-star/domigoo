@@ -8,6 +8,10 @@ export async function resetDatabase(databaseUrl: string): Promise<void> {
     await pool.query(`ALTER TABLE audit_logs DISABLE TRIGGER audit_logs_no_update`);
     await pool.query(`DELETE FROM audit_logs`);
     await pool.query(`ALTER TABLE audit_logs ENABLE TRIGGER audit_logs_no_update`);
+    await pool.query(`DELETE FROM subscription_payment_declarations`);
+    await pool.query(`DELETE FROM subscription_events`);
+    await pool.query(`DELETE FROM restaurant_subscriptions`);
+    await pool.query(`DELETE FROM subscription_plans`);
     await pool.query(`DELETE FROM restaurant_memberships`);
     await pool.query(`DELETE FROM admin_profiles`);
     await pool.query(`DELETE FROM sessions`);
