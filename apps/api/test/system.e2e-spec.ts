@@ -107,7 +107,8 @@ describe("sistema", () => {
             path.startsWith("/v1/branches") ||
             path.startsWith("/v1/admin/tariffs") ||
             path.startsWith("/v1/admin/policies") ||
-            path.startsWith("/v1/couriers"),
+            path.startsWith("/v1/couriers") ||
+            path.startsWith("/v1/courier-invitations"),
         ),
       ).toBe(true);
       expect(pathNames.join(" ")).not.toMatch(/\/orders/);
