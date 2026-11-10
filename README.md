@@ -8,7 +8,7 @@ El restaurante paga una suscripción a DOMIGOO. El domiciliario no paga por reci
 
 ## Estado
 
-M12 cotiza el domicilio en pesos enteros con zonas y una regla por defecto. La próxima misión es **M13**: la política operativa.
+M13 publica la política operativa, incluida la frescura de la posición. La próxima misión es **M14**: suscripción sin pasarela.
 
 ## Calidad
 
