@@ -1,8 +1,6 @@
 # Modelo de datos
 
-Contrato ejecutable: [schema.prisma](schema.prisma), escrito para Prisma ORM 7.10. El 2026-11-09 `prisma validate` pasó y el SQL de `prisma migrate diff --from-empty --script` se aplicó en `postgis/postgis:17-3.5`. Quedaron 42 tablas de la aplicación más el catálogo de PostGIS. El contenedor se eliminó.
-
-M04 mueve el esquema a `apps/api` y añade el SQL de la sección 6, que Prisma no expresa. Hasta ese momento este archivo es el contrato y no se migra desde `docs/`.
+Contrato ejecutable: [apps/api/prisma/schema.prisma](../apps/api/prisma/schema.prisma), escrito para Prisma ORM 7.10. La migración inicial vive en `apps/api/prisma/migrations` e incluye la extensión PostGIS, el SQL de Prisma y el de la sección 6. No hay una segunda copia editable en `docs/`.
 
 ## 1. Convenciones
 
@@ -251,18 +249,18 @@ Son valores iniciales de ingeniería para que el esquema tenga sentido. No reemp
 | Auditoría | 5 años | Se conserva. El diff ya nace redactado. |
 | Token de push | Hasta revocación o 180 días sin `lastSeenAt` | Borrado |
 
-## 8. Cómo volver a validar el borrador
+## 8. Cómo volver a comprobar el contrato
 
-Hace falta Prisma 7.10.1 resoluble como módulo (en M04 será dependencia de `apps/api`).
+Desde la raíz, con el Compose en marcha:
 
 ```bash
-export DATABASE_URL="postgresql://domigoo:domigoo@127.0.0.1:5432/domigoo"
-prisma validate --schema docs/schema.prisma --config docs/prisma.config.ts
-prisma migrate diff \
-  --config docs/prisma.config.ts \
-  --from-empty \
-  --to-schema docs/schema.prisma \
-  --script
+./scripts/check-contract.sh
 ```
 
-`validate` no abre una conexión. `DATABASE_URL` solo tiene que existir porque el config de Prisma 7 la lee. Aplicar el script exige la extensión PostGIS creada antes, en una base vacía.
+El script crea `domigoo_contract` vacía, ejecuta `prisma migrate deploy` y comprueba las 42 tablas, los seis índices GiST, el índice único de una oferta aceptada, el rechazo de `UPDATE` en `audit_logs` y un `ST_DWithin` de 2 km en metros. `DATABASE_URL` tiene que existir para Prisma aunque `validate` no abra una conexión:
+
+```bash
+cd apps/api
+export DATABASE_URL="postgresql://domigoo:domigoo@127.0.0.1:5432/domigoo_contract"
+pnpm exec prisma validate
+```

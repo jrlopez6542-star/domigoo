@@ -1,20 +1,14 @@
-// Borrador de contrato de datos de DOMIGOO (fase 0).
-// Objetivo: Prisma ORM 7.10.x estable y PostgreSQL 17 + PostGIS 3.5.
-// No ejecutar migraciones desde docs/. M02 copia este archivo a apps/api.
+// Contrato ejecutable de datos de DOMIGOO.
+// Prisma ORM 7.10.x y PostgreSQL 17 + PostGIS 3.5.
+// Este archivo es la única copia editable. docs/ ya no guarda otro esquema.
 //
 // Las columnas geoespaciales son geography (SRID 4326): las distancias salen en metros.
 // Prisma 7 no modela geography de forma nativa; el tipo Unsupported conserva la columna
 // y el índice GiST. Las consultas ST_DWithin viven en el módulo geo, no en el cliente genérico.
 //
 // Los índices parciales, las restricciones CHECK y el disparador de inmutabilidad de
-// audit_logs no caben en este archivo. Están especificados en docs/modelo-datos.md
-// y se crean en la migración de la misión que corresponda.
-//
-// Comprobado el 2026-11-09 con Prisma 7.10.1:
-//   prisma validate
-//   prisma migrate diff --from-empty --to-schema docs/schema.prisma --script
-// El SQL resultante se aplicó en un contenedor desechable postgis/postgis:17-3.5
-// (PostGIS 3.5) y creó 42 tablas de la aplicación. Ese contenedor se eliminó.
+// audit_logs no caben aquí. La migración inicial los añade. El detalle está en
+// docs/modelo-datos.md.
 
 generator client {
   provider = "prisma-client-js"
@@ -1143,8 +1137,8 @@ model IdempotencyKey {
 
 // --- Auditoría ----------------------------------------------------------------
 
-/// Append-only. La migración de M06 instala un disparador que rechaza UPDATE y DELETE
-/// y un rol de aplicación sin esos privilegios.
+/// Append-only. La migración inicial rechaza UPDATE y DELETE con un disparador.
+/// Un rol de aplicación sin esos privilegios queda para cuando exista un ambiente real.
 model AuditLog {
   id         String    @id @default(uuid()) @db.Uuid
   actorId    String?   @db.Uuid
