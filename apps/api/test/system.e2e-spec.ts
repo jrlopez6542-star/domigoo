@@ -109,7 +109,8 @@ describe("sistema", () => {
             path.startsWith("/v1/admin/policies") ||
             path.startsWith("/v1/couriers") ||
             path.startsWith("/v1/courier-invitations") ||
-            path.startsWith("/v1/orders"),
+            path.startsWith("/v1/orders") ||
+            path.startsWith("/v1/offers"),
         ),
       ).toBe(true);
     } finally {

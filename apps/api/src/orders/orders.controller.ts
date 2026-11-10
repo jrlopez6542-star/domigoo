@@ -12,7 +12,7 @@ import {
 import { ApiOperation, ApiTags } from "@nestjs/swagger";
 import { SessionGuard, type AuthenticatedRequest } from "../identity/session.guard.js";
 import { OrderRepository, type DraftOrder } from "./order.repository.js";
-import { PublishRepository, type PublishedOrder } from "./publish.repository.js";
+import { PublishRepository, type OpenWave, type PublishedOrder } from "./publish.repository.js";
 
 @ApiTags("pedidos")
 @Controller("v1/orders")
@@ -47,18 +47,35 @@ export class OrdersController {
     @Param("id") id: string,
     @Body() body: unknown,
     @Req() request: AuthenticatedRequest,
-  ): Promise<PublishedOrder> {
+  ): Promise<PublishedOrder | OpenWave> {
     const userId = request.auth?.userId;
     const parsed = readPublish(body);
     if (userId === undefined || parsed === null) {
       throw new NotFoundException();
     }
-    const published = await this.publisher.publishDirect({
-      orderId: id,
-      userId,
-      ...parsed,
-      at: new Date(),
-    });
+    const published =
+      parsed.mode === "OPEN"
+        ? await this.publisher.publishOpen({
+            orderId: id,
+            userId,
+            customerName: parsed.customerName,
+            customerPhone: parsed.customerPhone,
+            dropoffAddress: parsed.dropoffAddress,
+            longitude: parsed.longitude,
+            latitude: parsed.latitude,
+            at: new Date(),
+          })
+        : await this.publisher.publishDirect({
+            orderId: id,
+            userId,
+            courierId: parsed.courierId,
+            customerName: parsed.customerName,
+            customerPhone: parsed.customerPhone,
+            dropoffAddress: parsed.dropoffAddress,
+            longitude: parsed.longitude,
+            latitude: parsed.latitude,
+            at: new Date(),
+          });
     if (published === "missing") {
       throw new NotFoundException();
     }
@@ -119,6 +136,7 @@ function readDraft(body: unknown): {
 }
 
 function readPublish(body: unknown): {
+  mode: "DIRECT" | "OPEN";
   courierId: string;
   customerName: string;
   customerPhone: string;
@@ -130,8 +148,9 @@ function readPublish(body: unknown): {
     return null;
   }
   const record = body as Record<string, unknown>;
+  const mode = record["mode"] === "OPEN" ? "OPEN" : "DIRECT";
   if (
-    typeof record["courierId"] !== "string" ||
+    (mode === "DIRECT" && typeof record["courierId"] !== "string") ||
     typeof record["customerName"] !== "string" ||
     record["customerName"].trim() === "" ||
     typeof record["customerPhone"] !== "string" ||
@@ -154,7 +173,9 @@ function readPublish(body: unknown): {
     return null;
   }
   return {
-    courierId: record["courierId"],
+    mode,
+    courierId:
+      mode === "DIRECT" && typeof record["courierId"] === "string" ? record["courierId"] : "",
     customerName: record["customerName"].trim(),
     customerPhone: record["customerPhone"],
     dropoffAddress: record["dropoffAddress"].trim(),
