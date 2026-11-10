@@ -11,6 +11,7 @@ import { TariffsModule } from "./tariffs/tariffs.module.js";
 import { RestaurantsModule } from "./restaurants/restaurants.module.js";
 import { SubscriptionsModule } from "./subscriptions/subscriptions.module.js";
 import { CouriersModule } from "./couriers/couriers.module.js";
+import { GeoModule } from "./geo/geo.module.js";
 import { VerificationModule } from "./verification/verification.module.js";
 
 @Module({
@@ -25,6 +26,7 @@ import { VerificationModule } from "./verification/verification.module.js";
     PoliciesModule,
     SubscriptionsModule,
     CouriersModule,
+    GeoModule,
     VerificationModule,
   ],
   controllers: [HealthController],
