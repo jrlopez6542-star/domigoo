@@ -8,7 +8,7 @@ El restaurante paga una suscripción a DOMIGOO. El domiciliario no paga por reci
 
 ## Estado
 
-M19 deja la aprobación en manos de un revisor y la audita. La próxima misión es **M20**: disponibilidad y radio.
+M20 publica la disponibilidad con consentimiento y el radio alrededor de la sucursal. Con esto se cierra la fase 4. La próxima misión es **M21**: el borrador del pedido.
 
 ## Calidad
 
