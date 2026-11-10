@@ -8,7 +8,7 @@ El restaurante paga una suscripción a DOMIGOO. El domiciliario no paga por reci
 
 ## Estado
 
-M13 publica la política operativa, incluida la frescura de la posición. La próxima misión es **M14**: suscripción sin pasarela.
+La fase 3 queda cerrada en M14: la suscripción se abre, se declara y se reconoce sin pasarela. La próxima misión es **M15**: el registro abierto del domiciliario.
 
 ## Calidad
 
