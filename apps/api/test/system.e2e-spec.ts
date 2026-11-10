@@ -103,7 +103,8 @@ describe("sistema", () => {
             path.startsWith("/v1/restaurants") ||
             path.startsWith("/v1/admin") ||
             path.startsWith("/v1/legal-documents") ||
-            path.startsWith("/v1/consents"),
+            path.startsWith("/v1/consents") ||
+            path.startsWith("/v1/branches"),
         ),
       ).toBe(true);
       expect(pathNames.join(" ")).not.toMatch(/\/orders|\/couriers/);

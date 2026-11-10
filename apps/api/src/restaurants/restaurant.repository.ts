@@ -125,6 +125,92 @@ export class RestaurantRepository {
     return result.rows[0] ?? null;
   }
 
+  async replaceHours(
+    branchId: string,
+    userId: string,
+    slots: { weekday: number; opensMinute: number; closesMinute: number; closed: boolean }[],
+  ): Promise<boolean> {
+    const owned = await this.ownsBranch(branchId, userId);
+    if (!owned) {
+      return false;
+    }
+    const client = await this.database.pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(`DELETE FROM branch_hours WHERE "branchId" = $1`, [branchId]);
+      for (const slot of slots) {
+        await client.query(
+          `INSERT INTO branch_hours (id, "branchId", weekday, "opensMinute", "closesMinute", closed)
+           VALUES (gen_random_uuid(), $1, $2, $3, $4, $5)`,
+          [branchId, slot.weekday, slot.opensMinute, slot.closesMinute, slot.closed],
+        );
+      }
+      await client.query("COMMIT");
+      return true;
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async activateBranch(branchId: string, userId: string): Promise<"ok" | "missing" | "unready"> {
+    const result = await this.database.pool.query<{ hasPoint: boolean; hours: string }>(
+      `SELECT b.location IS NOT NULL AS "hasPoint",
+              (SELECT count(*) FROM branch_hours h WHERE h."branchId" = b.id)::text AS hours
+       FROM branches b
+       JOIN establishments e ON e.id = b."establishmentId"
+       JOIN restaurant_memberships m ON m."restaurantId" = e."restaurantId"
+       WHERE b.id = $1 AND m."userId" = $2 AND m.role = 'OWNER' AND m.status = 'ACTIVE'`,
+      [branchId, userId],
+    );
+    const row = result.rows[0];
+    if (row === undefined) {
+      return "missing";
+    }
+    if (!row.hasPoint || Number(row.hours) < 1) {
+      return "unready";
+    }
+    await this.database.pool.query(
+      `UPDATE branches SET status = 'ACTIVE', "updatedAt" = now() WHERE id = $1`,
+      [branchId],
+    );
+    return "ok";
+  }
+
+  async submitRestaurant(restaurantId: string, userId: string): Promise<boolean> {
+    const result = await this.database.pool.query(
+      `UPDATE restaurants r SET status = 'PENDING_REVIEW', "updatedAt" = now()
+       FROM restaurant_memberships m
+       WHERE r.id = m."restaurantId" AND r.id = $1 AND m."userId" = $2
+         AND m.role = 'OWNER' AND m.status = 'ACTIVE' AND r.status = 'DRAFT'`,
+      [restaurantId, userId],
+    );
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  async activateRestaurant(restaurantId: string): Promise<boolean> {
+    const result = await this.database.pool.query(
+      `UPDATE restaurants SET status = 'ACTIVE', "updatedAt" = now()
+       WHERE id = $1 AND status = 'PENDING_REVIEW'`,
+      [restaurantId],
+    );
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  private async ownsBranch(branchId: string, userId: string): Promise<boolean> {
+    const result = await this.database.pool.query(
+      `SELECT 1
+       FROM branches b
+       JOIN establishments e ON e.id = b."establishmentId"
+       JOIN restaurant_memberships m ON m."restaurantId" = e."restaurantId"
+       WHERE b.id = $1 AND m."userId" = $2 AND m.role = 'OWNER' AND m.status = 'ACTIVE'`,
+      [branchId, userId],
+    );
+    return (result.rowCount ?? 0) > 0;
+  }
+
   async findForMember(restaurantId: string, userId: string): Promise<VisibleRestaurant | null> {
     const result = await this.database.pool.query<VisibleRestaurant>(
       `SELECT r.id, r."tradeName"

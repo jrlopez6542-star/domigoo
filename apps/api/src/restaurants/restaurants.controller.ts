@@ -114,6 +114,20 @@ export class RestaurantsController {
     });
     return { role: changed.to };
   }
+
+  @Post(":id/submit")
+  @UseGuards(SessionGuard)
+  @ApiOperation({ summary: "Pasa el restaurante de borrador a revisión" })
+  async submit(
+    @Param("id") restaurantId: string,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<{ status: "PENDING_REVIEW" }> {
+    const userId = request.auth?.userId;
+    if (userId === undefined || !(await this.restaurants.submitRestaurant(restaurantId, userId))) {
+      throw new NotFoundException();
+    }
+    return { status: "PENDING_REVIEW" };
+  }
 }
 
 function readSite(body: unknown): {

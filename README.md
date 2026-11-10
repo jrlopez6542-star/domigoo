@@ -8,7 +8,7 @@ El restaurante paga una suscripción a DOMIGOO. El domiciliario no paga por reci
 
 ## Estado
 
-M10 crea el restaurante en borrador junto con un establecimiento y una sucursal georreferenciada. La próxima misión es **M11**: horario y activación.
+M11 activa la sucursal solo con punto y horario, y el admin pasa el restaurante de revisión a activo. La próxima misión es **M12**: el motor de tarifas.
 
 ## Calidad
 
