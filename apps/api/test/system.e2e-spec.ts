@@ -95,10 +95,16 @@ describe("sistema", () => {
       }
       const pathNames = Object.keys(paths);
       expect(pathNames).toEqual(expect.arrayContaining(["/health", "/ready"]));
-      expect(pathNames.some((path) => path.startsWith("/v1") && !path.startsWith("/v1/auth"))).toBe(
-        false,
-      );
-      expect(pathNames.join(" ")).not.toMatch(/\/orders|\/couriers|\/restaurants/);
+      const business = pathNames.filter((path) => path.startsWith("/v1"));
+      expect(
+        business.every(
+          (path) =>
+            path.startsWith("/v1/auth") ||
+            path.startsWith("/v1/restaurants") ||
+            path.startsWith("/v1/admin"),
+        ),
+      ).toBe(true);
+      expect(pathNames.join(" ")).not.toMatch(/\/orders|\/couriers/);
     } finally {
       await app.close();
     }
