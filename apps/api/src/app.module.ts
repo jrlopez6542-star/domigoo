@@ -10,6 +10,7 @@ import { PrivacyModule } from "./privacy/privacy.module.js";
 import { TariffsModule } from "./tariffs/tariffs.module.js";
 import { RestaurantsModule } from "./restaurants/restaurants.module.js";
 import { SubscriptionsModule } from "./subscriptions/subscriptions.module.js";
+import { CouriersModule } from "./couriers/couriers.module.js";
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { SubscriptionsModule } from "./subscriptions/subscriptions.module.js";
     TariffsModule,
     PoliciesModule,
     SubscriptionsModule,
+    CouriersModule,
   ],
   controllers: [HealthController],
   providers: [ReadinessService],
