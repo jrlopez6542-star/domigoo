@@ -12,6 +12,16 @@ WHERE c.status = 'APPROVED'
   AND v.type = 'MOTORCYCLE'
   AND v."soatExpiresOn" > CURRENT_DATE
   AND v."techExpiresOn" > CURRENT_DATE
+  AND (
+    SELECT count(DISTINCT d.type)
+    FROM courier_documents d
+    WHERE d."courierId" = c.id
+      AND d.status = 'ACCEPTED'
+      AND (d."declaredExpiresOn" IS NULL OR d."declaredExpiresOn" > CURRENT_DATE)
+      AND d.type IN (
+        'NATIONAL_ID', 'DRIVER_LICENSE', 'SOAT', 'TECH_INSPECTION', 'VEHICLE_PHOTO', 'PROFILE_PHOTO'
+      )
+  ) = 6
   AND consent."revokedAt" IS NULL
   AND consent.purpose = 'GEOLOCATION'
   AND a.location IS NOT NULL

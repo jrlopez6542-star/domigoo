@@ -8,7 +8,7 @@ El restaurante paga una suscripción a DOMIGOO. El domiciliario no paga por reci
 
 ## Estado
 
-M21 crea el borrador del pedido con la comida y el domicilio separados. La próxima misión es **M22**: publicar y solicitar en directo.
+M22 publica en directo solo a un domiciliario elegible, con los seis documentos aceptados. La próxima misión es **M23**: la solicitud abierta.
 
 ## Calidad
 

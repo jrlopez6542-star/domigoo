@@ -4,6 +4,7 @@ import { isNightInBogota } from "./bogota-time.js";
 import { quoteCop } from "./quote.js";
 
 export type TariffQuote = {
+  versionId: string;
   zoneCode: string | null;
   distanceMeters: number;
   deliveryFeeCop: number;
@@ -164,6 +165,7 @@ export class TariffRepository {
       isNight: isNightInBogota(input.at, pricing.nightStartsMinute, pricing.nightEndsMinute),
     });
     return {
+      versionId,
       zoneCode: zoneRow?.code ?? null,
       distanceMeters,
       deliveryFeeCop,

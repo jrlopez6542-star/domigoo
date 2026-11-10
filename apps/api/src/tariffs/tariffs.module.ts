@@ -7,5 +7,6 @@ import { TariffsController } from "./tariffs.controller.js";
   imports: [IdentityModule],
   controllers: [TariffsController],
   providers: [TariffRepository],
+  exports: [TariffRepository],
 })
 export class TariffsModule {}

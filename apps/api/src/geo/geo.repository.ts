@@ -93,6 +93,15 @@ export class GeoRepository {
     if ((member.rowCount ?? 0) === 0) {
       return "hidden";
     }
+    return { ids: await this.idsInRadius(branchId, radiusMeters) };
+  }
+
+  async isEligible(branchId: string, courierId: string, radiusMeters: number): Promise<boolean> {
+    const ids = await this.idsInRadius(branchId, radiusMeters);
+    return ids.includes(courierId);
+  }
+
+  private async idsInRadius(branchId: string, radiusMeters: number): Promise<string[]> {
     const policy = await this.database.pool.query<{ seconds: number }>(
       `SELECT "locationFreshnessSeconds" AS seconds
        FROM operations_policies WHERE status = 'PUBLISHED' LIMIT 1`,
@@ -103,7 +112,7 @@ export class GeoRepository {
       freshness,
       radiusMeters,
     ]);
-    return { ids: result.rows.map((row) => row.id) };
+    return result.rows.map((row) => row.id);
   }
 
   private async courierId(userId: string): Promise<string | null> {
