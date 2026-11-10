@@ -1,0 +1,17 @@
+{
+  "name": "@domigoo/config",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./tsconfig.base.json": "./tsconfig.base.json",
+    "./eslint.config.mjs": "./eslint.config.mjs",
+    "./prettier.config.mjs": "./prettier.config.mjs"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "6.0.3"
+  }
+}

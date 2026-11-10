@@ -2,7 +2,7 @@
 
 Cada misión es un pull request. No se empieza la siguiente si la anterior no cumple sus criterios. El orden de abajo es el orden de ejecución. Las fases agrupan el relato; no autorizan a saltar una misión.
 
-El esquema de [schema.prisma](schema.prisma) es el contrato. M04 lo materializa. Las misiones posteriores implementan comportamiento sobre esas tablas y solo alteran el esquema si un ADR lo dice.
+El esquema de [apps/api/prisma/schema.prisma](../apps/api/prisma/schema.prisma) es el contrato. M04 lo materializa. Las misiones posteriores implementan comportamiento sobre esas tablas y solo alteran el esquema si un ADR lo dice.
 
 No forman parte de ninguna misión: proveedores de IA, pasarelas, alta de dominios, publicación en tiendas, despliegue a producción y datos reales de personas.
 
