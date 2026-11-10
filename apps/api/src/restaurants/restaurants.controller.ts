@@ -5,6 +5,7 @@ import {
   NotFoundException,
   Param,
   Patch,
+  Post,
   Req,
   UseGuards,
 } from "@nestjs/common";
@@ -21,6 +22,53 @@ export class RestaurantsController {
     private readonly restaurants: RestaurantRepository,
     private readonly audit: AuditRecorder,
   ) {}
+
+  @Post()
+  @UseGuards(SessionGuard)
+  @ApiOperation({ summary: "Crea restaurante, establecimiento y sucursal con punto" })
+  async create(
+    @Body() body: unknown,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<{
+    id: string;
+    establishmentId: string;
+    branchId: string;
+    longitude: number;
+    latitude: number;
+    status: "DRAFT";
+  }> {
+    const ownerId = request.auth?.userId;
+    const parsed = readSite(body);
+    if (ownerId === undefined || parsed === null) {
+      throw new NotFoundException();
+    }
+    const created = await this.restaurants.createSite({ ...parsed, ownerId });
+    return { ...created, status: "DRAFT" };
+  }
+
+  @Get(":id/site")
+  @UseGuards(SessionGuard)
+  @ApiOperation({ summary: "Lee la sede y el punto de la sucursal" })
+  async site(
+    @Param("id") id: string,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<{
+    id: string;
+    establishmentId: string;
+    branchId: string;
+    longitude: number;
+    latitude: number;
+  }> {
+    const userId = request.auth?.userId;
+    if (userId === undefined) {
+      throw new NotFoundException();
+    }
+    const site = await this.restaurants.findSiteForMember(id, userId);
+    if (site === null) {
+      throw new NotFoundException();
+    }
+    return site;
+  }
 
   @Get(":id")
   @UseGuards(RestaurantMemberGuard)
@@ -66,6 +114,68 @@ export class RestaurantsController {
     });
     return { role: changed.to };
   }
+}
+
+function readSite(body: unknown): {
+  legalName: string;
+  tradeName: string;
+  nit: string;
+  email: string;
+  phoneE164: string;
+  establishmentName: string;
+  branchName: string;
+  addressLine: string;
+  longitude: number;
+  latitude: number;
+} | null {
+  if (typeof body !== "object" || body === null) {
+    return null;
+  }
+  const record = body as Record<string, unknown>;
+  const text = (key: string): string | null =>
+    typeof record[key] === "string" && record[key].trim() !== "" ? record[key].trim() : null;
+  const legalName = text("legalName");
+  const tradeName = text("tradeName");
+  const nit = text("nit");
+  const email = text("email");
+  const phoneE164 = text("phoneE164");
+  const establishmentName = text("establishmentName");
+  const branchName = text("branchName");
+  const addressLine = text("addressLine");
+  const longitude = record["longitude"];
+  const latitude = record["latitude"];
+  if (
+    legalName === null ||
+    tradeName === null ||
+    nit === null ||
+    email === null ||
+    phoneE164 === null ||
+    establishmentName === null ||
+    branchName === null ||
+    addressLine === null ||
+    typeof longitude !== "number" ||
+    typeof latitude !== "number" ||
+    !Number.isFinite(longitude) ||
+    !Number.isFinite(latitude) ||
+    longitude < -180 ||
+    longitude > 180 ||
+    latitude < -90 ||
+    latitude > 90
+  ) {
+    return null;
+  }
+  return {
+    legalName,
+    tradeName,
+    nit,
+    email,
+    phoneE164,
+    establishmentName,
+    branchName,
+    addressLine,
+    longitude,
+    latitude,
+  };
 }
 
 function readRole(body: unknown): "OWNER" | "MANAGER" | "OPERATOR" | null {
