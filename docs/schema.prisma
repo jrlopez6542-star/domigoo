@@ -1,0 +1,1168 @@
+// Borrador de contrato de datos de DOMIGOO (fase 0).
+// Objetivo: Prisma ORM 7.10.x estable y PostgreSQL 17 + PostGIS 3.5.
+// No ejecutar migraciones desde docs/. M02 copia este archivo a apps/api.
+//
+// Las columnas geoespaciales son geography (SRID 4326): las distancias salen en metros.
+// Prisma 7 no modela geography de forma nativa; el tipo Unsupported conserva la columna
+// y el índice GiST. Las consultas ST_DWithin viven en el módulo geo, no en el cliente genérico.
+//
+// Los índices parciales, las restricciones CHECK y el disparador de inmutabilidad de
+// audit_logs no caben en este archivo. Están especificados en docs/modelo-datos.md
+// y se crean en la migración de la misión que corresponda.
+//
+// Comprobado el 2026-11-09 con Prisma 7.10.1:
+//   prisma validate
+//   prisma migrate diff --from-empty --to-schema docs/schema.prisma --script
+// El SQL resultante se aplicó en un contenedor desechable postgis/postgis:17-3.5
+// (PostGIS 3.5) y creó 42 tablas de la aplicación. Ese contenedor se eliminó.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// --- Identidad y acceso -------------------------------------------------------
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum ClientKind {
+  WEB
+  MOBILE
+  ADMIN
+}
+
+enum PlatformRole {
+  SUPERADMIN
+  REVIEWER
+  OPERATIONS
+  SECURITY
+}
+
+enum AccessInvitePurpose {
+  RESTAURANT_MEMBERSHIP
+  ADMIN
+}
+
+enum MembershipRole {
+  OWNER
+  MANAGER
+  OPERATOR
+}
+
+enum MembershipStatus {
+  INVITED
+  ACTIVE
+  REVOKED
+}
+
+/// Persona que inicia sesión. Un usuario tiene como máximo un perfil de domiciliario
+/// y como máximo un perfil de administración. Los permisos de restaurante van en la membresía.
+model User {
+  id           String     @id @default(uuid()) @db.Uuid
+  email        String?    @unique @db.VarChar(254)
+  phoneE164    String?    @unique @db.VarChar(20)
+  passwordHash String?    @db.VarChar(255)
+  status       UserStatus @default(ACTIVE)
+  createdAt    DateTime   @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime   @updatedAt @db.Timestamptz(6)
+
+  sessions                   Session[]
+  adminProfile               AdminProfile?
+  memberships                RestaurantMembership[]
+  courier                    Courier?
+  ordersCreated              Order[]                          @relation("OrderCreatedBy")
+  orderEvents                OrderEvent[]                     @relation("OrderEventActor")
+  verificationDecisions      VerificationDecision[]           @relation("DecisionReviewer")
+  accessInvitesCreated       AccessInvite[]                   @relation("InviteCreatedBy")
+  courierInvitationsCreated  CourierInvitation[]              @relation("CourierInviteCreatedBy")
+  subscriptionEvents         SubscriptionEvent[]              @relation("SubscriptionEventActor")
+  paymentDeclarations        SubscriptionPaymentDeclaration[] @relation("DeclarationDeclaredBy")
+  incidentsReported          Incident[]                       @relation("IncidentReporter")
+  incidentEvents             IncidentEvent[]                  @relation("IncidentEventActor")
+  auditLogs                  AuditLog[]                       @relation("AuditActor")
+  consents                   ConsentRecord[]
+  dataSubjectRequests        DataSubjectRequest[]
+  deviceTokens               DevicePushToken[]
+  outboxMessages             NotificationOutbox[]
+  idempotencyKeys            IdempotencyKey[]
+
+  @@index([status])
+  @@map("users")
+}
+
+model Session {
+  id        String     @id @default(uuid()) @db.Uuid
+  userId    String     @db.Uuid
+  tokenHash String     @unique @db.VarChar(64)
+  client    ClientKind
+  userAgent String?    @db.VarChar(255)
+  ip        String?    @db.VarChar(45)
+  expiresAt DateTime   @db.Timestamptz(6)
+  revokedAt DateTime?  @db.Timestamptz(6)
+  createdAt DateTime   @default(now()) @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@map("sessions")
+}
+
+model AdminProfile {
+  userId      String       @id @db.Uuid
+  displayName String       @db.VarChar(120)
+  role        PlatformRole
+  createdAt   DateTime     @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime     @updatedAt @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@map("admin_profiles")
+}
+
+/// Invitación de personal de restaurante o de administración. No sustituye la verificación
+/// del domiciliario y no concede por sí sola permiso para operar.
+model AccessInvite {
+  id             String              @id @default(uuid()) @db.Uuid
+  email          String              @db.VarChar(254)
+  purpose        AccessInvitePurpose
+  restaurantId   String?             @db.Uuid
+  membershipRole MembershipRole?
+  platformRole   PlatformRole?
+  tokenHash      String              @unique @db.VarChar(64)
+  expiresAt      DateTime            @db.Timestamptz(6)
+  consumedAt     DateTime?           @db.Timestamptz(6)
+  createdById    String              @db.Uuid
+  createdAt      DateTime            @default(now()) @db.Timestamptz(6)
+
+  restaurant Restaurant? @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  createdBy  User        @relation("InviteCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([email, consumedAt])
+  @@index([restaurantId])
+  @@map("access_invites")
+}
+
+// --- Restaurantes -------------------------------------------------------------
+
+enum RestaurantStatus {
+  DRAFT
+  PENDING_REVIEW
+  ACTIVE
+  SUSPENDED
+  CLOSED
+}
+
+enum EstablishmentStatus {
+  DRAFT
+  ACTIVE
+  CLOSED
+}
+
+enum BranchStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  CLOSED
+}
+
+/// Suscriptor. DOMIGOO le cobra la suscripción. No es la sede física.
+model Restaurant {
+  id        String           @id @default(uuid()) @db.Uuid
+  legalName String           @db.VarChar(200)
+  tradeName String           @db.VarChar(200)
+  nit       String           @unique @db.VarChar(20)
+  email     String           @db.VarChar(254)
+  phoneE164 String           @db.VarChar(20)
+  status    RestaurantStatus @default(DRAFT)
+  createdAt DateTime         @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime         @updatedAt @db.Timestamptz(6)
+
+  establishments    Establishment[]
+  memberships       RestaurantMembership[]
+  accessInvites     AccessInvite[]
+  courierInvitations CourierInvitation[]
+  subscriptions     RestaurantSubscription[]
+  orders            Order[]
+  incidents         Incident[]
+
+  @@index([status])
+  @@map("restaurants")
+}
+
+model RestaurantMembership {
+  id           String           @id @default(uuid()) @db.Uuid
+  restaurantId String           @db.Uuid
+  userId       String           @db.Uuid
+  role         MembershipRole
+  status       MembershipStatus @default(INVITED)
+  createdAt    DateTime         @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime         @updatedAt @db.Timestamptz(6)
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@unique([restaurantId, userId])
+  @@index([userId])
+  @@map("restaurant_memberships")
+}
+
+/// Establecimiento de comercio asociado a la cuenta. Puede tener una o varias sucursales.
+model Establishment {
+  id                 String              @id @default(uuid()) @db.Uuid
+  restaurantId       String              @db.Uuid
+  name               String              @db.VarChar(200)
+  registrationNumber String?             @db.VarChar(40)
+  status             EstablishmentStatus @default(DRAFT)
+  createdAt          DateTime            @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime            @updatedAt @db.Timestamptz(6)
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  branches   Branch[]
+
+  @@index([restaurantId])
+  @@map("establishments")
+}
+
+/// Punto de despacho. La búsqueda de domiciliarios usa `location`.
+model Branch {
+  id            String       @id @default(uuid()) @db.Uuid
+  establishmentId String     @db.Uuid
+  name          String       @db.VarChar(200)
+  phoneE164     String?      @db.VarChar(20)
+  addressLine   String       @db.VarChar(300)
+  neighborhood  String?      @db.VarChar(120)
+  city          String       @default("Tocancipá") @db.VarChar(120)
+  department    String       @default("Cundinamarca") @db.VarChar(120)
+  countryCode   String       @default("CO") @db.Char(2)
+  /// geography(Point,4326). Obligatorio para pasar la sucursal a ACTIVE.
+  location      Unsupported("geography(Point,4326)")?
+  status        BranchStatus @default(DRAFT)
+  createdAt     DateTime     @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime     @updatedAt @db.Timestamptz(6)
+
+  establishment Establishment @relation(fields: [establishmentId], references: [id], onDelete: Cascade)
+  hours         BranchHour[]
+  orders        Order[]
+
+  @@index([establishmentId])
+  @@index([status])
+  @@index([location], type: Gist, map: "branches_location_gist")
+  @@map("branches")
+}
+
+/// Horario local de la sucursal. weekday sigue ISO-8601: 1 = lunes … 7 = domingo.
+/// Varias filas del mismo día representan franjas partidas.
+model BranchHour {
+  id          String  @id @default(uuid()) @db.Uuid
+  branchId    String  @db.Uuid
+  weekday     Int     @db.SmallInt
+  opensMinute Int     @db.SmallInt
+  closesMinute Int    @db.SmallInt
+  closed      Boolean @default(false)
+
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@index([branchId, weekday])
+  @@map("branch_hours")
+}
+
+// --- Domiciliarios ------------------------------------------------------------
+
+enum CourierStatus {
+  REGISTERING
+  PENDING_VERIFICATION
+  NEEDS_CHANGES
+  APPROVED
+  REJECTED
+  SUSPENDED
+}
+
+enum RegistrationSource {
+  OPEN
+  INVITATION
+}
+
+enum IdentityDocumentType {
+  CC
+  CE
+}
+
+enum InvitationStatus {
+  PENDING
+  CONSUMED
+  REVOKED
+  EXPIRED
+}
+
+enum VehicleType {
+  MOTORCYCLE
+}
+
+enum VehicleStatus {
+  ACTIVE
+  RETIRED
+}
+
+enum CourierDocumentType {
+  NATIONAL_ID
+  DRIVER_LICENSE
+  SOAT
+  TECH_INSPECTION
+  VEHICLE_PHOTO
+  PROFILE_PHOTO
+}
+
+enum DocumentStatus {
+  UPLOADED
+  ACCEPTED
+  REJECTED
+  EXPIRED
+}
+
+enum AvailabilityState {
+  OFFLINE
+  AVAILABLE
+  ON_SERVICE
+}
+
+enum LocationPurpose {
+  AVAILABILITY
+  ACTIVE_SERVICE
+}
+
+model CourierInvitation {
+  id          String           @id @default(uuid()) @db.Uuid
+  restaurantId String?         @db.Uuid
+  createdById String           @db.Uuid
+  tokenHash   String           @unique @db.VarChar(64)
+  status      InvitationStatus @default(PENDING)
+  expiresAt   DateTime         @db.Timestamptz(6)
+  consumedAt  DateTime?        @db.Timestamptz(6)
+  createdAt   DateTime         @default(now()) @db.Timestamptz(6)
+
+  restaurant Restaurant? @relation(fields: [restaurantId], references: [id], onDelete: SetNull)
+  createdBy  User        @relation("CourierInviteCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  courier    Courier?
+
+  @@index([restaurantId, status])
+  @@map("courier_invitations")
+}
+
+/// Proyección operativa. `status` cambia en la misma transacción que la decisión de
+/// verificación, la suspensión o el vencimiento documental. No se edita por fuera de esos casos.
+model Courier {
+  id                 String               @id @default(uuid()) @db.Uuid
+  userId             String               @unique @db.Uuid
+  documentType       IdentityDocumentType
+  documentNumber     String               @db.VarChar(20)
+  firstName          String               @db.VarChar(80)
+  lastName           String               @db.VarChar(80)
+  status             CourierStatus        @default(REGISTERING)
+  registrationSource RegistrationSource
+  invitationId       String?              @unique @db.Uuid
+  createdAt          DateTime             @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime             @updatedAt @db.Timestamptz(6)
+
+  user           User                @relation(fields: [userId], references: [id], onDelete: Restrict)
+  invitation     CourierInvitation?  @relation(fields: [invitationId], references: [id], onDelete: SetNull)
+  vehicle        Vehicle?
+  documents      CourierDocument[]
+  availability   CourierAvailability?
+  locationPings  LocationPing[]
+  cases          VerificationCase[]
+  offers         DispatchOffer[]
+  assignedOrders Order[]
+  pinAttempts    PinAttempt[]
+  incidents      Incident[]
+
+  @@unique([documentType, documentNumber])
+  @@index([status])
+  @@map("couriers")
+}
+
+/// V1 solo admite motocicleta. Otro valor exige una migración y una decisión de producto.
+model Vehicle {
+  id            String        @id @default(uuid()) @db.Uuid
+  courierId     String        @unique @db.Uuid
+  type          VehicleType   @default(MOTORCYCLE)
+  plate         String        @unique @db.VarChar(10)
+  soatExpiresOn DateTime      @db.Date
+  techExpiresOn DateTime      @db.Date
+  status        VehicleStatus @default(ACTIVE)
+  createdAt     DateTime      @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime      @updatedAt @db.Timestamptz(6)
+
+  courier Courier @relation(fields: [courierId], references: [id], onDelete: Restrict)
+
+  @@map("vehicles")
+}
+
+/// Evidencia almacenada fuera de la base. `storageKey` no es una URL pública.
+model CourierDocument {
+  id                String             @id @default(uuid()) @db.Uuid
+  courierId         String             @db.Uuid
+  type              CourierDocumentType
+  storageKey        String             @db.VarChar(500)
+  sha256            String             @db.VarChar(64)
+  mimeType          String             @db.VarChar(100)
+  byteSize          Int
+  declaredExpiresOn DateTime?          @db.Date
+  status            DocumentStatus     @default(UPLOADED)
+  createdAt         DateTime           @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime           @updatedAt @db.Timestamptz(6)
+
+  courier Courier @relation(fields: [courierId], references: [id], onDelete: Restrict)
+
+  @@index([courierId, type, status])
+  @@map("courier_documents")
+}
+
+model CourierAvailability {
+  courierId  String            @id @db.Uuid
+  state      AvailabilityState @default(OFFLINE)
+  /// geography(Point,4326). Nulo cuando no hay una posición vigente.
+  location   Unsupported("geography(Point,4326)")?
+  recordedAt DateTime?         @db.Timestamptz(6)
+  accuracyM  Int?
+  /// Consentimiento de geolocalización que autoriza la posición vigente.
+  consentId  String?           @db.Uuid
+  updatedAt  DateTime          @updatedAt @db.Timestamptz(6)
+
+  courier Courier        @relation(fields: [courierId], references: [id], onDelete: Restrict)
+  consent ConsentRecord? @relation(fields: [consentId], references: [id], onDelete: Restrict)
+
+  @@index([state])
+  @@index([location], type: Gist, map: "courier_availability_location_gist")
+  @@map("courier_availabilities")
+}
+
+/// Histórico de corta retención (30 días). No es la fuente para buscar disponibilidad.
+model LocationPing {
+  id         String          @id @default(uuid()) @db.Uuid
+  courierId  String          @db.Uuid
+  orderId    String?         @db.Uuid
+  purpose    LocationPurpose
+  location   Unsupported("geography(Point,4326)")
+  accuracyM  Int?
+  recordedAt DateTime        @db.Timestamptz(6)
+
+  courier Courier @relation(fields: [courierId], references: [id], onDelete: Restrict)
+  order   Order?  @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  @@index([courierId, recordedAt])
+  @@index([orderId])
+  @@index([location], type: Gist, map: "location_pings_location_gist")
+  @@map("location_pings")
+}
+
+// --- Verificación -------------------------------------------------------------
+
+enum VerificationStatus {
+  COLLECTING
+  SUBMITTED
+  AUTO_IN_PROGRESS
+  PENDING_HUMAN
+  NEEDS_CHANGES
+  APPROVED
+  REJECTED
+}
+
+enum CheckOutcome {
+  PASS
+  FAIL
+  NOT_APPLICABLE
+}
+
+enum DecisionOutcome {
+  APPROVED
+  REJECTED
+  NEEDS_CHANGES
+}
+
+model VerificationCase {
+  id          String             @id @default(uuid()) @db.Uuid
+  courierId   String             @db.Uuid
+  status      VerificationStatus @default(COLLECTING)
+  submittedAt DateTime?          @db.Timestamptz(6)
+  resolvedAt  DateTime?          @db.Timestamptz(6)
+  createdAt   DateTime           @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime           @updatedAt @db.Timestamptz(6)
+
+  courier   Courier                @relation(fields: [courierId], references: [id], onDelete: Restrict)
+  checks    VerificationCheck[]
+  decisions VerificationDecision[]
+
+  @@index([status, submittedAt])
+  @@index([courierId, createdAt])
+  @@map("verification_cases")
+}
+
+model VerificationCheck {
+  id        String       @id @default(uuid()) @db.Uuid
+  caseId    String       @db.Uuid
+  code      String       @db.VarChar(64)
+  outcome   CheckOutcome
+  detail    Json         @db.JsonB
+  createdAt DateTime     @default(now()) @db.Timestamptz(6)
+
+  case VerificationCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  @@index([caseId])
+  @@map("verification_checks")
+}
+
+model VerificationDecision {
+  id         String          @id @default(uuid()) @db.Uuid
+  caseId     String          @db.Uuid
+  reviewerId String          @db.Uuid
+  outcome    DecisionOutcome
+  reasonCode String          @db.VarChar(64)
+  comment    String
+  createdAt  DateTime        @default(now()) @db.Timestamptz(6)
+
+  case     VerificationCase @relation(fields: [caseId], references: [id], onDelete: Restrict)
+  reviewer User             @relation("DecisionReviewer", fields: [reviewerId], references: [id], onDelete: Restrict)
+
+  @@index([caseId, createdAt])
+  @@index([reviewerId])
+  @@map("verification_decisions")
+}
+
+// --- Privacidad (Ley 1581 de 2012) --------------------------------------------
+
+enum LegalDocumentKind {
+  PRIVACY_NOTICE
+  TERMS
+  GEOLOCATION_CONSENT
+  DOCUMENT_PROCESSING
+}
+
+enum ConsentPurpose {
+  ACCOUNT
+  GEOLOCATION
+  DOCUMENT_STORAGE
+  ORDER_CONTACT
+}
+
+enum ConsentChannel {
+  WEB
+  MOBILE
+  ADMIN
+}
+
+enum DataSubjectRequestType {
+  ACCESS
+  CORRECTION
+  DELETION
+  REVOCATION
+  COMPLAINT
+}
+
+enum DataSubjectRequestStatus {
+  OPEN
+  IN_PROGRESS
+  COMPLETED
+  DENIED
+}
+
+model LegalDocument {
+  id          String            @id @default(uuid()) @db.Uuid
+  kind        LegalDocumentKind
+  version     String            @db.VarChar(20)
+  contentHash String            @db.VarChar(64)
+  publishedAt DateTime          @db.Timestamptz(6)
+
+  consents ConsentRecord[]
+
+  @@unique([kind, version])
+  @@map("legal_documents")
+}
+
+model ConsentRecord {
+  id              String         @id @default(uuid()) @db.Uuid
+  userId          String         @db.Uuid
+  legalDocumentId String         @db.Uuid
+  purpose         ConsentPurpose
+  channel         ConsentChannel
+  grantedAt       DateTime       @default(now()) @db.Timestamptz(6)
+  revokedAt       DateTime?      @db.Timestamptz(6)
+  ip              String?        @db.VarChar(45)
+  userAgent       String?        @db.VarChar(255)
+
+  user            User                  @relation(fields: [userId], references: [id], onDelete: Restrict)
+  legalDocument   LegalDocument         @relation(fields: [legalDocumentId], references: [id], onDelete: Restrict)
+  availabilities  CourierAvailability[]
+
+  @@index([userId, purpose, revokedAt])
+  @@map("consent_records")
+}
+
+model DataSubjectRequest {
+  id        String                   @id @default(uuid()) @db.Uuid
+  userId    String                   @db.Uuid
+  type      DataSubjectRequestType
+  status    DataSubjectRequestStatus @default(OPEN)
+  note      String?
+  openedAt  DateTime                 @default(now()) @db.Timestamptz(6)
+  closedAt  DateTime?                @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([status, openedAt])
+  @@map("data_subject_requests")
+}
+
+// --- Suscripción (sin pasarela y sin custodia) --------------------------------
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  PAST_DUE
+  SUSPENDED
+  CANCELLED
+}
+
+enum DeclarationStatus {
+  DECLARED
+  ACKNOWLEDGED
+  REJECTED
+}
+
+enum PaymentMethod {
+  CASH
+  NEQUI
+  DAVIPLATA
+  TRANSFER
+}
+
+model SubscriptionPlan {
+  id                  String  @id @default(uuid()) @db.Uuid
+  code                String  @unique @db.VarChar(40)
+  name                String  @db.VarChar(120)
+  /// Pesos colombianos enteros. No se actualiza si ya hay suscripciones: se crea otro plan.
+  priceCop            Int
+  periodDays          Int
+  trialDays           Int     @default(0)
+  maxBranches         Int
+  maxConcurrentOrders Int
+  active              Boolean @default(true)
+  createdAt           DateTime @default(now()) @db.Timestamptz(6)
+
+  subscriptions RestaurantSubscription[]
+
+  @@map("subscription_plans")
+}
+
+model RestaurantSubscription {
+  id             String             @id @default(uuid()) @db.Uuid
+  restaurantId   String             @db.Uuid
+  planId         String             @db.Uuid
+  /// Copia del precio del plan al iniciar el periodo. El plan puede dejar de usarse sin reescribir historia.
+  priceCop       Int
+  status         SubscriptionStatus
+  isCurrent      Boolean            @default(true)
+  periodStartsAt DateTime           @db.Timestamptz(6)
+  periodEndsAt   DateTime           @db.Timestamptz(6)
+  createdAt      DateTime           @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime           @updatedAt @db.Timestamptz(6)
+
+  restaurant    Restaurant                     @relation(fields: [restaurantId], references: [id], onDelete: Restrict)
+  plan          SubscriptionPlan               @relation(fields: [planId], references: [id], onDelete: Restrict)
+  events        SubscriptionEvent[]
+  declarations  SubscriptionPaymentDeclaration[]
+
+  @@index([restaurantId, isCurrent])
+  @@index([status, periodEndsAt])
+  @@map("restaurant_subscriptions")
+}
+
+model SubscriptionEvent {
+  id             String              @id @default(uuid()) @db.Uuid
+  subscriptionId String              @db.Uuid
+  fromStatus     SubscriptionStatus?
+  toStatus       SubscriptionStatus
+  actorId        String?             @db.Uuid
+  reason         String              @db.VarChar(200)
+  createdAt      DateTime            @default(now()) @db.Timestamptz(6)
+
+  subscription RestaurantSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Restrict)
+  actor        User?                  @relation("SubscriptionEventActor", fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([subscriptionId, createdAt])
+  @@map("subscription_events")
+}
+
+/// Declaración de un pago de suscripción hecha por una persona. No es un cobro ni una captura.
+/// No hay identificador de pasarela, ni número de cuenta, ni saldo custodiado.
+model SubscriptionPaymentDeclaration {
+  id             String            @id @default(uuid()) @db.Uuid
+  subscriptionId String            @db.Uuid
+  amountCop      Int
+  method         PaymentMethod
+  /// Referencia escrita por la persona (número de comprobante). No es un número de cuenta.
+  reference      String?           @db.VarChar(80)
+  status         DeclarationStatus @default(DECLARED)
+  declaredById   String            @db.Uuid
+  note           String?           @db.VarChar(500)
+  declaredAt     DateTime          @default(now()) @db.Timestamptz(6)
+  reviewedAt     DateTime?         @db.Timestamptz(6)
+
+  subscription RestaurantSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Restrict)
+  declaredBy   User                   @relation("DeclarationDeclaredBy", fields: [declaredById], references: [id], onDelete: Restrict)
+
+  @@index([subscriptionId, declaredAt])
+  @@map("subscription_payment_declarations")
+}
+
+// --- Tarifas y política operativa ---------------------------------------------
+
+enum PublicationStatus {
+  DRAFT
+  PUBLISHED
+  RETIRED
+}
+
+model TariffVersion {
+  id          String            @id @default(uuid()) @db.Uuid
+  name        String            @db.VarChar(120)
+  status      PublicationStatus @default(DRAFT)
+  publishedAt DateTime?         @db.Timestamptz(6)
+  createdAt   DateTime          @default(now()) @db.Timestamptz(6)
+
+  zones  TariffZone[]
+  rules  TariffRule[]
+  quotes TariffQuote[]
+
+  @@index([status])
+  @@map("tariff_versions")
+}
+
+model TariffZone {
+  id        String                       @id @default(uuid()) @db.Uuid
+  versionId String                       @db.Uuid
+  code      String                       @db.VarChar(40)
+  name      String                       @db.VarChar(120)
+  /// geography(MultiPolygon,4326). Prioridad mayor gana si dos zonas se solapan.
+  area      Unsupported("geography(MultiPolygon,4326)")
+  priority  Int                          @default(0)
+
+  version TariffVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  rules   TariffRule[]
+
+  @@unique([versionId, code])
+  @@index([area], type: Gist, map: "tariff_zones_area_gist")
+  @@map("tariff_zones")
+}
+
+model TariffRule {
+  id                 String  @id @default(uuid()) @db.Uuid
+  versionId          String  @db.Uuid
+  /// Nulo = regla por defecto cuando el destino no cae en una zona.
+  zoneId             String? @db.Uuid
+  baseFeeCop         Int
+  perKmCop           Int
+  minimumFeeCop      Int
+  /// 10000 = 1.00. 12000 = 1.20. Evita valores de punto flotante.
+  nightMultiplierBps Int     @default(10000)
+  nightStartsMinute  Int     @default(0) @db.SmallInt
+  nightEndsMinute    Int     @default(0) @db.SmallInt
+
+  version TariffVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  zone    TariffZone?   @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+
+  @@index([versionId])
+  @@map("tariff_rules")
+}
+
+/// Parámetros de despacho y de PIN publicados como versión. Un pedido guarda la versión
+/// con la que nació para que un cambio posterior no altere un servicio en curso.
+model OperationsPolicy {
+  id                             String            @id @default(uuid()) @db.Uuid
+  name                           String            @db.VarChar(120)
+  status                         PublicationStatus @default(DRAFT)
+  offerRadiusMeters              Int
+  directOfferTtlSeconds          Int
+  openOfferTtlSeconds            Int
+  seekingTtlSeconds              Int
+  maxOffersPerWave               Int
+  /// Una posición más vieja que esto no cuenta como disponibilidad.
+  locationFreshnessSeconds       Int               @default(120)
+  pinLength                      Int               @default(6)
+  maxPinAttempts                 Int               @default(5)
+  trackingHoursAfterTerminal     Int               @default(24)
+  publishedAt                    DateTime?         @db.Timestamptz(6)
+  createdAt                      DateTime          @default(now()) @db.Timestamptz(6)
+
+  orders Order[]
+
+  @@index([status])
+  @@map("operations_policies")
+}
+
+// --- Pedido, oferta y recorrido -----------------------------------------------
+
+enum DispatchMode {
+  DIRECT
+  OPEN
+}
+
+enum OrderStatus {
+  DRAFT
+  SEEKING_COURIER
+  ACCEPTED
+  ARRIVING_PICKUP
+  AT_PICKUP
+  PICKED_UP
+  AT_DROPOFF
+  DELIVERED
+  EXPIRED
+  CANCELLED_RESTAURANT
+  CANCELLED_COURIER
+  CANCELLED_ADMIN
+  FAILED
+}
+
+enum ActorKind {
+  RESTAURANT
+  COURIER
+  ADMIN
+  SYSTEM
+}
+
+enum OfferStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  EXPIRED
+  SUPERSEDED
+  CANCELLED
+}
+
+enum PinKind {
+  PICKUP
+  DELIVERY
+}
+
+/// Pedido de domicilio. `foodAmountCop` es informativo: el restaurante lo cobra por su cuenta.
+/// `deliveryFeeCop` lo paga el cliente directamente al domiciliario. DOMIGOO no custodia ninguno.
+model Order {
+  id                   String        @id @default(uuid()) @db.Uuid
+  referenceCode        String        @unique @db.VarChar(12)
+  restaurantId         String        @db.Uuid
+  branchId             String        @db.Uuid
+  createdById          String        @db.Uuid
+  operationsPolicyId   String?       @db.Uuid
+  dispatchMode         DispatchMode?
+  status               OrderStatus   @default(DRAFT)
+  foodAmountCop        Int           @default(0)
+  deliveryFeeCop       Int           @default(0)
+  paymentMethod        PaymentMethod?
+  customerName         String?       @db.VarChar(120)
+  customerPhoneE164    String?       @db.VarChar(20)
+  dropoffAddress       String?       @db.VarChar(300)
+  dropoffReference     String?       @db.VarChar(200)
+  /// Copia del punto de la sucursal al publicar.
+  pickupLocation       Unsupported("geography(Point,4326)")?
+  dropoffLocation      Unsupported("geography(Point,4326)")?
+  assignedCourierId     String?       @db.Uuid
+  /// HMAC para verificar. No es el PIN en claro.
+  pickupPinHash         String?       @db.VarChar(64)
+  /// Cifrado con clave de aplicación para mostrarlo al restaurante mientras el estado lo permite.
+  pickupPinCiphertext   String?       @db.VarChar(500)
+  deliveryPinHash       String?       @db.VarChar(64)
+  /// Cifrado para mostrarlo en el enlace de seguimiento. El domiciliario no lo recibe.
+  deliveryPinCiphertext String?       @db.VarChar(500)
+  pickupPinAttempts     Int           @default(0)
+  deliveryPinAttempts   Int           @default(0)
+  seekingExpiresAt     DateTime?     @db.Timestamptz(6)
+  acceptedAt           DateTime?     @db.Timestamptz(6)
+  pickedUpAt           DateTime?     @db.Timestamptz(6)
+  deliveredAt          DateTime?     @db.Timestamptz(6)
+  cancelledAt          DateTime?     @db.Timestamptz(6)
+  cancelReason         String?       @db.VarChar(200)
+  createdAt            DateTime      @default(now()) @db.Timestamptz(6)
+  updatedAt            DateTime      @updatedAt @db.Timestamptz(6)
+
+  restaurant       Restaurant        @relation(fields: [restaurantId], references: [id], onDelete: Restrict)
+  branch           Branch            @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  createdBy        User              @relation("OrderCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  operationsPolicy OperationsPolicy? @relation(fields: [operationsPolicyId], references: [id], onDelete: Restrict)
+  assignedCourier  Courier?          @relation(fields: [assignedCourierId], references: [id], onDelete: Restrict)
+  quote            TariffQuote?
+  events           OrderEvent[]
+  offers           DispatchOffer[]
+  pinAttempts      PinAttempt[]
+  trackingLink     TrackingLink?
+  incidents        Incident[]
+  locationPings    LocationPing[]
+
+  @@index([restaurantId, status, createdAt])
+  @@index([assignedCourierId, status])
+  @@index([status, seekingExpiresAt])
+  @@index([pickupLocation], type: Gist, map: "orders_pickup_location_gist")
+  @@index([dropoffLocation], type: Gist, map: "orders_dropoff_location_gist")
+  @@map("orders")
+}
+
+/// Instantánea inmutable de la cotización. El pedido no recalcula el domicilio al cambiar la tarifa.
+model TariffQuote {
+  id              String   @id @default(uuid()) @db.Uuid
+  orderId         String   @unique @db.Uuid
+  tariffVersionId String   @db.Uuid
+  zoneCode        String?  @db.VarChar(40)
+  distanceMeters  Int?
+  deliveryFeeCop  Int
+  breakdown       Json     @db.JsonB
+  createdAt       DateTime @default(now()) @db.Timestamptz(6)
+
+  order         Order         @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  tariffVersion TariffVersion @relation(fields: [tariffVersionId], references: [id], onDelete: Restrict)
+
+  @@map("tariff_quotes")
+}
+
+model OrderEvent {
+  id         String       @id @default(uuid()) @db.Uuid
+  orderId    String       @db.Uuid
+  fromStatus OrderStatus?
+  toStatus   OrderStatus
+  actorKind  ActorKind
+  actorId    String?      @db.Uuid
+  reason     String?      @db.VarChar(200)
+  metadata   Json?        @db.JsonB
+  createdAt  DateTime     @default(now()) @db.Timestamptz(6)
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  actor User? @relation("OrderEventActor", fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([orderId, createdAt])
+  @@map("order_events")
+}
+
+model DispatchOffer {
+  id          String      @id @default(uuid()) @db.Uuid
+  orderId     String      @db.Uuid
+  courierId   String      @db.Uuid
+  wave        Int         @default(1)
+  status      OfferStatus @default(PENDING)
+  expiresAt   DateTime    @db.Timestamptz(6)
+  respondedAt DateTime?   @db.Timestamptz(6)
+  createdAt   DateTime    @default(now()) @db.Timestamptz(6)
+
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  courier Courier @relation(fields: [courierId], references: [id], onDelete: Restrict)
+
+  @@unique([orderId, courierId, wave])
+  @@index([courierId, status, expiresAt])
+  @@index([orderId, status])
+  @@map("dispatch_offers")
+}
+
+model PinAttempt {
+  id        String   @id @default(uuid()) @db.Uuid
+  orderId   String   @db.Uuid
+  courierId String   @db.Uuid
+  kind      PinKind
+  success   Boolean
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  courier Courier @relation(fields: [courierId], references: [id], onDelete: Restrict)
+
+  @@index([orderId, kind, createdAt])
+  @@map("pin_attempts")
+}
+
+// --- Seguimiento público ------------------------------------------------------
+
+model TrackingLink {
+  id               String    @id @default(uuid()) @db.Uuid
+  orderId          String    @unique @db.Uuid
+  tokenHash        String    @unique @db.VarChar(64)
+  /// Copia cifrada para que el restaurante pueda volver a mostrar el enlace. La clave no está en la base.
+  tokenCiphertext  String    @db.VarChar(500)
+  expiresAt        DateTime  @db.Timestamptz(6)
+  revokedAt        DateTime? @db.Timestamptz(6)
+  createdAt        DateTime  @default(now()) @db.Timestamptz(6)
+
+  order    Order            @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  accesses TrackingAccess[]
+
+  @@map("tracking_links")
+}
+
+model TrackingAccess {
+  id             String   @id @default(uuid()) @db.Uuid
+  trackingLinkId String   @db.Uuid
+  ip             String?  @db.VarChar(45)
+  userAgent      String?  @db.VarChar(255)
+  accessedAt     DateTime @default(now()) @db.Timestamptz(6)
+
+  trackingLink TrackingLink @relation(fields: [trackingLinkId], references: [id], onDelete: Cascade)
+
+  @@index([trackingLinkId, accessedAt])
+  @@map("tracking_accesses")
+}
+
+// --- Incidentes ---------------------------------------------------------------
+
+enum IncidentType {
+  COURIER_NO_SHOW
+  RESTAURANT_NO_SHOW
+  CUSTOMER_ABSENT
+  PIN_LOCKOUT
+  ACCIDENT
+  HARASSMENT
+  DOCUMENT_FRAUD_SUSPICION
+  THEFT_SUSPICION
+  OTHER
+}
+
+enum IncidentSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum IncidentStatus {
+  OPEN
+  ACKNOWLEDGED
+  INVESTIGATING
+  RESOLVED
+  DISMISSED
+}
+
+model Incident {
+  id           String           @id @default(uuid()) @db.Uuid
+  orderId      String?          @db.Uuid
+  restaurantId String?          @db.Uuid
+  courierId    String?          @db.Uuid
+  reporterId   String           @db.Uuid
+  type         IncidentType
+  severity     IncidentSeverity
+  status       IncidentStatus   @default(OPEN)
+  summary      String           @db.VarChar(500)
+  createdAt    DateTime         @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime         @updatedAt @db.Timestamptz(6)
+
+  order      Order?      @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  restaurant Restaurant? @relation(fields: [restaurantId], references: [id], onDelete: Restrict)
+  courier    Courier?    @relation(fields: [courierId], references: [id], onDelete: Restrict)
+  reporter   User        @relation("IncidentReporter", fields: [reporterId], references: [id], onDelete: Restrict)
+  events     IncidentEvent[]
+
+  @@index([status, severity, createdAt])
+  @@index([orderId])
+  @@map("incidents")
+}
+
+model IncidentEvent {
+  id         String   @id @default(uuid()) @db.Uuid
+  incidentId String   @db.Uuid
+  actorId    String?  @db.Uuid
+  kind       String   @db.VarChar(40)
+  payload    Json     @db.JsonB
+  createdAt  DateTime @default(now()) @db.Timestamptz(6)
+
+  incident Incident @relation(fields: [incidentId], references: [id], onDelete: Restrict)
+  actor    User?    @relation("IncidentEventActor", fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([incidentId, createdAt])
+  @@map("incident_events")
+}
+
+// --- Notificaciones e idempotencia --------------------------------------------
+
+enum PushPlatform {
+  ANDROID
+}
+
+enum OutboxStatus {
+  PENDING
+  SENT
+  FAILED
+  CANCELLED
+}
+
+model DevicePushToken {
+  id         String       @id @default(uuid()) @db.Uuid
+  userId     String       @db.Uuid
+  token      String       @unique @db.VarChar(512)
+  platform   PushPlatform @default(ANDROID)
+  lastSeenAt DateTime     @default(now()) @db.Timestamptz(6)
+  revokedAt  DateTime?    @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@map("device_push_tokens")
+}
+
+/// Bandeja de salida en PostgreSQL. El trabajador interno la drena. No implica Redis.
+model NotificationOutbox {
+  id           String       @id @default(uuid()) @db.Uuid
+  userId       String       @db.Uuid
+  template     String       @db.VarChar(80)
+  /// Sin dirección del cliente, sin documento y sin PIN.
+  payload      Json         @db.JsonB
+  status       OutboxStatus @default(PENDING)
+  attemptCount Int          @default(0)
+  availableAt  DateTime     @default(now()) @db.Timestamptz(6)
+  sentAt       DateTime?    @db.Timestamptz(6)
+  lastError    String?      @db.VarChar(300)
+  createdAt    DateTime     @default(now()) @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status, availableAt])
+  @@map("notification_outbox")
+}
+
+model IdempotencyKey {
+  id             String   @id @default(uuid()) @db.Uuid
+  userId         String   @db.Uuid
+  key            String   @db.VarChar(80)
+  requestHash    String   @db.VarChar(64)
+  responseStatus Int
+  createdAt      DateTime @default(now()) @db.Timestamptz(6)
+  expiresAt      DateTime @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, key])
+  @@index([expiresAt])
+  @@map("idempotency_keys")
+}
+
+// --- Auditoría ----------------------------------------------------------------
+
+/// Append-only. La migración de M06 instala un disparador que rechaza UPDATE y DELETE
+/// y un rol de aplicación sin esos privilegios.
+model AuditLog {
+  id         String    @id @default(uuid()) @db.Uuid
+  actorId    String?   @db.Uuid
+  actorKind  ActorKind
+  action     String    @db.VarChar(80)
+  entityType String    @db.VarChar(60)
+  entityId   String    @db.Uuid
+  reason     String?   @db.VarChar(200)
+  /// Diff ya redactado. Prohibido guardar documentos, PIN, tokens o hashes de secreto.
+  diff       Json?     @db.JsonB
+  ip         String?   @db.VarChar(45)
+  requestId  String?   @db.VarChar(64)
+  createdAt  DateTime  @default(now()) @db.Timestamptz(6)
+
+  actor User? @relation("AuditActor", fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([entityType, entityId, createdAt])
+  @@index([actorId, createdAt])
+  @@index([action, createdAt])
+  @@map("audit_logs")
+}
