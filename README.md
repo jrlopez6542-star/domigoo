@@ -8,7 +8,7 @@ El restaurante paga una suscripción a DOMIGOO. El domiciliario no paga por reci
 
 ## Estado
 
-M15 abre el registro del domiciliario en `REGISTERING`. La próxima misión es **M16**: la invitación.
+M16 crea invitaciones con el token hasheado. La próxima misión es **M17**: motocicleta y documentos.
 
 ## Calidad
 

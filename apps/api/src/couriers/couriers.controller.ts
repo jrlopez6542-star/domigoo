@@ -10,6 +10,7 @@ import {
 import { ApiOperation, ApiTags } from "@nestjs/swagger";
 import { SessionGuard, type AuthenticatedRequest } from "../identity/session.guard.js";
 import { PrivacyRepository } from "../privacy/privacy.repository.js";
+import { readCourierProfile } from "./courier-profile.js";
 import { CourierRepository } from "./courier.repository.js";
 
 @ApiTags("domiciliarios")
@@ -28,7 +29,7 @@ export class CouriersController {
     @Req() request: AuthenticatedRequest,
   ): Promise<{ id: string; status: "REGISTERING" }> {
     const userId = request.auth?.userId;
-    const draft = readDraft(body);
+    const draft = readCourierProfile(body);
     if (userId === undefined || draft === null) {
       throw new NotFoundException();
     }
@@ -45,48 +46,4 @@ export class CouriersController {
     }
     return { id: created.id, status: "REGISTERING" };
   }
-}
-
-function readDraft(body: unknown): {
-  documentType: "CC" | "CE";
-  documentNumber: string;
-  firstName: string;
-  lastName: string;
-} | null {
-  if (typeof body !== "object" || body === null) {
-    return null;
-  }
-  const record = body as Record<string, unknown>;
-  if (record["documentType"] !== "CC" && record["documentType"] !== "CE") {
-    return null;
-  }
-  const documentNumber = normalizeDocument(record["documentNumber"]);
-  const firstName = personName(record["firstName"]);
-  const lastName = personName(record["lastName"]);
-  if (documentNumber === null || firstName === null || lastName === null) {
-    return null;
-  }
-  return { documentType: record["documentType"], documentNumber, firstName, lastName };
-}
-
-function normalizeDocument(value: unknown): string | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-  const normalized = value.trim().replaceAll(/\s+/g, "").toUpperCase();
-  if (!/^[A-Z0-9]{6,20}$/.test(normalized)) {
-    return null;
-  }
-  return normalized;
-}
-
-function personName(value: unknown): string | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-  const name = value.trim().replaceAll(/\s+/g, " ");
-  if (name.length < 1 || name.length > 80) {
-    return null;
-  }
-  return name;
 }
