@@ -70,14 +70,14 @@ describe("semilla de administración", () => {
   it("no deja una contraseña real asignada en el código", () => {
     const source = readFileSync(path.join(apiRoot, "src/identity/seed-admin.ts"), "utf8");
     expect(source).not.toMatch(/SEED_ADMIN_PASSWORD\s*=\s*["']/);
-    const grep = spawnSync(
-      "git",
-      ["grep", "-n", "-e", "SEED_ADMIN_PASSWORD=admin", "-e", "SEED_ADMIN_PASSWORD=password"],
-      {
-        cwd: repoRoot,
-        encoding: "utf8",
-      },
-    );
+    const needles = [
+      ["SEED_ADMIN_PASSWORD", "admin"].join("="),
+      ["SEED_ADMIN_PASSWORD", "password"].join("="),
+    ];
+    const grep = spawnSync("git", ["grep", "-n", ...needles.flatMap((needle) => ["-e", needle])], {
+      cwd: repoRoot,
+      encoding: "utf8",
+    });
     expect(grep.status).not.toBe(0);
   });
 });
