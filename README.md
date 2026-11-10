@@ -8,7 +8,7 @@ El restaurante paga una suscripción a DOMIGOO. El domiciliario no paga por reci
 
 ## Estado
 
-M17 guarda la motocicleta y los documentos en disco local, fuera de una URL pública. La próxima misión es **M18**: las reglas automáticas de verificación.
+M18 corre las reglas automáticas y no aprueba a nadie. La próxima misión es **M19**: la decisión humana.
 
 ## Calidad
 
