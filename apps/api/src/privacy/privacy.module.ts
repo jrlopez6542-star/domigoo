@@ -7,5 +7,6 @@ import { PrivacyRepository } from "./privacy.repository.js";
   imports: [IdentityModule],
   controllers: [PrivacyController],
   providers: [PrivacyRepository],
+  exports: [PrivacyRepository],
 })
 export class PrivacyModule {}

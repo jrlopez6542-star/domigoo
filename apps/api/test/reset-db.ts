@@ -3,6 +3,14 @@ import { Pool } from "pg";
 export async function resetDatabase(databaseUrl: string): Promise<void> {
   const pool = new Pool({ connectionString: databaseUrl });
   try {
+    await pool.query(`DELETE FROM location_pings`);
+    await pool.query(`DELETE FROM courier_availabilities`);
+    await pool.query(`DELETE FROM verification_decisions`);
+    await pool.query(`DELETE FROM verification_cases`);
+    await pool.query(`DELETE FROM courier_documents`);
+    await pool.query(`DELETE FROM vehicles`);
+    await pool.query(`DELETE FROM couriers`);
+    await pool.query(`DELETE FROM courier_invitations`);
     await pool.query(`DELETE FROM consent_records`);
     await pool.query(`DELETE FROM legal_documents`);
     await pool.query(`ALTER TABLE audit_logs DISABLE TRIGGER audit_logs_no_update`);

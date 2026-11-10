@@ -8,7 +8,7 @@ El restaurante paga una suscripción a DOMIGOO. El domiciliario no paga por reci
 
 ## Estado
 
-La fase 3 queda cerrada en M14: la suscripción se abre, se declara y se reconoce sin pasarela. La próxima misión es **M15**: el registro abierto del domiciliario.
+M15 abre el registro del domiciliario en `REGISTERING`. La próxima misión es **M16**: la invitación.
 
 ## Calidad
 
