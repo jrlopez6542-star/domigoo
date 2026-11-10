@@ -175,6 +175,18 @@ export class VerificationRepository {
         `UPDATE couriers SET status = $2::"CourierStatus", "updatedAt" = now() WHERE id = $1`,
         [current.courierId, courierStatus],
       );
+      if (input.outcome === "APPROVED") {
+        await client.query(
+          `UPDATE courier_documents
+           SET status = 'ACCEPTED', "updatedAt" = now()
+           WHERE "courierId" = $1
+             AND status = 'UPLOADED'
+             AND type IN (
+               'NATIONAL_ID', 'DRIVER_LICENSE', 'SOAT', 'TECH_INSPECTION', 'VEHICLE_PHOTO', 'PROFILE_PHOTO'
+             )`,
+          [current.courierId],
+        );
+      }
       const diff = redactDiff({ from: "PENDING_HUMAN", to: input.outcome });
       await client.query(
         `INSERT INTO audit_logs

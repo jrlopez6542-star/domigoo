@@ -3,6 +3,16 @@ import { Pool } from "pg";
 export async function resetDatabase(databaseUrl: string): Promise<void> {
   const pool = new Pool({ connectionString: databaseUrl });
   try {
+    await pool.query(`DELETE FROM notification_outbox`);
+    await pool.query(`DELETE FROM tracking_accesses`);
+    await pool.query(`DELETE FROM tracking_links`);
+    await pool.query(`DELETE FROM pin_attempts`);
+    await pool.query(`DELETE FROM dispatch_offers`);
+    await pool.query(`DELETE FROM order_events`);
+    await pool.query(`DELETE FROM tariff_quotes`);
+    await pool.query(`DELETE FROM incident_events`);
+    await pool.query(`DELETE FROM incidents`);
+    await pool.query(`DELETE FROM orders`);
     await pool.query(`DELETE FROM location_pings`);
     await pool.query(`DELETE FROM courier_availabilities`);
     await pool.query(`DELETE FROM verification_decisions`);
@@ -20,15 +30,6 @@ export async function resetDatabase(databaseUrl: string): Promise<void> {
     await pool.query(`DELETE FROM subscription_events`);
     await pool.query(`DELETE FROM restaurant_subscriptions`);
     await pool.query(`DELETE FROM subscription_plans`);
-    await pool.query(`DELETE FROM tracking_accesses`);
-    await pool.query(`DELETE FROM tracking_links`);
-    await pool.query(`DELETE FROM pin_attempts`);
-    await pool.query(`DELETE FROM dispatch_offers`);
-    await pool.query(`DELETE FROM order_events`);
-    await pool.query(`DELETE FROM tariff_quotes`);
-    await pool.query(`DELETE FROM incident_events`);
-    await pool.query(`DELETE FROM incidents`);
-    await pool.query(`DELETE FROM orders`);
     await pool.query(`DELETE FROM restaurant_memberships`);
     await pool.query(`DELETE FROM admin_profiles`);
     await pool.query(`DELETE FROM sessions`);

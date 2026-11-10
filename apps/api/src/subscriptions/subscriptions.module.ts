@@ -11,5 +11,6 @@ import {
   imports: [IdentityModule],
   controllers: [SubscriptionAdminController, SubscriptionRestaurantController],
   providers: [SubscriptionRepository, SubscriptionClock],
+  exports: [SubscriptionRepository],
 })
 export class SubscriptionsModule {}
