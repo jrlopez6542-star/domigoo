@@ -8,7 +8,7 @@ El restaurante paga una suscripción a DOMIGOO. El domiciliario no paga por reci
 
 ## Estado
 
-M20 publica la disponibilidad con consentimiento y el radio alrededor de la sucursal. Con esto se cierra la fase 4. La próxima misión es **M21**: el borrador del pedido.
+M21 crea el borrador del pedido con la comida y el domicilio separados. La próxima misión es **M22**: publicar y solicitar en directo.
 
 ## Calidad
 
