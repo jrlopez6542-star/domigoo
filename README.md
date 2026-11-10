@@ -8,7 +8,7 @@ El restaurante paga una suscripción a DOMIGOO. El domiciliario no paga por reci
 
 ## Estado
 
-M16 crea invitaciones con el token hasheado. La próxima misión es **M17**: motocicleta y documentos.
+M17 guarda la motocicleta y los documentos en disco local, fuera de una URL pública. La próxima misión es **M18**: las reglas automáticas de verificación.
 
 ## Calidad
 
