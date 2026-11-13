@@ -103,7 +103,7 @@ describe("suspensión y estadísticas operativas (M35 y M36)", () => {
       })
       .expect(201);
     const branchId = String(record(site.body)["branchId"]);
-    const restaurantId = String(record(site.body)["restaurantId"]);
+    const restaurantId = String(record(site.body)["id"]);
 
     const db = new Pool({ connectionString: databaseUrl });
     try {

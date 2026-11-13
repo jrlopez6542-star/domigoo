@@ -220,7 +220,7 @@ describe("recorrido de punta a punta (M38)", () => {
         })
         .expect(201);
       const branchId = String(record(site.body)["branchId"]);
-      const restaurantId = String(record(site.body)["restaurantId"]);
+      const restaurantId = String(record(site.body)["id"]);
       await pool.query(`UPDATE restaurants SET status = 'ACTIVE' WHERE id = $1`, [restaurantId]);
       await request(server())
         .put(`/v1/branches/${branchId}/hours`)

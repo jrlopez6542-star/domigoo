@@ -155,6 +155,12 @@ describe("solicitudes de habeas data (M37)", () => {
         })
         .expect(201);
 
+      await request(server())
+        .post("/v1/couriers/me/availability")
+        .set("Authorization", `Bearer ${courierToken}`)
+        .send({ state: "AVAILABLE" })
+        .expect(201);
+
       // Ping funciona antes de revocar
       await request(server())
         .post("/v1/couriers/me/location")
