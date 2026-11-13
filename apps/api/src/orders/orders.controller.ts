@@ -228,6 +228,42 @@ export class OrdersController {
     return result;
   }
 
+  @Post(":id/fail")
+  @ApiOperation({
+    summary: "Pasa un pedido a FAILED si existe un incidente CRITICAL ligado al pedido",
+  })
+  async fail(
+    @Param("id") id: string,
+    @Body() body: unknown,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<JourneyTransitionResult> {
+    const userId = request.auth?.userId;
+    if (userId === undefined) {
+      throw new NotFoundException();
+    }
+    const reason = readCancelReason(body);
+    if (reason === null) {
+      throw new HttpException({ message: "El motivo es obligatorio" }, 422);
+    }
+    const result = await this.journey.failOrder({ orderId: id, userId, reason });
+    if (result === "missing") {
+      throw new NotFoundException();
+    }
+    if (result === "forbidden") {
+      throw new ForbiddenException();
+    }
+    if (result === "needs_critical") {
+      throw new HttpException(
+        { message: "Se requiere un incidente CRITICAL ligado al pedido" },
+        422,
+      );
+    }
+    if (result === "invalid_transition") {
+      throw new HttpException({ message: "No se puede marcar como fallido en este estado" }, 422);
+    }
+    return result;
+  }
+
   private async runJourneyStep(
     orderId: string,
     request: AuthenticatedRequest,

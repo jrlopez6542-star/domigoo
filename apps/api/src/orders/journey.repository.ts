@@ -440,4 +440,97 @@ export class JourneyRepository {
       client.release();
     }
   }
+
+  async failOrder(input: {
+    orderId: string;
+    userId: string;
+    reason: string;
+  }): Promise<
+    JourneyTransitionResult | "missing" | "forbidden" | "invalid_transition" | "needs_critical"
+  > {
+    const adminQ = await this.database.pool.query<{ role: string }>(
+      `SELECT role::text AS role FROM admin_profiles WHERE "userId" = $1`,
+      [input.userId],
+    );
+    const role = adminQ.rows[0]?.role;
+    if (role !== "SUPERADMIN" && role !== "OPERATIONS") {
+      return "forbidden";
+    }
+
+    const client = await this.database.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const orderQ = await client.query<{
+        id: string;
+        status: string;
+        assignedCourierId: string | null;
+      }>(
+        `SELECT id, status::text AS status, "assignedCourierId"
+         FROM orders WHERE id = $1 FOR UPDATE`,
+        [input.orderId],
+      );
+      const order = orderQ.rows[0];
+      if (order === undefined) {
+        await client.query("ROLLBACK");
+        return "missing";
+      }
+
+      if (!canTransition(order.status as OrderStatus, "FAILED")) {
+        await client.query("ROLLBACK");
+        return "invalid_transition";
+      }
+
+      const criticalQ = await client.query<{ id: string }>(
+        `SELECT id FROM incidents
+         WHERE "orderId" = $1 AND severity = 'CRITICAL'
+         LIMIT 1`,
+        [order.id],
+      );
+      if (criticalQ.rows[0] === undefined) {
+        await client.query("ROLLBACK");
+        return "needs_critical";
+      }
+
+      await client.query(`UPDATE orders SET status = 'FAILED', "updatedAt" = now() WHERE id = $1`, [
+        order.id,
+      ]);
+
+      if (order.assignedCourierId !== null) {
+        await client.query(
+          `UPDATE courier_availabilities
+           SET state = 'AVAILABLE', "updatedAt" = now()
+           WHERE "courierId" = $1 AND state = 'ON_SERVICE'`,
+          [order.assignedCourierId],
+        );
+      }
+
+      await client.query(
+        `INSERT INTO order_events (
+           id, "orderId", "fromStatus", "toStatus", "actorKind", "actorId", reason, "createdAt"
+         ) VALUES (gen_random_uuid(), $1, $2::"OrderStatus", 'FAILED', 'ADMIN', $3, $4, now())`,
+        [order.id, order.status, input.userId, input.reason],
+      );
+
+      const diff = redactDiff({ from: order.status, to: "FAILED", reason: input.reason });
+      await client.query(
+        `INSERT INTO audit_logs
+          (id, "actorId", "actorKind", action, "entityType", "entityId", reason, diff, "createdAt")
+         VALUES (gen_random_uuid(), $1, 'ADMIN', 'order.failed', 'order', $2, $3, $4::jsonb, now())`,
+        [input.userId, order.id, input.reason, JSON.stringify(diff)],
+      );
+
+      await client.query("COMMIT");
+      return {
+        id: order.id,
+        fromStatus: order.status,
+        toStatus: "FAILED",
+        status: "FAILED",
+      };
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
 }
