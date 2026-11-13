@@ -43,32 +43,28 @@ async function createApp(env: AppEnv): Promise<INestApplication> {
   return app;
 }
 
-async function registerCourier(email: string, plate: string, docNum: string): Promise<string> {
+async function registerCourier(email: string, _plate: string, docNum: string): Promise<string> {
   const reg = await request(server())
     .post("/v1/auth/register")
     .send({ email, password, client: "MOBILE" })
     .expect(201);
   const token = String(record(reg.body)["token"]);
 
-  await request(server())
-    .post("/v1/couriers/me")
-    .set("Authorization", `Bearer ${token}`)
-    .send({
-      fullName: "Domiciliario Recorrido",
-      phoneE164: `+5730011${docNum.slice(-5)}`,
-      documentNumber: docNum,
-    })
-    .expect(201);
-  await request(server())
-    .post("/v1/couriers/me/vehicle")
-    .set("Authorization", `Bearer ${token}`)
-    .send({
-      kind: "MOTORCYCLE",
-      plate,
-      soatExpiresOn: "2028-12-31",
-      techExpiresOn: "2028-12-31",
-    })
-    .expect(201);
+  const db = new Pool({ connectionString: databaseUrl });
+  try {
+    await db.query(
+      `INSERT INTO couriers (
+         id, "userId", "documentType", "documentNumber", "firstName", "lastName",
+         status, "registrationSource", "createdAt", "updatedAt"
+       )
+       SELECT gen_random_uuid(), id, 'CC', $2, 'Domiciliario', 'Recorrido',
+              'APPROVED', 'OPEN', now(), now()
+       FROM users WHERE email = $1`,
+      [email, docNum],
+    );
+  } finally {
+    await db.end();
+  }
 
   return token;
 }

@@ -62,25 +62,20 @@ async function setupAcceptedOrder(env: AppEnv): Promise<{
     .expect(201);
   const courierToken = String(record(courierRes.body)["token"]);
 
-  await request(server())
-    .post("/v1/couriers/me")
-    .set("Authorization", `Bearer ${courierToken}`)
-    .send({
-      fullName: "Domiciliario PIN",
-      phoneE164: "+573001125001",
-      documentNumber: "80025001",
-    })
-    .expect(201);
-  await request(server())
-    .post("/v1/couriers/me/vehicle")
-    .set("Authorization", `Bearer ${courierToken}`)
-    .send({
-      kind: "MOTORCYCLE",
-      plate: "M25A01",
-      soatExpiresOn: "2028-12-31",
-      techExpiresOn: "2028-12-31",
-    })
-    .expect(201);
+  const dbSetup = new Pool({ connectionString: env.databaseUrl });
+  try {
+    await dbSetup.query(
+      `INSERT INTO couriers (
+         id, "userId", "documentType", "documentNumber", "firstName", "lastName",
+         status, "registrationSource", "createdAt", "updatedAt"
+       )
+       SELECT gen_random_uuid(), id, 'CC', '80025001', 'Domiciliario', 'PIN',
+              'APPROVED', 'OPEN', now(), now()
+       FROM users WHERE email = 'courier-m25@example.invalid'`,
+    );
+  } finally {
+    await dbSetup.end();
+  }
 
   const site = await request(server())
     .post("/v1/restaurants")

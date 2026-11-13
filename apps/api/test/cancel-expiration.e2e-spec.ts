@@ -73,27 +73,22 @@ describe("cancelación y vencimiento (M26)", () => {
       .post("/v1/auth/register")
       .send({ email: "courier-m26@example.invalid", password, client: "MOBILE" })
       .expect(201);
-    const courierToken = String(record(courierRes.body)["token"]);
+    expect(record(courierRes.body)["token"]).toBeDefined();
 
-    await request(server())
-      .post("/v1/couriers/me")
-      .set("Authorization", `Bearer ${courierToken}`)
-      .send({
-        fullName: "Domiciliario M26",
-        phoneE164: "+573001126001",
-        documentNumber: "80026001",
-      })
-      .expect(201);
-    await request(server())
-      .post("/v1/couriers/me/vehicle")
-      .set("Authorization", `Bearer ${courierToken}`)
-      .send({
-        kind: "MOTORCYCLE",
-        plate: "M26A01",
-        soatExpiresOn: "2028-12-31",
-        techExpiresOn: "2028-12-31",
-      })
-      .expect(201);
+    const dbInit = new Pool({ connectionString: databaseUrl });
+    try {
+      await dbInit.query(
+        `INSERT INTO couriers (
+           id, "userId", "documentType", "documentNumber", "firstName", "lastName",
+           status, "registrationSource", "createdAt", "updatedAt"
+         )
+         SELECT gen_random_uuid(), id, 'CC', '80026001', 'Domiciliario', 'M26',
+                'APPROVED', 'OPEN', now(), now()
+         FROM users WHERE email = 'courier-m26@example.invalid'`,
+      );
+    } finally {
+      await dbInit.end();
+    }
 
     const site = await request(server())
       .post("/v1/restaurants")

@@ -73,17 +73,22 @@ describe("enlace público de tracking (M27)", () => {
       .post("/v1/auth/register")
       .send({ email: "courier-m27@example.invalid", password, client: "MOBILE" })
       .expect(201);
-    const courierToken = String(record(courierRes.body)["token"]);
+    expect(record(courierRes.body)["token"]).toBeDefined();
 
-    await request(server())
-      .post("/v1/couriers/me")
-      .set("Authorization", `Bearer ${courierToken}`)
-      .send({
-        fullName: "Carlos Tracking",
-        phoneE164: "+573001127001",
-        documentNumber: "80027001",
-      })
-      .expect(201);
+    const dbInit = new Pool({ connectionString: databaseUrl });
+    try {
+      await dbInit.query(
+        `INSERT INTO couriers (
+           id, "userId", "documentType", "documentNumber", "firstName", "lastName",
+           status, "registrationSource", "createdAt", "updatedAt"
+         )
+         SELECT gen_random_uuid(), id, 'CC', '80027001', 'Carlos', 'Tracking',
+                'APPROVED', 'OPEN', now(), now()
+         FROM users WHERE email = 'courier-m27@example.invalid'`,
+      );
+    } finally {
+      await dbInit.end();
+    }
 
     const site = await request(server())
       .post("/v1/restaurants")

@@ -13,6 +13,7 @@ import { SubscriptionsModule } from "./subscriptions/subscriptions.module.js";
 import { CouriersModule } from "./couriers/couriers.module.js";
 import { GeoModule } from "./geo/geo.module.js";
 import { OrdersModule } from "./orders/orders.module.js";
+import { NotificationsModule } from "./notifications/notifications.module.js";
 import { TrackingModule } from "./tracking/tracking.module.js";
 import { VerificationModule } from "./verification/verification.module.js";
 
@@ -29,6 +30,7 @@ import { VerificationModule } from "./verification/verification.module.js";
     SubscriptionsModule,
     CouriersModule,
     GeoModule,
+    NotificationsModule,
     OrdersModule,
     TrackingModule,
     VerificationModule,
