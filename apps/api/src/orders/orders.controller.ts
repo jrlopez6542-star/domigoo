@@ -198,6 +198,36 @@ export class OrdersController {
     return this.runPinVerification(id, body, request, "DELIVERY");
   }
 
+  @Post(":id/cancel")
+  @ApiOperation({
+    summary: "Cancela un pedido según las reglas de la máquina de estados y libera al domiciliario",
+  })
+  async cancel(
+    @Param("id") id: string,
+    @Body() body: unknown,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<JourneyTransitionResult> {
+    const userId = request.auth?.userId;
+    if (userId === undefined) {
+      throw new NotFoundException();
+    }
+    const reason = readCancelReason(body);
+    if (reason === null) {
+      throw new HttpException({ message: "El motivo de cancelación es obligatorio" }, 422);
+    }
+    const result = await this.journey.cancelOrder({ orderId: id, userId, reason });
+    if (result === "missing") {
+      throw new NotFoundException();
+    }
+    if (result === "forbidden") {
+      throw new ForbiddenException();
+    }
+    if (result === "invalid_transition") {
+      throw new HttpException({ message: "No se puede cancelar el pedido en este estado" }, 422);
+    }
+    return result;
+  }
+
   private async runJourneyStep(
     orderId: string,
     request: AuthenticatedRequest,
@@ -293,6 +323,21 @@ function readPin(body: unknown): string | null {
     return null;
   }
   return pin;
+}
+
+function readCancelReason(body: unknown): string | null {
+  if (typeof body !== "object" || body === null) {
+    return null;
+  }
+  const raw = (body as Record<string, unknown>)["reason"];
+  if (typeof raw !== "string") {
+    return null;
+  }
+  const trimmed = raw.trim();
+  if (trimmed.length === 0 || trimmed.length > 200) {
+    return null;
+  }
+  return trimmed;
 }
 
 function readDraft(body: unknown): {

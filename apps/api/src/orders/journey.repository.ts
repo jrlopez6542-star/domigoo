@@ -310,4 +310,134 @@ export class JourneyRepository {
       client.release();
     }
   }
+
+  async cancelOrder(input: {
+    orderId: string;
+    userId: string;
+    reason: string;
+  }): Promise<JourneyTransitionResult | "missing" | "forbidden" | "invalid_transition"> {
+    const client = await this.database.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const orderQuery = await client.query<{
+        id: string;
+        restaurantId: string;
+        status: string;
+        assignedCourierId: string | null;
+      }>(
+        `SELECT id, "restaurantId", status::text AS status, "assignedCourierId"
+         FROM orders
+         WHERE id = $1
+         FOR UPDATE`,
+        [input.orderId],
+      );
+      const order = orderQuery.rows[0];
+      if (order === undefined) {
+        await client.query("ROLLBACK");
+        return "missing";
+      }
+
+      let actorKind: "RESTAURANT" | "COURIER" | "ADMIN" | null = null;
+      let targetStatus: OrderStatus | null = null;
+
+      const memberQuery = await client.query<{ id: string }>(
+        `SELECT id FROM restaurant_memberships
+         WHERE "restaurantId" = $1 AND "userId" = $2 AND status = 'ACTIVE'
+           AND role IN ('OWNER', 'MANAGER', 'OPERATOR')`,
+        [order.restaurantId, input.userId],
+      );
+      if (memberQuery.rows[0] !== undefined) {
+        actorKind = "RESTAURANT";
+        targetStatus = "CANCELLED_RESTAURANT";
+      } else {
+        const courierQuery = await client.query<{ id: string }>(
+          `SELECT id FROM couriers WHERE "userId" = $1`,
+          [input.userId],
+        );
+        const courier = courierQuery.rows[0];
+        if (courier !== undefined) {
+          if (order.assignedCourierId !== courier.id) {
+            await client.query("ROLLBACK");
+            return "forbidden";
+          }
+          actorKind = "COURIER";
+          targetStatus = "CANCELLED_COURIER";
+        } else {
+          const adminQuery = await client.query<{ role: string }>(
+            `SELECT role::text AS role FROM admin_profiles WHERE "userId" = $1`,
+            [input.userId],
+          );
+          const role = adminQuery.rows[0]?.role;
+          if (role === "SUPERADMIN" || role === "OPERATIONS") {
+            actorKind = "ADMIN";
+            targetStatus = "CANCELLED_ADMIN";
+          }
+        }
+      }
+
+      if (actorKind === null || targetStatus === null) {
+        await client.query("ROLLBACK");
+        return "missing";
+      }
+
+      if (!canTransition(order.status as OrderStatus, targetStatus)) {
+        await client.query("ROLLBACK");
+        return "invalid_transition";
+      }
+
+      await client.query(
+        `UPDATE orders
+         SET status = $2::"OrderStatus",
+             "cancelledAt" = now(),
+             "cancelReason" = $3,
+             "updatedAt" = now()
+         WHERE id = $1`,
+        [order.id, targetStatus, input.reason],
+      );
+
+      await client.query(
+        `UPDATE dispatch_offers
+         SET status = 'CANCELLED', "respondedAt" = now()
+         WHERE "orderId" = $1 AND status = 'PENDING'`,
+        [order.id],
+      );
+
+      if (order.assignedCourierId !== null) {
+        await client.query(
+          `UPDATE courier_availabilities
+           SET state = 'AVAILABLE', "updatedAt" = now()
+           WHERE "courierId" = $1 AND state = 'ON_SERVICE'`,
+          [order.assignedCourierId],
+        );
+      }
+
+      await client.query(
+        `INSERT INTO order_events (
+           id, "orderId", "fromStatus", "toStatus", "actorKind", "actorId", reason, "createdAt"
+         ) VALUES (gen_random_uuid(), $1, $2::"OrderStatus", $3::"OrderStatus", $4::"ActorKind", $5, $6, now())`,
+        [order.id, order.status, targetStatus, actorKind, input.userId, input.reason],
+      );
+
+      const diff = redactDiff({ from: order.status, to: targetStatus, reason: input.reason });
+      await client.query(
+        `INSERT INTO audit_logs
+          (id, "actorId", "actorKind", action, "entityType", "entityId", reason, diff, "createdAt")
+         VALUES (gen_random_uuid(), $1, $2::"ActorKind", 'order.cancelled', 'order', $3, $4, $5::jsonb, now())`,
+        [input.userId, actorKind, order.id, input.reason, JSON.stringify(diff)],
+      );
+
+      await client.query("COMMIT");
+      return {
+        id: order.id,
+        fromStatus: order.status,
+        toStatus: targetStatus,
+        status: targetStatus,
+      };
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
 }
