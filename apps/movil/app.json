@@ -1,0 +1,13 @@
+{
+  "expo": {
+    "name": "DOMIGOO Domiciliarios",
+    "slug": "domigoo-movil",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "platforms": ["android"],
+    "android": {
+      "package": "com.domigoo.movil",
+      "permissions": ["ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION"]
+    }
+  }
+}

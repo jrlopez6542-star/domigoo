@@ -103,7 +103,13 @@ export class TrackingRepository {
     await this.database.pool.query(
       `INSERT INTO tracking_links (
          id, "orderId", "tokenHash", "tokenCiphertext", "expiresAt", "createdAt"
-       ) VALUES (gen_random_uuid(), $1, $2, $3, $4, now())`,
+       ) VALUES (gen_random_uuid(), $1, $2, $3, $4, now())
+       ON CONFLICT ("orderId") DO UPDATE SET
+         "tokenHash" = EXCLUDED."tokenHash",
+         "tokenCiphertext" = EXCLUDED."tokenCiphertext",
+         "expiresAt" = EXCLUDED."expiresAt",
+         "revokedAt" = NULL,
+         "createdAt" = now()`,
       [orderId, tokenHash, tokenCiphertext, expiresAt],
     );
 

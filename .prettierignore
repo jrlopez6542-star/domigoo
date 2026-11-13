@@ -4,3 +4,6 @@ build/
 coverage/
 pnpm-lock.yaml
 docs/
+.next/
+.expo/
+next-env.d.ts

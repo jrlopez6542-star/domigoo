@@ -8,3 +8,6 @@ coverage/
 .env.*
 !.env.example
 var/storage/
+.next/
+.expo/
+next-env.d.ts

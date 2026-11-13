@@ -35,6 +35,13 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      - name: Pruebas unitarias Web, Admin y Móvil
+        run: |
+          pnpm --filter @domigoo/web test
+          pnpm --filter @domigoo/admin test
+          pnpm --filter @domigoo/movil test
+          pnpm --filter @domigoo/movil config:public
+
   postgis:
     name: PostGIS
     runs-on: ubuntu-latest

@@ -110,7 +110,11 @@ describe("sistema", () => {
             path.startsWith("/v1/couriers") ||
             path.startsWith("/v1/courier-invitations") ||
             path.startsWith("/v1/orders") ||
-            path.startsWith("/v1/offers"),
+            path.startsWith("/v1/offers") ||
+            path.startsWith("/v1/tracking") ||
+            path.startsWith("/v1/devices") ||
+            path.startsWith("/v1/incidents") ||
+            path.startsWith("/v1/data-subject-requests"),
         ),
       ).toBe(true);
     } finally {

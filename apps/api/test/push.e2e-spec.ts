@@ -107,7 +107,7 @@ describe("puerto de push y bandeja de salida (M28)", () => {
         },
       });
 
-      const drained = await outbox.drain(new Date());
+      const drained = await outbox.drain();
       expect(drained.sent).toBe(1);
       expect(sender.sent).toHaveLength(1);
       expect(sender.sent[0]?.template).toBe("OFFER_NEW");
@@ -126,10 +126,10 @@ describe("puerto de push y bandeja de salida (M28)", () => {
 
       sender.failNext(5);
       for (let i = 0; i < 4; i += 1) {
-        const res = await outbox.drain(new Date());
+        const res = await outbox.drain();
         expect(res.failed).toBe(0);
       }
-      const fifth = await outbox.drain(new Date());
+      const fifth = await outbox.drain();
       expect(fifth.failed).toBe(1);
 
       const failedRow = await db.query<{ status: string; attemptCount: number }>(

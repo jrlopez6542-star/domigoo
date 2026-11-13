@@ -72,7 +72,7 @@ export class OutboxRepository {
     );
   }
 
-  async drain(at: Date = new Date()): Promise<{ sent: number; failed: number }> {
+  async drain(at?: Date): Promise<{ sent: number; failed: number }> {
     const client = await this.database.pool.connect();
     try {
       await client.query("BEGIN");
@@ -85,11 +85,11 @@ export class OutboxRepository {
       }>(
         `SELECT id, "userId", template, payload, "attemptCount"
          FROM notification_outbox
-         WHERE status = 'PENDING' AND "availableAt" <= $1
+         WHERE status = 'PENDING' AND "availableAt" <= COALESCE($1::timestamptz, now())
          ORDER BY "createdAt" ASC
          LIMIT 50
          FOR UPDATE SKIP LOCKED`,
-        [at],
+        [at ?? null],
       );
 
       let sent = 0;
