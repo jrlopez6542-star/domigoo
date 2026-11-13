@@ -15,11 +15,12 @@ export function generateMetadata(): Metadata {
 }
 
 type TrackingPayload = {
-  orderId: string;
+  referenceCode: string;
   status: string;
+  restaurantName: string;
+  courierFirstName: string | null;
   deliveryPin?: string;
-  dropoffAddress?: string;
-  updatedAt?: string;
+  events?: Array<{ fromStatus: string | null; toStatus: string; createdAt: string }>;
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -118,9 +119,13 @@ export default async function TrackingPage({ params }: { params: Promise<{ token
         </div>
       </div>
 
-      {tracking.dropoffAddress ? (
-        <p style={{ marginTop: "1rem", color: "#334155" }}>
-          <strong>Destino:</strong> {tracking.dropoffAddress}
+      <p style={{ marginTop: "1rem", color: "#334155" }}>
+        <strong>Restaurante:</strong> {tracking.restaurantName} · <strong>Referencia:</strong>{" "}
+        <code>{tracking.referenceCode}</code>
+      </p>
+      {tracking.courierFirstName ? (
+        <p style={{ marginTop: "0.5rem", color: "#334155" }}>
+          <strong>Domiciliario:</strong> {tracking.courierFirstName}
         </p>
       ) : null}
 

@@ -41,9 +41,15 @@ export class CourierApiClient {
     this.token = token;
   }
 
-  private async request<T>(path: string, method: string, body?: unknown): Promise<T> {
+  private async request<T>(
+    path: string,
+    method: string,
+    body?: unknown,
+    extraHeaders?: Record<string, string>,
+  ): Promise<T> {
     const headers: Record<string, string> = {
       "content-type": "application/json",
+      ...extraHeaders,
     };
     if (this.token !== null) {
       headers["authorization"] = `Bearer ${this.token}`;
@@ -67,12 +73,12 @@ export class CourierApiClient {
     return data as T;
   }
 
-  async login(phone: string, password: string): Promise<{ token: string }> {
-    const res = await this.request<{ token: string }>("/v1/auth/login", "POST", {
-      phone,
-      password,
-      client: "MOBILE",
-    });
+  async login(identifier: string, password: string): Promise<{ token: string }> {
+    const trimmed = identifier.trim();
+    const payload = trimmed.includes("@")
+      ? { email: trimmed, password, client: "MOBILE" }
+      : { phoneE164: trimmed, password, client: "MOBILE" };
+    const res = await this.request<{ token: string }>("/v1/auth/login", "POST", payload);
     this.token = res.token;
     return res;
   }
@@ -86,14 +92,15 @@ export class CourierApiClient {
     return this.request<{ id: string }>("/v1/couriers", "POST", input);
   }
 
-  async setAvailability(status: "AVAILABLE" | "OFFLINE"): Promise<{ status: string }> {
-    return this.request<{ status: string }>("/v1/couriers/me/availability", "POST", { status });
+  async setAvailability(state: "AVAILABLE" | "OFFLINE"): Promise<{ state: string }> {
+    return this.request<{ state: string }>("/v1/couriers/me/availability", "POST", { state });
   }
 
   async sendLocation(input: {
     hasGeolocationConsent: boolean;
     longitude: number;
     latitude: number;
+    accuracyM?: number;
   }): Promise<{ recorded: boolean }> {
     if (!input.hasGeolocationConsent) {
       throw new Error("Se requiere consentimiento de geolocalización antes de enviar la posición.");
@@ -101,14 +108,18 @@ export class CourierApiClient {
     await this.request("/v1/couriers/me/location", "POST", {
       longitude: input.longitude,
       latitude: input.latitude,
+      ...(input.accuracyM !== undefined ? { accuracyM: Math.round(input.accuracyM) } : {}),
     });
     return { recorded: true };
   }
 
   async acceptOffer(offerId: string, idempotencyKey: string): Promise<{ status: string }> {
-    return this.request<{ status: string }>(`/v1/offers/${offerId}/accept`, "POST", {
-      idempotencyKey,
-    });
+    return this.request<{ status: string }>(
+      `/v1/offers/${offerId}/accept`,
+      "POST",
+      {},
+      { "idempotency-key": idempotencyKey },
+    );
   }
 
   async declineOffer(offerId: string): Promise<{ status: string }> {

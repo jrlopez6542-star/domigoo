@@ -77,7 +77,7 @@ export default function App() {
       {state.screen === "LOGIN" ? (
         <View style={styles.card}>
           <TextInput
-            placeholder="Teléfono (+57...)"
+            placeholder="Correo o teléfono (+57...)"
             value={phone}
             onChangeText={setPhone}
             style={styles.input}

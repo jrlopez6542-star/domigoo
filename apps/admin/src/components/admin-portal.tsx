@@ -1,6 +1,11 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import {
+  buildAdminLoginPayload,
+  buildVerificationDecisionPayload,
+  type VerificationOutcome,
+} from "@/lib/contracts";
 
 type VerificationCase = {
   id: string;
@@ -11,8 +16,8 @@ type VerificationCase = {
 
 type AdminStats = {
   ordersByStatus: Record<string, number>;
-  availableApprovedCouriers: number;
-  medianSecondsToAccept: number | null;
+  eligibleCouriers: number;
+  medianAcceptSeconds: number | null;
   openIncidents: number;
 };
 
@@ -50,16 +55,17 @@ export function AdminPortal({ appName }: { appName: string }) {
   const [statusMessage, setStatusMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
 
-  // 1. Login admin
-  const [phone, setPhone] = useState("");
+  // 1. Login admin (correo o teléfono E.164)
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [adminUserId, setAdminUserId] = useState<string | null>(null);
 
   // 2. Verificación
   const [cases, setCases] = useState<VerificationCase[]>([]);
   const [caseId, setCaseId] = useState("");
-  const [decision, setDecision] = useState<"APPROVED" | "REJECTED">("APPROVED");
-  const [decisionReason, setDecisionReason] = useState("");
+  const [outcome, setOutcome] = useState<VerificationOutcome>("APPROVED");
+  const [reasonCode, setReasonCode] = useState("DOCS_VERIFIED");
+  const [comment, setComment] = useState("");
 
   // 3. Reconocimiento de declaración de suscripción
   const [declarationId, setDeclarationId] = useState("");
@@ -73,12 +79,13 @@ export function AdminPortal({ appName }: { appName: string }) {
     setErrorMessage("");
     setStatusMessage("");
     try {
-      const data = await callProxy<{ user?: { id: string } }>("auth/login", "POST", {
-        phone,
-        password,
-        client: "WEB",
-      });
-      setAdminUserId(data.user?.id ?? "activo");
+      const payload = buildAdminLoginPayload(identifier, password);
+      const data = await callProxy<{ id?: string; user?: { id: string } }>(
+        "auth/login",
+        "POST",
+        payload,
+      );
+      setAdminUserId(data.id ?? data.user?.id ?? "activo");
       setStatusMessage("Sesión administrativa iniciada.");
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : "No se pudo iniciar sesión.");
@@ -110,15 +117,17 @@ export function AdminPortal({ appName }: { appName: string }) {
     setErrorMessage("");
     setStatusMessage("");
     try {
-      const res = await callProxy<{ status: string }>(
+      const payload = buildVerificationDecisionPayload({
+        outcome,
+        reasonCode,
+        comment,
+      });
+      await callProxy<{ decided: boolean }>(
         `admin/verification-cases/${caseId}/decision`,
         "POST",
-        {
-          decision,
-          reason: decisionReason,
-        },
+        payload,
       );
-      setStatusMessage(`Decisión registrada: ${res.status}`);
+      setStatusMessage(`Decisión registrada: ${payload.outcome}`);
       await handleLoadCases();
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : "No se pudo registrar la decisión.");
@@ -130,14 +139,16 @@ export function AdminPortal({ appName }: { appName: string }) {
     setErrorMessage("");
     setStatusMessage("");
     try {
-      const res = await callProxy<{ status: string }>(
+      const res = await callProxy<{ acknowledged?: boolean; status?: string }>(
         `admin/declarations/${declarationId}/acknowledge`,
         "POST",
         {
           note: ackReference,
         },
       );
-      setStatusMessage(`Declaración reconocida: ${res.status}`);
+      setStatusMessage(
+        res.acknowledged ? "Declaración reconocida." : `Declaración: ${res.status ?? "OK"}`,
+      );
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : "No se pudo reconocer la declaración.");
     }
@@ -205,15 +216,21 @@ export function AdminPortal({ appName }: { appName: string }) {
       >
         <h2 style={{ marginTop: 0 }}>1. Ingreso administrativo</h2>
         {adminUserId ? <p data-testid="admin-session">Sesión activa: {adminUserId}</p> : null}
-        <form onSubmit={(e) => void handleLogin(e)} style={{ display: "grid", gap: "0.75rem" }}>
+        <form
+          onSubmit={(e) => {
+            void handleLogin(e);
+          }}
+          style={{ display: "grid", gap: "0.75rem" }}
+        >
           <label>
-            Teléfono
+            Correo o teléfono (+57...)
             <input
-              name="phone"
-              value={phone}
+              name="identifier"
+              value={identifier}
               onChange={(e) => {
-                setPhone(e.target.value);
+                setIdentifier(e.target.value);
               }}
+              placeholder="admin@ejemplo.com o +573001112233"
               required
               style={{ display: "block", width: "100%", padding: "0.5rem" }}
             />
@@ -245,7 +262,12 @@ export function AdminPortal({ appName }: { appName: string }) {
         }}
       >
         <h2 style={{ marginTop: 0 }}>2. Bandeja de verificación de domiciliarios</h2>
-        <button type="button" onClick={() => void handleLoadCases()}>
+        <button
+          type="button"
+          onClick={() => {
+            void handleLoadCases();
+          }}
+        >
           Cargar casos
         </button>
 
@@ -261,7 +283,9 @@ export function AdminPortal({ appName }: { appName: string }) {
         ) : null}
 
         <form
-          onSubmit={(e) => void handleDecideCase(e)}
+          onSubmit={(e) => {
+            void handleDecideCase(e);
+          }}
           style={{ display: "grid", gap: "0.75rem", marginTop: "1rem" }}
         >
           <label>
@@ -277,26 +301,40 @@ export function AdminPortal({ appName }: { appName: string }) {
             />
           </label>
           <label>
-            Decisión
+            Resultado (outcome)
             <select
-              name="decision"
-              value={decision}
+              name="outcome"
+              value={outcome}
               onChange={(e) => {
-                setDecision(e.target.value as "APPROVED" | "REJECTED");
+                setOutcome(e.target.value as VerificationOutcome);
               }}
               style={{ display: "block", width: "100%", padding: "0.5rem" }}
             >
               <option value="APPROVED">Aprobar (APPROVED)</option>
               <option value="REJECTED">Rechazar (REJECTED)</option>
+              <option value="NEEDS_CHANGES">Solicitar cambios (NEEDS_CHANGES)</option>
             </select>
           </label>
           <label>
-            Motivo de la decisión
+            Código de motivo (reasonCode)
             <input
-              name="decisionReason"
-              value={decisionReason}
+              name="reasonCode"
+              value={reasonCode}
               onChange={(e) => {
-                setDecisionReason(e.target.value);
+                setReasonCode(e.target.value);
+              }}
+              pattern="[A-Za-z0-9_]{1,64}"
+              required
+              style={{ display: "block", width: "100%", padding: "0.5rem" }}
+            />
+          </label>
+          <label>
+            Comentario (comment)
+            <input
+              name="comment"
+              value={comment}
+              onChange={(e) => {
+                setComment(e.target.value);
               }}
               required
               style={{ display: "block", width: "100%", padding: "0.5rem" }}
@@ -321,7 +359,9 @@ export function AdminPortal({ appName }: { appName: string }) {
           declaración de transferencia o pago reportada por el restaurante.
         </p>
         <form
-          onSubmit={(e) => void handleAcknowledgeDeclaration(e)}
+          onSubmit={(e) => {
+            void handleAcknowledgeDeclaration(e);
+          }}
           style={{ display: "grid", gap: "0.75rem" }}
         >
           <label>
@@ -361,16 +401,21 @@ export function AdminPortal({ appName }: { appName: string }) {
         }}
       >
         <h2 style={{ marginTop: 0 }}>4. Estadísticas operativas</h2>
-        <button type="button" onClick={() => void handleLoadStats()}>
+        <button
+          type="button"
+          onClick={() => {
+            void handleLoadStats();
+          }}
+        >
           Consultar estadísticas
         </button>
         {stats ? (
           <div data-testid="admin-stats" style={{ marginTop: "1rem" }}>
-            <p>Domiciliarios aprobados y disponibles: {stats.availableApprovedCouriers}</p>
+            <p>Domiciliarios aprobados y disponibles: {stats.eligibleCouriers}</p>
             <p>Incidentes abiertos: {stats.openIncidents}</p>
             <p>
               Mediana de aceptación (segundos):{" "}
-              {stats.medianSecondsToAccept !== null ? stats.medianSecondsToAccept : "Sin datos"}
+              {stats.medianAcceptSeconds !== null ? stats.medianAcceptSeconds : "Sin datos"}
             </p>
           </div>
         ) : null}

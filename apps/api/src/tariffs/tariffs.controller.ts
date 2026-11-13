@@ -1,7 +1,29 @@
 import { Body, Controller, NotFoundException, Post, UseGuards } from "@nestjs/common";
 import { ApiOperation, ApiTags } from "@nestjs/swagger";
 import { AdminGuard } from "../identity/admin.guard.js";
+import { SessionGuard } from "../identity/session.guard.js";
 import { TariffRepository, type TariffQuote } from "./tariff.repository.js";
+
+@ApiTags("tarifas")
+@Controller("v1/tariffs")
+@UseGuards(SessionGuard)
+export class TariffQuoteController {
+  constructor(private readonly tariffs: TariffRepository) {}
+
+  @Post("quote")
+  @ApiOperation({ summary: "Cotiza el domicilio con la tarifa publicada para sesión autenticada" })
+  async quote(@Body() body: unknown): Promise<TariffQuote> {
+    const parsed = readQuote(body);
+    if (parsed === null) {
+      throw new NotFoundException();
+    }
+    const quote = await this.tariffs.quote(parsed);
+    if (quote === null) {
+      throw new NotFoundException();
+    }
+    return quote;
+  }
+}
 
 @ApiTags("tarifas")
 @Controller("v1/admin/tariffs")

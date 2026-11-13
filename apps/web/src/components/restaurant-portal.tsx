@@ -1,6 +1,11 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import {
+  buildLoginPayload,
+  type CreateRestaurantPayload,
+  type QuotePayload,
+} from "@/lib/contracts";
 
 type OrderView = {
   id: string;
@@ -51,17 +56,20 @@ export function RestaurantPortal({ appName }: { appName: string }) {
   const [statusMessage, setStatusMessage] = useState<string>("");
   const [errorMessage, setErrorMessage] = useState<string>("");
 
-  // 1. Login
-  const [phone, setPhone] = useState("");
+  // 1. Login (correo o teléfono E.164)
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [sessionUserId, setSessionUserId] = useState<string | null>(null);
 
-  // 2. Restaurante y sucursal
+  // 2. Restaurante, establecimiento y sucursal
   const [legalName, setLegalName] = useState("");
-  const [nit, setNit] = useState("");
   const [tradeName, setTradeName] = useState("");
+  const [nit, setNit] = useState("");
+  const [siteEmail, setSiteEmail] = useState("");
+  const [sitePhoneE164, setSitePhoneE164] = useState("");
+  const [establishmentName, setEstablishmentName] = useState("");
   const [branchName, setBranchName] = useState("");
-  const [address, setAddress] = useState("");
+  const [addressLine, setAddressLine] = useState("");
   const [branchLongitude, setBranchLongitude] = useState("-74.0817");
   const [branchLatitude, setBranchLatitude] = useState("4.6097");
   const [restaurantId, setRestaurantId] = useState("");
@@ -93,12 +101,13 @@ export function RestaurantPortal({ appName }: { appName: string }) {
     setErrorMessage("");
     setStatusMessage("");
     try {
-      const data = await callProxy<{ user?: { id: string } }>("auth/login", "POST", {
-        phone,
-        password,
-        client: "WEB",
-      });
-      setSessionUserId(data.user?.id ?? "activo");
+      const payload = buildLoginPayload(identifier, password, "WEB");
+      const data = await callProxy<{ id?: string; user?: { id: string } }>(
+        "auth/login",
+        "POST",
+        payload,
+      );
+      setSessionUserId(data.id ?? data.user?.id ?? "activo");
       setStatusMessage("Sesión iniciada correctamente.");
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : "No se pudo iniciar sesión.");
@@ -110,18 +119,22 @@ export function RestaurantPortal({ appName }: { appName: string }) {
     setErrorMessage("");
     setStatusMessage("");
     try {
+      const payload: CreateRestaurantPayload = {
+        legalName,
+        tradeName,
+        nit,
+        email: siteEmail,
+        phoneE164: sitePhoneE164,
+        establishmentName,
+        branchName,
+        addressLine,
+        longitude: Number(branchLongitude),
+        latitude: Number(branchLatitude),
+      };
       const data = await callProxy<{
         id: string;
         branchId: string;
-      }>("restaurants", "POST", {
-        legalName,
-        nit,
-        tradeName,
-        branchName,
-        address,
-        longitude: Number(branchLongitude),
-        latitude: Number(branchLatitude),
-      });
+      }>("restaurants", "POST", payload);
       setRestaurantId(data.id);
       setBranchId(data.branchId);
       setStatusMessage(`Sucursal creada (${data.branchId}).`);
@@ -134,14 +147,21 @@ export function RestaurantPortal({ appName }: { appName: string }) {
     setErrorMessage("");
     setStatusMessage("");
     try {
-      const data = await callProxy<{ deliveryFeeCop: number; distanceMeters?: number }>(
-        "tariffs/quote",
-        "POST",
-        {
-          branchId,
+      const payload: QuotePayload = {
+        origin: {
+          longitude: Number(branchLongitude),
+          latitude: Number(branchLatitude),
+        },
+        destination: {
           longitude: Number(dropoffLongitude),
           latitude: Number(dropoffLatitude),
         },
+        at: new Date().toISOString(),
+      };
+      const data = await callProxy<{ deliveryFeeCop: number; distanceMeters?: number }>(
+        "tariffs/quote",
+        "POST",
+        payload,
       );
       setDeliveryFeeCop(String(data.deliveryFeeCop));
       setQuoteSummary(`Domicilio cotizado: $${String(data.deliveryFeeCop)} COP`);
@@ -282,16 +302,21 @@ export function RestaurantPortal({ appName }: { appName: string }) {
       >
         <h2 style={{ marginTop: 0 }}>1. Ingreso del restaurante</h2>
         {sessionUserId ? <p data-testid="session-active">Sesión activa: {sessionUserId}</p> : null}
-        <form onSubmit={(e) => void handleLogin(e)} style={{ display: "grid", gap: "0.75rem" }}>
+        <form
+          onSubmit={(e) => {
+            void handleLogin(e);
+          }}
+          style={{ display: "grid", gap: "0.75rem" }}
+        >
           <label>
-            Teléfono
+            Correo o teléfono (+57...)
             <input
-              name="phone"
-              value={phone}
+              name="identifier"
+              value={identifier}
               onChange={(e) => {
-                setPhone(e.target.value);
+                setIdentifier(e.target.value);
               }}
-              placeholder="+573001112233"
+              placeholder="restaurante@ejemplo.com o +573001112233"
               required
               style={{ display: "block", width: "100%", padding: "0.5rem" }}
             />
@@ -324,7 +349,9 @@ export function RestaurantPortal({ appName }: { appName: string }) {
       >
         <h2 style={{ marginTop: 0 }}>2. Crear restaurante y sucursal</h2>
         <form
-          onSubmit={(e) => void handleCreateBranch(e)}
+          onSubmit={(e) => {
+            void handleCreateBranch(e);
+          }}
           style={{ display: "grid", gap: "0.75rem" }}
         >
           <label>
@@ -363,6 +390,46 @@ export function RestaurantPortal({ appName }: { appName: string }) {
               style={{ display: "block", width: "100%", padding: "0.5rem" }}
             />
           </label>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem" }}>
+            <label>
+              Correo de contacto
+              <input
+                name="email"
+                type="email"
+                value={siteEmail}
+                onChange={(e) => {
+                  setSiteEmail(e.target.value);
+                }}
+                required
+                style={{ display: "block", width: "100%", padding: "0.5rem" }}
+              />
+            </label>
+            <label>
+              Teléfono de contacto (+57...)
+              <input
+                name="phoneE164"
+                value={sitePhoneE164}
+                onChange={(e) => {
+                  setSitePhoneE164(e.target.value);
+                }}
+                placeholder="+573001112233"
+                required
+                style={{ display: "block", width: "100%", padding: "0.5rem" }}
+              />
+            </label>
+          </div>
+          <label>
+            Nombre del establecimiento
+            <input
+              name="establishmentName"
+              value={establishmentName}
+              onChange={(e) => {
+                setEstablishmentName(e.target.value);
+              }}
+              required
+              style={{ display: "block", width: "100%", padding: "0.5rem" }}
+            />
+          </label>
           <label>
             Nombre de la sucursal
             <input
@@ -378,10 +445,10 @@ export function RestaurantPortal({ appName }: { appName: string }) {
           <label>
             Dirección de la sucursal
             <input
-              name="address"
-              value={address}
+              name="addressLine"
+              value={addressLine}
               onChange={(e) => {
-                setAddress(e.target.value);
+                setAddressLine(e.target.value);
               }}
               required
               style={{ display: "block", width: "100%", padding: "0.5rem" }}
@@ -437,7 +504,9 @@ export function RestaurantPortal({ appName }: { appName: string }) {
       >
         <h2 style={{ marginTop: 0 }}>3. Borrador y cotización</h2>
         <form
-          onSubmit={(e) => void handleCreateDraft(e)}
+          onSubmit={(e) => {
+            void handleCreateDraft(e);
+          }}
           style={{ display: "grid", gap: "0.75rem" }}
         >
           <label>
@@ -495,7 +564,12 @@ export function RestaurantPortal({ appName }: { appName: string }) {
             </select>
           </label>
           <div style={{ display: "flex", gap: "0.75rem" }}>
-            <button type="button" onClick={() => void handleQuote()}>
+            <button
+              type="button"
+              onClick={() => {
+                void handleQuote();
+              }}
+            >
               Cotizar domicilio
             </button>
             <button type="submit">Guardar borrador</button>
@@ -514,7 +588,12 @@ export function RestaurantPortal({ appName }: { appName: string }) {
         }}
       >
         <h2 style={{ marginTop: 0 }}>4. Publicar pedido</h2>
-        <form onSubmit={(e) => void handlePublish(e)} style={{ display: "grid", gap: "0.75rem" }}>
+        <form
+          onSubmit={(e) => {
+            void handlePublish(e);
+          }}
+          style={{ display: "grid", gap: "0.75rem" }}
+        >
           <label>
             ID del pedido
             <input
@@ -635,10 +714,20 @@ export function RestaurantPortal({ appName }: { appName: string }) {
       >
         <h2 style={{ marginTop: 0 }}>5. Recorrido del pedido</h2>
         <div style={{ display: "flex", gap: "0.75rem", marginBottom: "1rem" }}>
-          <button type="button" onClick={() => void handleRefreshOrder()}>
+          <button
+            type="button"
+            onClick={() => {
+              void handleRefreshOrder();
+            }}
+          >
             Actualizar estado
           </button>
-          <button type="button" onClick={() => void handleCreateTrackingLink()}>
+          <button
+            type="button"
+            onClick={() => {
+              void handleCreateTrackingLink();
+            }}
+          >
             Generar enlace de seguimiento
           </button>
         </div>
