@@ -69,4 +69,123 @@ export class PrivacyRepository {
     );
     return (result.rowCount ?? 0) > 0;
   }
+
+  async createDataSubjectRequest(input: {
+    userId: string;
+    type: string;
+    note?: string;
+  }): Promise<{ id: string; type: string; status: "OPEN" }> {
+    const res = await this.database.pool.query<{ id: string; type: string }>(
+      `INSERT INTO data_subject_requests (id, "userId", type, status, note, "openedAt")
+       VALUES (gen_random_uuid(), $1, $2::"DataSubjectRequestType", 'OPEN', $3, now())
+       RETURNING id, type::text AS type`,
+      [input.userId, input.type, input.note ?? null],
+    );
+    const row = res.rows[0];
+    if (row === undefined) {
+      throw new Error("No se pudo crear la solicitud de habeas data");
+    }
+    await this.database.pool.query(
+      `INSERT INTO audit_logs
+        (id, "actorId", "actorKind", action, "entityType", "entityId", diff, "createdAt")
+       VALUES (gen_random_uuid(), $1, 'SYSTEM', 'privacy.dsr_created', 'data_subject_request', $2, $3::jsonb, now())`,
+      [input.userId, row.id, JSON.stringify({ type: row.type })],
+    );
+    return { id: row.id, type: row.type, status: "OPEN" };
+  }
+
+  async processDataSubjectRequest(input: {
+    id: string;
+    actorUserId: string;
+    action: "COMPLETE" | "DENY";
+  }): Promise<{ id: string; status: string; anonymizedOrders: number } | "missing" | "forbidden"> {
+    const adminQ = await this.database.pool.query<{ role: string }>(
+      `SELECT role::text AS role FROM admin_profiles WHERE "userId" = $1`,
+      [input.actorUserId],
+    );
+    const role = adminQ.rows[0]?.role;
+    const isPrivacyAdmin = role === "SUPERADMIN" || role === "SECURITY";
+
+    const client = await this.database.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const reqQ = await client.query<{
+        id: string;
+        userId: string;
+        type: string;
+        status: string;
+      }>(
+        `SELECT id, "userId", type::text AS type, status::text AS status
+         FROM data_subject_requests
+         WHERE id = $1 FOR UPDATE`,
+        [input.id],
+      );
+      const dsr = reqQ.rows[0];
+      if (dsr === undefined) {
+        await client.query("ROLLBACK");
+        return "missing";
+      }
+
+      const canSelfRevoke = dsr.type === "REVOCATION" && dsr.userId === input.actorUserId;
+      if (!isPrivacyAdmin && !canSelfRevoke) {
+        await client.query("ROLLBACK");
+        return "forbidden";
+      }
+
+      const nextStatus = input.action === "COMPLETE" ? "COMPLETED" : "DENIED";
+      let anonymizedOrders = 0;
+
+      if (input.action === "COMPLETE") {
+        if (dsr.type === "REVOCATION") {
+          await client.query(
+            `UPDATE consent_records
+             SET "revokedAt" = now()
+             WHERE "userId" = $1 AND purpose = 'GEOLOCATION' AND "revokedAt" IS NULL`,
+            [dsr.userId],
+          );
+        } else if (dsr.type === "DELETION") {
+          const anon = await client.query(
+            `UPDATE orders
+             SET "customerName" = 'ANONIMIZADO',
+                 "customerPhoneE164" = NULL,
+                 "updatedAt" = now()
+             WHERE "createdById" = $1
+               AND status IN (
+                 'DELIVERED', 'EXPIRED', 'CANCELLED_RESTAURANT',
+                 'CANCELLED_COURIER', 'CANCELLED_ADMIN', 'FAILED'
+               )`,
+            [dsr.userId],
+          );
+          anonymizedOrders = anon.rowCount ?? 0;
+        }
+      }
+
+      await client.query(
+        `UPDATE data_subject_requests
+         SET status = $2::"DataSubjectRequestStatus", "closedAt" = now()
+         WHERE id = $1`,
+        [dsr.id, nextStatus],
+      );
+
+      await client.query(
+        `INSERT INTO audit_logs
+          (id, "actorId", "actorKind", action, "entityType", "entityId", diff, "createdAt")
+         VALUES (gen_random_uuid(), $1, $2::"ActorKind", 'privacy.dsr_processed', 'data_subject_request', $3, $4::jsonb, now())`,
+        [
+          input.actorUserId,
+          isPrivacyAdmin ? "ADMIN" : "SYSTEM",
+          dsr.id,
+          JSON.stringify({ type: dsr.type, status: nextStatus, anonymizedOrders }),
+        ],
+      );
+
+      await client.query("COMMIT");
+      return { id: dsr.id, status: nextStatus, anonymizedOrders };
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
 }
