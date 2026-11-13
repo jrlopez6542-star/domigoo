@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  ForbiddenException,
   Get,
   HttpException,
   NotFoundException,
@@ -11,7 +12,18 @@ import {
 } from "@nestjs/common";
 import { ApiOperation, ApiTags } from "@nestjs/swagger";
 import { SessionGuard, type AuthenticatedRequest } from "../identity/session.guard.js";
-import { OrderRepository, type DraftOrder } from "./order.repository.js";
+import {
+  JourneyRepository,
+  type JourneyStatus,
+  type JourneyTransitionResult,
+} from "./journey.repository.js";
+import {
+  OrderRepository,
+  type CourierOrderView,
+  type DraftOrder,
+  type OrderEventItem,
+  type RestaurantOrderView,
+} from "./order.repository.js";
 import { PublishRepository, type OpenWave, type PublishedOrder } from "./publish.repository.js";
 
 @ApiTags("pedidos")
@@ -21,6 +33,7 @@ export class OrdersController {
   constructor(
     private readonly orders: OrderRepository,
     private readonly publisher: PublishRepository,
+    private readonly journey: JourneyRepository,
   ) {}
 
   @Post()
@@ -95,17 +108,100 @@ export class OrdersController {
   }
 
   @Get(":id")
-  @ApiOperation({ summary: "Lee el borrador, incluida la comida, para el restaurante" })
-  async getOne(@Param("id") id: string, @Req() request: AuthenticatedRequest): Promise<DraftOrder> {
+  @ApiOperation({
+    summary: "Lee el pedido con proyección diferenciada para restaurante o domiciliario",
+  })
+  async getOne(
+    @Param("id") id: string,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<RestaurantOrderView | CourierOrderView> {
     const userId = request.auth?.userId;
     if (userId === undefined) {
       throw new NotFoundException();
     }
-    const order = await this.orders.findForMember(id, userId);
-    if (order === null) {
+    const view = await this.orders.findOrderView(id, userId);
+    if (view.kind === "missing") {
       throw new NotFoundException();
     }
-    return order;
+    if (view.kind === "forbidden") {
+      throw new ForbiddenException();
+    }
+    return view.order;
+  }
+
+  @Get(":id/events")
+  @ApiOperation({
+    summary: "Historial de eventos del pedido para restaurante o domiciliario asignado",
+  })
+  async getEvents(
+    @Param("id") id: string,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<{ events: OrderEventItem[] }> {
+    const userId = request.auth?.userId;
+    if (userId === undefined) {
+      throw new NotFoundException();
+    }
+    const view = await this.orders.findOrderView(id, userId);
+    if (view.kind === "missing") {
+      throw new NotFoundException();
+    }
+    if (view.kind === "forbidden") {
+      throw new ForbiddenException();
+    }
+    return { events: view.order.events };
+  }
+
+  @Post(":id/arrive-pickup")
+  @ApiOperation({ summary: "El domiciliario asignado informa que va camino a la sucursal" })
+  async arrivePickup(
+    @Param("id") id: string,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<JourneyTransitionResult> {
+    return this.runJourneyStep(id, request, "ARRIVING_PICKUP");
+  }
+
+  @Post(":id/at-pickup")
+  @ApiOperation({ summary: "El domiciliario asignado informa que llegó a la sucursal" })
+  async atPickup(
+    @Param("id") id: string,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<JourneyTransitionResult> {
+    return this.runJourneyStep(id, request, "AT_PICKUP");
+  }
+
+  @Post(":id/at-dropoff")
+  @ApiOperation({ summary: "El domiciliario asignado informa que llegó al destino" })
+  async atDropoff(
+    @Param("id") id: string,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<JourneyTransitionResult> {
+    return this.runJourneyStep(id, request, "AT_DROPOFF");
+  }
+
+  private async runJourneyStep(
+    orderId: string,
+    request: AuthenticatedRequest,
+    targetStatus: JourneyStatus,
+  ): Promise<JourneyTransitionResult> {
+    const userId = request.auth?.userId;
+    if (userId === undefined) {
+      throw new NotFoundException();
+    }
+    const result = await this.journey.transitionByCourier({
+      orderId,
+      userId,
+      targetStatus,
+    });
+    if (result === "missing") {
+      throw new NotFoundException();
+    }
+    if (result === "forbidden") {
+      throw new ForbiddenException();
+    }
+    if (result === "invalid_transition") {
+      throw new HttpException({ message: "Transición de estado no permitida" }, 422);
+    }
+    return result;
   }
 }
 

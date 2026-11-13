@@ -12,6 +12,53 @@ export type DraftOrder = {
   paymentMethod: string;
 };
 
+const TERMINAL_STATUSES = new Set([
+  "DELIVERED",
+  "EXPIRED",
+  "CANCELLED_RESTAURANT",
+  "CANCELLED_COURIER",
+  "CANCELLED_ADMIN",
+  "FAILED",
+]);
+
+export type OrderEventItem = {
+  id: string;
+  fromStatus: string;
+  toStatus: string;
+  actorKind: string;
+  createdAt: string;
+};
+
+export type RestaurantOrderView = {
+  id: string;
+  referenceCode: string;
+  status: string;
+  foodAmountCop: number;
+  deliveryFeeCop: number;
+  paymentMethod: string | null;
+  customerName: string | null;
+  customerPhone: string | null;
+  dropoffAddress: string | null;
+  events: OrderEventItem[];
+};
+
+export type CourierOrderView = {
+  id: string;
+  referenceCode: string;
+  status: string;
+  deliveryFeeCop: number;
+  paymentMethod: string | null;
+  customerName: string | null;
+  customerPhone?: string;
+  dropoffAddress: string | null;
+  events: OrderEventItem[];
+};
+
+export type OrderViewResult =
+  | { kind: "ok"; order: RestaurantOrderView | CourierOrderView }
+  | { kind: "forbidden" }
+  | { kind: "missing" };
+
 @Injectable()
 export class OrderRepository {
   constructor(private readonly database: Database) {}
@@ -87,6 +134,115 @@ export class OrderRepository {
       return null;
     }
     return { ...row, status: "DRAFT" };
+  }
+
+  async findOrderView(id: string, userId: string): Promise<OrderViewResult> {
+    const orderResult = await this.database.pool.query<{
+      id: string;
+      referenceCode: string;
+      restaurantId: string;
+      status: string;
+      foodAmountCop: number;
+      deliveryFeeCop: number;
+      paymentMethod: string | null;
+      assignedCourierId: string | null;
+      customerName: string | null;
+      customerPhoneE164: string | null;
+      dropoffAddress: string | null;
+    }>(
+      `SELECT id, "referenceCode", "restaurantId", status::text AS status,
+              "foodAmountCop", "deliveryFeeCop", "paymentMethod"::text AS "paymentMethod",
+              "assignedCourierId", "customerName", "customerPhoneE164", "dropoffAddress"
+       FROM orders
+       WHERE id = $1`,
+      [id],
+    );
+    const order = orderResult.rows[0];
+    if (order === undefined) {
+      return { kind: "missing" };
+    }
+
+    const memberResult = await this.database.pool.query<{ id: string }>(
+      `SELECT id FROM restaurant_memberships
+       WHERE "restaurantId" = $1 AND "userId" = $2 AND status = 'ACTIVE'`,
+      [order.restaurantId, userId],
+    );
+    const isRestaurantMember = memberResult.rows[0] !== undefined;
+
+    if (isRestaurantMember) {
+      const events = await this.listEvents(id);
+      return {
+        kind: "ok",
+        order: {
+          id: order.id,
+          referenceCode: order.referenceCode,
+          status: order.status,
+          foodAmountCop: order.foodAmountCop,
+          deliveryFeeCop: order.deliveryFeeCop,
+          paymentMethod: order.paymentMethod,
+          customerName: order.customerName,
+          customerPhone: order.customerPhoneE164,
+          dropoffAddress: order.dropoffAddress,
+          events,
+        },
+      };
+    }
+
+    const courierResult = await this.database.pool.query<{ id: string }>(
+      `SELECT id FROM couriers WHERE "userId" = $1`,
+      [userId],
+    );
+    const courier = courierResult.rows[0];
+    if (courier !== undefined) {
+      if (order.assignedCourierId !== courier.id) {
+        return { kind: "forbidden" };
+      }
+      const events = await this.listEvents(id);
+      const isNonTerminal =
+        !TERMINAL_STATUSES.has(order.status) &&
+        order.status !== "DRAFT" &&
+        order.status !== "SEEKING_COURIER";
+      const courierView: CourierOrderView = {
+        id: order.id,
+        referenceCode: order.referenceCode,
+        status: order.status,
+        deliveryFeeCop: order.deliveryFeeCop,
+        paymentMethod: order.paymentMethod,
+        customerName: order.customerName,
+        ...(isNonTerminal && order.customerPhoneE164 !== null
+          ? { customerPhone: order.customerPhoneE164 }
+          : {}),
+        dropoffAddress: order.dropoffAddress,
+        events,
+      };
+      return { kind: "ok", order: courierView };
+    }
+
+    return { kind: "missing" };
+  }
+
+  async listEvents(orderId: string): Promise<OrderEventItem[]> {
+    const result = await this.database.pool.query<{
+      id: string;
+      fromStatus: string;
+      toStatus: string;
+      actorKind: string;
+      createdAt: Date | string;
+    }>(
+      `SELECT id, "fromStatus"::text AS "fromStatus", "toStatus"::text AS "toStatus",
+              "actorKind"::text AS "actorKind", "createdAt"
+       FROM order_events
+       WHERE "orderId" = $1
+       ORDER BY "createdAt" ASC, id ASC`,
+      [orderId],
+    );
+    return result.rows.map((row) => ({
+      id: row.id,
+      fromStatus: row.fromStatus,
+      toStatus: row.toStatus,
+      actorKind: row.actorKind,
+      createdAt: row.createdAt instanceof Date ? row.createdAt.toISOString() : row.createdAt,
+    }));
   }
 }
 
