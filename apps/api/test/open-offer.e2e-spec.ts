@@ -558,7 +558,7 @@ describe("oferta abierta", () => {
       .set("Authorization", `Bearer ${reviewer}`)
       .send({
         kind: "DOCUMENT_PROCESSING",
-        version: "2026-concurrente-docs",
+        version: "2026-conc-docs",
         content: "Texto sintetico de tratamiento de documentos de prueba concurrente",
       })
       .expect(201);
@@ -567,7 +567,7 @@ describe("oferta abierta", () => {
       .set("Authorization", `Bearer ${reviewer}`)
       .send({
         kind: "GEOLOCATION_CONSENT",
-        version: "2026-concurrente-gps",
+        version: "2026-conc-gps",
         content: "Texto sintetico de geolocalizacion de prueba concurrente",
       })
       .expect(201);

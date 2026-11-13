@@ -21,79 +21,93 @@ describe("OffersRepository.accept - Concurrencia Determinista en PostgreSQL (M23
       await monitorClient.connect();
       canConnect = true;
 
-      // Asegurar que las tablas requeridas existan (por si no se ejecutó prisma migrate deploy previo)
-      await setupClient.query(`
-        CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+      // Si no se ejecutó prisma migrate deploy previo (entorno local sin PostGIS), crear tablas mínimas
+      const schemaCheck = await setupClient.query<{ exists: boolean }>(
+        `SELECT to_regclass('public.restaurants') IS NOT NULL AS exists`,
+      );
+      const hasFullSchema = schemaCheck.rows[0]?.exists === true;
 
-        CREATE TABLE IF NOT EXISTS users (
-          id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-          email text NOT NULL UNIQUE
-        );
+      if (!hasFullSchema) {
+        await setupClient.query(`
+          CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
-        CREATE TABLE IF NOT EXISTS couriers (
-          id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-          "userId" uuid NOT NULL REFERENCES users(id)
-        );
+          CREATE TABLE IF NOT EXISTS users (
+            id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+            email text NOT NULL UNIQUE,
+            "updatedAt" timestamptz NOT NULL DEFAULT now()
+          );
 
-        CREATE TABLE IF NOT EXISTS courier_availabilities (
-          "courierId" uuid PRIMARY KEY REFERENCES couriers(id),
-          state text NOT NULL,
-          "updatedAt" timestamp NOT NULL DEFAULT now()
-        );
+          CREATE TABLE IF NOT EXISTS couriers (
+            id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+            "userId" uuid NOT NULL REFERENCES users(id),
+            "documentType" text NOT NULL DEFAULT 'CC',
+            "documentNumber" text NOT NULL DEFAULT '10000000',
+            "firstName" text NOT NULL DEFAULT 'Courier',
+            "lastName" text NOT NULL DEFAULT 'Race',
+            "registrationSource" text NOT NULL DEFAULT 'OPEN',
+            "updatedAt" timestamptz NOT NULL DEFAULT now()
+          );
 
-        CREATE TABLE IF NOT EXISTS orders (
-          id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-          status text NOT NULL,
-          "assignedCourierId" uuid REFERENCES couriers(id),
-          "acceptedAt" timestamp,
-          "updatedAt" timestamp NOT NULL DEFAULT now()
-        );
+          CREATE TABLE IF NOT EXISTS courier_availabilities (
+            "courierId" uuid PRIMARY KEY REFERENCES couriers(id),
+            state text NOT NULL,
+            "updatedAt" timestamptz NOT NULL DEFAULT now()
+          );
 
-        CREATE TABLE IF NOT EXISTS dispatch_offers (
-          id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-          "orderId" uuid NOT NULL REFERENCES orders(id),
-          "courierId" uuid NOT NULL REFERENCES couriers(id),
-          status text NOT NULL,
-          "expiresAt" timestamp NOT NULL,
-          "respondedAt" timestamp
-        );
+          CREATE TABLE IF NOT EXISTS orders (
+            id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+            status text NOT NULL,
+            "assignedCourierId" uuid REFERENCES couriers(id),
+            "acceptedAt" timestamptz,
+            "updatedAt" timestamptz NOT NULL DEFAULT now()
+          );
 
-        CREATE TABLE IF NOT EXISTS idempotency_keys (
-          id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-          "userId" uuid NOT NULL REFERENCES users(id),
-          key text NOT NULL,
-          "requestHash" text NOT NULL,
-          "responseStatus" int NOT NULL,
-          "createdAt" timestamp NOT NULL DEFAULT now(),
-          "expiresAt" timestamp NOT NULL
-        );
+          CREATE TABLE IF NOT EXISTS dispatch_offers (
+            id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+            "orderId" uuid NOT NULL REFERENCES orders(id),
+            "courierId" uuid NOT NULL REFERENCES couriers(id),
+            status text NOT NULL,
+            "expiresAt" timestamptz NOT NULL,
+            "respondedAt" timestamptz
+          );
 
-        CREATE UNIQUE INDEX IF NOT EXISTS idempotency_keys_user_key_uidx ON idempotency_keys("userId", key);
+          CREATE TABLE IF NOT EXISTS idempotency_keys (
+            id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+            "userId" uuid NOT NULL REFERENCES users(id),
+            key text NOT NULL,
+            "requestHash" text NOT NULL,
+            "responseStatus" int NOT NULL,
+            "createdAt" timestamptz NOT NULL DEFAULT now(),
+            "expiresAt" timestamptz NOT NULL
+          );
 
-        CREATE TABLE IF NOT EXISTS order_events (
-          id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-          "orderId" uuid NOT NULL REFERENCES orders(id),
-          "fromStatus" text NOT NULL,
-          "toStatus" text NOT NULL,
-          "actorKind" text NOT NULL,
-          "actorId" uuid NOT NULL,
-          "createdAt" timestamp NOT NULL DEFAULT now()
-        );
+          CREATE UNIQUE INDEX IF NOT EXISTS idempotency_keys_user_key_uidx ON idempotency_keys("userId", key);
 
-        CREATE TABLE IF NOT EXISTS audit_logs (
-          id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-          "actorId" uuid NOT NULL,
-          "actorKind" text NOT NULL,
-          action text NOT NULL,
-          "entityType" text NOT NULL,
-          "entityId" uuid NOT NULL,
-          diff jsonb,
-          "createdAt" timestamp NOT NULL DEFAULT now()
-        );
+          CREATE TABLE IF NOT EXISTS order_events (
+            id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+            "orderId" uuid NOT NULL REFERENCES orders(id),
+            "fromStatus" text NOT NULL,
+            "toStatus" text NOT NULL,
+            "actorKind" text NOT NULL,
+            "actorId" uuid NOT NULL,
+            "createdAt" timestamptz NOT NULL DEFAULT now()
+          );
 
-        CREATE UNIQUE INDEX IF NOT EXISTS "orders_one_active_per_courier" ON orders("assignedCourierId")
-        WHERE status IN ('ACCEPTED', 'ARRIVING_PICKUP', 'AT_PICKUP', 'PICKED_UP', 'AT_DROPOFF');
-      `);
+          CREATE TABLE IF NOT EXISTS audit_logs (
+            id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+            "actorId" uuid NOT NULL,
+            "actorKind" text NOT NULL,
+            action text NOT NULL,
+            "entityType" text NOT NULL,
+            "entityId" uuid NOT NULL,
+            diff jsonb,
+            "createdAt" timestamptz NOT NULL DEFAULT now()
+          );
+
+          CREATE UNIQUE INDEX IF NOT EXISTS "orders_one_active_per_courier" ON orders("assignedCourierId")
+          WHERE status IN ('ACCEPTED', 'ARRIVING_PICKUP', 'AT_PICKUP', 'PICKED_UP', 'AT_DROPOFF');
+        `);
+      }
     } catch {
       canConnect = false;
     }
@@ -124,35 +138,79 @@ describe("OffersRepository.accept - Concurrencia Determinista en PostgreSQL (M23
       return;
     }
 
-    // 1. Limpieza de datos previa
-    await setupClient.query(
-      "TRUNCATE audit_logs, order_events, idempotency_keys, dispatch_offers, orders, courier_availabilities, couriers, users CASCADE",
+    const schemaCheck = await setupClient.query<{ exists: boolean }>(
+      `SELECT to_regclass('public.restaurants') IS NOT NULL AS exists`,
     );
+    const hasFullSchema = schemaCheck.rows[0]?.exists === true;
+
+    // 1. Limpieza de datos previa
+    if (hasFullSchema) {
+      await setupClient.query(
+        "TRUNCATE audit_logs, order_events, idempotency_keys, dispatch_offers, orders, courier_availabilities, couriers, branches, establishments, restaurants, users CASCADE",
+      );
+    } else {
+      await setupClient.query(
+        "TRUNCATE audit_logs, order_events, idempotency_keys, dispatch_offers, orders, courier_availabilities, couriers, users CASCADE",
+      );
+    }
 
     // 2. Sembrar usuario y courier en estado AVAILABLE
     const userResult = await setupClient.query<{ id: string }>(
-      "INSERT INTO users (id, email) VALUES (gen_random_uuid(), 'courier-race@test.local') RETURNING id",
+      `INSERT INTO users (id, email, "updatedAt") VALUES (gen_random_uuid(), 'courier-race@test.local', now()) RETURNING id`,
     );
     const user = userResult.rows[0];
     if (user === undefined) throw new Error("Fallo al insertar usuario de prueba");
 
     const courierResult = await setupClient.query<{ id: string }>(
-      'INSERT INTO couriers (id, "userId") VALUES (gen_random_uuid(), $1) RETURNING id',
+      `INSERT INTO couriers (id, "userId", "documentType", "documentNumber", "firstName", "lastName", "registrationSource", "updatedAt")
+       VALUES (gen_random_uuid(), $1, 'CC', '80099901', 'Courier', 'Race', 'OPEN', now())
+       RETURNING id`,
       [user.id],
     );
     const courier = courierResult.rows[0];
     if (courier === undefined) throw new Error("Fallo al insertar courier de prueba");
 
     await setupClient.query(
-      'INSERT INTO courier_availabilities ("courierId", state) VALUES ($1, $2)',
+      `INSERT INTO courier_availabilities ("courierId", state, "updatedAt") VALUES ($1, $2, now())`,
       [courier.id, "AVAILABLE"],
     );
 
     // 3. Sembrar orden en SEEKING_COURIER y oferta PENDING
-    const orderResult = await setupClient.query<{ id: string }>(
-      "INSERT INTO orders (id, status) VALUES (gen_random_uuid(), 'SEEKING_COURIER') RETURNING id",
-    );
-    const order = orderResult.rows[0];
+    let order: { id: string } | undefined;
+    if (hasFullSchema) {
+      const restResult = await setupClient.query<{ id: string }>(
+        `INSERT INTO restaurants (id, "legalName", "tradeName", nit, email, "phoneE164", "updatedAt")
+         VALUES (gen_random_uuid(), 'Race SAS', 'Race Food', '900999001', 'race-rest@test.local', '+573009990001', now())
+         RETURNING id`,
+      );
+      const restaurantId = restResult.rows[0]?.id;
+      const estResult = await setupClient.query<{ id: string }>(
+        `INSERT INTO establishments (id, "restaurantId", name, "updatedAt")
+         VALUES (gen_random_uuid(), $1, 'Establecimiento Race', now())
+         RETURNING id`,
+        [restaurantId],
+      );
+      const estId = estResult.rows[0]?.id;
+      const branchResult = await setupClient.query<{ id: string }>(
+        `INSERT INTO branches (id, "establishmentId", name, "addressLine", "updatedAt")
+         VALUES (gen_random_uuid(), $1, 'Sede Race', 'Calle Race 1', now())
+         RETURNING id`,
+        [estId],
+      );
+      const branchId = branchResult.rows[0]?.id;
+      const orderResult = await setupClient.query<{ id: string }>(
+        `INSERT INTO orders (id, "referenceCode", "restaurantId", "branchId", "createdById", status, "updatedAt")
+         VALUES (gen_random_uuid(), 'RACE0001', $1, $2, $3, 'SEEKING_COURIER', now())
+         RETURNING id`,
+        [restaurantId, branchId, user.id],
+      );
+      order = orderResult.rows[0];
+    } else {
+      const orderResult = await setupClient.query<{ id: string }>(
+        `INSERT INTO orders (id, status, "updatedAt") VALUES (gen_random_uuid(), 'SEEKING_COURIER', now()) RETURNING id`,
+      );
+      order = orderResult.rows[0];
+    }
     if (order === undefined) throw new Error("Fallo al insertar orden de prueba");
 
     const offerResult = await setupClient.query<{ id: string }>(

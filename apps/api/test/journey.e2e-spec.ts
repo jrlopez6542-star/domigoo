@@ -92,7 +92,7 @@ describe("recorrido del pedido (M24)", () => {
   it("avanza el recorrido, registra order_events, oculta foodAmountCop al domiciliario y responde 403 a no asignado", async () => {
     const ownerRes = await request(server())
       .post("/v1/auth/register")
-      .send({ email: "owner-m24@example.invalid", password, client: "WEB" })
+      .send({ email: "owner-m24@example.invalid", password, client: "MOBILE" })
       .expect(201);
     const ownerToken = String(record(ownerRes.body)["token"]);
 
