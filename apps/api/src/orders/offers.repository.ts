@@ -11,6 +11,19 @@ export type AcceptResult = {
   orderStatus: "ACCEPTED";
 };
 
+export function computeOfferAcceptHash(offerId: string, body: unknown): string {
+  return createHash("sha256")
+    .update(
+      JSON.stringify({
+        method: "POST",
+        action: "accept_offer",
+        offerId,
+        body: body ?? {},
+      }),
+    )
+    .digest("hex");
+}
+
 @Injectable()
 export class OffersRepository {
   constructor(private readonly database: Database) {}
@@ -21,7 +34,7 @@ export class OffersRepository {
     idempotencyKey: string,
     body: unknown,
   ): Promise<AcceptResult | "missing" | "conflict" | "mismatch"> {
-    const requestHash = createHash("sha256").update(JSON.stringify(body)).digest("hex");
+    const requestHash = computeOfferAcceptHash(offerId, body);
     const client = await this.database.pool.connect();
     try {
       await client.query("BEGIN");
@@ -29,41 +42,98 @@ export class OffersRepository {
         `SELECT "requestHash" FROM idempotency_keys WHERE "userId" = $1 AND key = $2 FOR UPDATE`,
         [userId, idempotencyKey],
       );
-      const prior = existing.rows[0];
+      let prior = existing.rows[0];
       if (prior !== undefined && prior.requestHash !== requestHash) {
         await client.query("ROLLBACK");
         return "mismatch";
       }
+
+      const courierRow = await client.query<{
+        courierId: string;
+        availabilityState: string;
+      }>(
+        `SELECT c.id AS "courierId", a.state::text AS "availabilityState"
+         FROM couriers c
+         JOIN courier_availabilities a ON a."courierId" = c.id
+         WHERE c."userId" = $1
+         FOR UPDATE OF a`,
+        [userId],
+      );
+      const courier = courierRow.rows[0];
+      if (courier === undefined) {
+        await client.query("ROLLBACK");
+        return "missing";
+      }
+
+      // Si no encontramos la clave al inicio, re-consultamos idempotency_keys
+      // tras adquirir el cerrojo de disponibilidad para capturar carreras concurrentes
+      if (prior === undefined) {
+        const recheck = await client.query<{ requestHash: string }>(
+          `SELECT "requestHash" FROM idempotency_keys WHERE "userId" = $1 AND key = $2 FOR UPDATE`,
+          [userId, idempotencyKey],
+        );
+        prior = recheck.rows[0];
+        if (prior !== undefined && prior.requestHash !== requestHash) {
+          await client.query("ROLLBACK");
+          return "mismatch";
+        }
+      }
+
+      if (prior !== undefined) {
+        const offerQuery = await client.query<{
+          orderId: string;
+          orderStatus: string;
+          offerStatus: string;
+        }>(
+          `SELECT d."orderId", o.status::text AS "orderStatus", d.status::text AS "offerStatus"
+           FROM dispatch_offers d
+           JOIN orders o ON o.id = d."orderId"
+           WHERE d.id = $1 AND d."courierId" = $2`,
+          [offerId, courier.courierId],
+        );
+        const offer = offerQuery.rows[0];
+        if (offer === undefined) {
+          await client.query("ROLLBACK");
+          return "missing";
+        }
+        if (offer.offerStatus !== "ACCEPTED") {
+          await client.query("ROLLBACK");
+          return "conflict";
+        }
+        await client.query("COMMIT");
+        return {
+          offerId,
+          orderId: offer.orderId,
+          offerStatus: "ACCEPTED",
+          orderStatus: "ACCEPTED",
+        };
+      }
+
+      if (courier.availabilityState !== "AVAILABLE") {
+        await client.query("ROLLBACK");
+        return "conflict";
+      }
+
       const locked = await client.query<{
         orderId: string;
         orderStatus: string;
         offerStatus: string;
-        courierId: string;
         expiresAt: Date | string;
       }>(
         `SELECT o.id AS "orderId", o.status::text AS "orderStatus", d.status::text AS "offerStatus",
-                d."courierId", d."expiresAt"
+                d."expiresAt"
          FROM dispatch_offers d
          JOIN orders o ON o.id = d."orderId"
-         JOIN couriers c ON c.id = d."courierId"
-         WHERE d.id = $1 AND c."userId" = $2
+         WHERE d.id = $1 AND d."courierId" = $2
          FOR UPDATE OF o, d`,
-        [offerId, userId],
+        [offerId, courier.courierId],
       );
       const row = locked.rows[0];
       if (row === undefined) {
         await client.query("ROLLBACK");
         return "missing";
       }
-      if (prior !== undefined) {
-        await client.query("COMMIT");
-        return {
-          offerId,
-          orderId: row.orderId,
-          offerStatus: "ACCEPTED",
-          orderStatus: "ACCEPTED",
-        };
-      }
+
       if (
         !canTransition("SEEKING_COURIER", "ACCEPTED") ||
         row.orderStatus !== "SEEKING_COURIER" ||
@@ -87,12 +157,18 @@ export class OffersRepository {
         `UPDATE orders
          SET status = 'ACCEPTED', "assignedCourierId" = $2, "acceptedAt" = now(), "updatedAt" = now()
          WHERE id = $1`,
-        [row.orderId, row.courierId],
+        [row.orderId, courier.courierId],
       );
-      await client.query(
-        `UPDATE courier_availabilities SET state = 'ON_SERVICE', "updatedAt" = now() WHERE "courierId" = $1`,
-        [row.courierId],
+      const availabilityUpdate = await client.query(
+        `UPDATE courier_availabilities
+         SET state = 'ON_SERVICE', "updatedAt" = now()
+         WHERE "courierId" = $1 AND state = 'AVAILABLE'`,
+        [courier.courierId],
       );
+      if (availabilityUpdate.rowCount !== 1) {
+        await client.query("ROLLBACK");
+        return "conflict";
+      }
       await client.query(
         `INSERT INTO order_events (
            id, "orderId", "fromStatus", "toStatus", "actorKind", "actorId", "createdAt"
