@@ -1,8 +1,11 @@
 import { randomBytes } from "node:crypto";
-import { Injectable } from "@nestjs/common";
+import { Inject, Injectable, Optional } from "@nestjs/common";
+import { APP_ENV, defaultPinEnv, type AppEnv } from "../config/env.js";
 import { Database } from "../database.js";
+import { decryptPin } from "./pin-crypto.js";
 
 const METHODS = new Set(["CASH", "NEQUI", "DAVIPLATA", "TRANSFER"]);
+const RESTAURANT_PICKUP_PIN_STATUSES = new Set(["ACCEPTED", "ARRIVING_PICKUP", "AT_PICKUP"]);
 
 export type DraftOrder = {
   id: string;
@@ -39,6 +42,7 @@ export type RestaurantOrderView = {
   customerName: string | null;
   customerPhone: string | null;
   dropoffAddress: string | null;
+  pickupPin?: string;
   events: OrderEventItem[];
 };
 
@@ -61,7 +65,14 @@ export type OrderViewResult =
 
 @Injectable()
 export class OrderRepository {
-  constructor(private readonly database: Database) {}
+  private readonly pinEnv: Pick<AppEnv, "pinPepper" | "appEncryptionKey">;
+
+  constructor(
+    private readonly database: Database,
+    @Optional() @Inject(APP_ENV) env?: AppEnv,
+  ) {
+    this.pinEnv = env ?? defaultPinEnv();
+  }
 
   async createDraft(input: {
     userId: string;
@@ -149,10 +160,12 @@ export class OrderRepository {
       customerName: string | null;
       customerPhoneE164: string | null;
       dropoffAddress: string | null;
+      pickupPinCiphertext: string | null;
     }>(
       `SELECT id, "referenceCode", "restaurantId", status::text AS status,
               "foodAmountCop", "deliveryFeeCop", "paymentMethod"::text AS "paymentMethod",
-              "assignedCourierId", "customerName", "customerPhoneE164", "dropoffAddress"
+              "assignedCourierId", "customerName", "customerPhoneE164", "dropoffAddress",
+              "pickupPinCiphertext"
        FROM orders
        WHERE id = $1`,
       [id],
@@ -171,6 +184,10 @@ export class OrderRepository {
 
     if (isRestaurantMember) {
       const events = await this.listEvents(id);
+      const pickupPin =
+        RESTAURANT_PICKUP_PIN_STATUSES.has(order.status) && order.pickupPinCiphertext !== null
+          ? decryptPin(order.pickupPinCiphertext, order.id, "PICKUP", this.pinEnv.appEncryptionKey)
+          : undefined;
       return {
         kind: "ok",
         order: {
@@ -183,6 +200,7 @@ export class OrderRepository {
           customerName: order.customerName,
           customerPhone: order.customerPhoneE164,
           dropoffAddress: order.dropoffAddress,
+          ...(pickupPin !== undefined ? { pickupPin } : {}),
           events,
         },
       };

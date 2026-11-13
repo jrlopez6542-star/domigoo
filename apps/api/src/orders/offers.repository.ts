@@ -1,8 +1,10 @@
 import { createHash } from "node:crypto";
-import { Injectable } from "@nestjs/common";
+import { Inject, Injectable, Optional } from "@nestjs/common";
+import { APP_ENV, defaultPinEnv, type AppEnv } from "../config/env.js";
 import { Database } from "../database.js";
 import { redactDiff } from "../audit/redact-diff.js";
 import { canTransition } from "./order-machine.js";
+import { encryptPin, generatePin, hashPin } from "./pin-crypto.js";
 
 export type AcceptResult = {
   offerId: string;
@@ -26,7 +28,14 @@ export function computeOfferAcceptHash(offerId: string, body: unknown): string {
 
 @Injectable()
 export class OffersRepository {
-  constructor(private readonly database: Database) {}
+  private readonly pinEnv: Pick<AppEnv, "pinPepper" | "appEncryptionKey">;
+
+  constructor(
+    private readonly database: Database,
+    @Optional() @Inject(APP_ENV) env?: AppEnv,
+  ) {
+    this.pinEnv = env ?? defaultPinEnv();
+  }
 
   async accept(
     offerId: string,
@@ -153,11 +162,42 @@ export class OffersRepository {
          WHERE "orderId" = $1 AND id <> $2 AND status = 'PENDING'`,
         [row.orderId, offerId],
       );
+      const pickupPin = generatePin(6);
+      const deliveryPin = generatePin(6);
+      const pickupPinHash = hashPin(pickupPin, row.orderId, "PICKUP", this.pinEnv.pinPepper);
+      const pickupPinCiphertext = encryptPin(
+        pickupPin,
+        row.orderId,
+        "PICKUP",
+        this.pinEnv.appEncryptionKey,
+      );
+      const deliveryPinHash = hashPin(deliveryPin, row.orderId, "DELIVERY", this.pinEnv.pinPepper);
+      const deliveryPinCiphertext = encryptPin(
+        deliveryPin,
+        row.orderId,
+        "DELIVERY",
+        this.pinEnv.appEncryptionKey,
+      );
+
       await client.query(
         `UPDATE orders
-         SET status = 'ACCEPTED', "assignedCourierId" = $2, "acceptedAt" = now(), "updatedAt" = now()
+         SET status = 'ACCEPTED',
+             "assignedCourierId" = $2,
+             "pickupPinHash" = $3,
+             "pickupPinCiphertext" = $4,
+             "deliveryPinHash" = $5,
+             "deliveryPinCiphertext" = $6,
+             "acceptedAt" = now(),
+             "updatedAt" = now()
          WHERE id = $1`,
-        [row.orderId, courier.courierId],
+        [
+          row.orderId,
+          courier.courierId,
+          pickupPinHash,
+          pickupPinCiphertext,
+          deliveryPinHash,
+          deliveryPinCiphertext,
+        ],
       );
       const availabilityUpdate = await client.query(
         `UPDATE courier_availabilities

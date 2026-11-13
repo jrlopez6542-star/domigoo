@@ -178,6 +178,26 @@ export class OrdersController {
     return this.runJourneyStep(id, request, "AT_DROPOFF");
   }
 
+  @Post(":id/pickup-pin")
+  @ApiOperation({ summary: "El domiciliario verifica el PIN de recogida para pasar a PICKED_UP" })
+  async verifyPickupPin(
+    @Param("id") id: string,
+    @Body() body: unknown,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<JourneyTransitionResult> {
+    return this.runPinVerification(id, body, request, "PICKUP");
+  }
+
+  @Post(":id/delivery-pin")
+  @ApiOperation({ summary: "El domiciliario verifica el PIN de entrega para pasar a DELIVERED" })
+  async verifyDeliveryPin(
+    @Param("id") id: string,
+    @Body() body: unknown,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<JourneyTransitionResult> {
+    return this.runPinVerification(id, body, request, "DELIVERY");
+  }
+
   private async runJourneyStep(
     orderId: string,
     request: AuthenticatedRequest,
@@ -203,6 +223,76 @@ export class OrdersController {
     }
     return result;
   }
+
+  private async runPinVerification(
+    orderId: string,
+    body: unknown,
+    request: AuthenticatedRequest,
+    kind: "PICKUP" | "DELIVERY",
+  ): Promise<JourneyTransitionResult> {
+    const userId = request.auth?.userId;
+    if (userId === undefined) {
+      throw new NotFoundException();
+    }
+    const pin = readPin(body);
+    if (pin === null) {
+      throw new HttpException({ message: "El PIN debe ser numérico" }, 422);
+    }
+    const result = await this.journey.verifyPinByCourier({
+      orderId,
+      userId,
+      kind,
+      pin,
+    });
+    if (result.kind === "missing") {
+      throw new NotFoundException();
+    }
+    if (result.kind === "forbidden") {
+      throw new ForbiddenException();
+    }
+    if (result.kind === "invalid_transition") {
+      throw new HttpException({ message: "Transición de estado no permitida" }, 422);
+    }
+    if (result.kind === "locked") {
+      throw new HttpException(
+        {
+          message: "PIN bloqueado por límite de intentos",
+          attempts: result.attempts,
+          maxAttempts: result.maxAttempts,
+          lockedOut: true,
+        },
+        422,
+      );
+    }
+    if (result.kind === "invalid_pin") {
+      throw new HttpException(
+        {
+          message: "PIN incorrecto",
+          attempts: result.attempts,
+          maxAttempts: result.maxAttempts,
+          lockedOut: result.lockedOut,
+        },
+        422,
+      );
+    }
+    return {
+      id: result.id,
+      fromStatus: result.fromStatus,
+      toStatus: result.toStatus,
+      status: result.status,
+    };
+  }
+}
+
+function readPin(body: unknown): string | null {
+  if (typeof body !== "object" || body === null) {
+    return null;
+  }
+  const pin = (body as Record<string, unknown>)["pin"];
+  if (typeof pin !== "string" || !/^\d{4,12}$/.test(pin)) {
+    return null;
+  }
+  return pin;
 }
 
 function readDraft(body: unknown): {

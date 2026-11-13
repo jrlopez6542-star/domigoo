@@ -58,6 +58,10 @@ describe("OffersRepository.accept - Concurrencia Determinista en PostgreSQL (M23
             id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
             status text NOT NULL,
             "assignedCourierId" uuid REFERENCES couriers(id),
+            "pickupPinHash" text,
+            "pickupPinCiphertext" text,
+            "deliveryPinHash" text,
+            "deliveryPinCiphertext" text,
             "acceptedAt" timestamptz,
             "updatedAt" timestamptz NOT NULL DEFAULT now()
           );
