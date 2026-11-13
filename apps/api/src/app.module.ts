@@ -1,4 +1,5 @@
 import { Module } from "@nestjs/common";
+import { AdminModule } from "./admin/admin.module.js";
 import { AuditModule } from "./audit/audit.module.js";
 import { ConfigModule } from "./config/config.module.js";
 import { DatabaseModule } from "./database.module.js";
@@ -23,6 +24,7 @@ import { VerificationModule } from "./verification/verification.module.js";
     ConfigModule,
     DatabaseModule,
     AuditModule,
+    AdminModule,
     IdentityModule,
     RestaurantsModule,
     PrivacyModule,
