@@ -8,7 +8,7 @@ El restaurante paga una suscripción a DOMIGOO. El domiciliario no paga por reci
 
 ## Estado
 
-M23 abre una ola y acepta una sola oferta a la vez. La próxima misión es **M24**: el recorrido del pedido.
+M25 confirma la recogida y la entrega con PIN cifrado. La próxima misión es **M26**: cancelación y vencimiento.
 
 ## Calidad
 
@@ -42,6 +42,7 @@ La verificación documental combina reglas automáticas y aprobación humana. Ha
 - [Modelo de datos](docs/modelo-datos.md) y el contrato [apps/api/prisma/schema.prisma](apps/api/prisma/schema.prisma).
 - [Módulos y máquinas de estado](docs/modulos.md).
 - [Plan de misiones](docs/plan-misiones.md): M01 en adelante, con pruebas y criterios de aceptación.
+- [Estado del proyecto](docs/estado-del-proyecto.md): qué está hecho, qué falta y qué depende del dueño.
 - [Pruebas y seguridad](docs/pruebas-y-seguridad.md).
 - [Decisiones, riesgos y ejecución autónoma](docs/decisiones/README.md).
 

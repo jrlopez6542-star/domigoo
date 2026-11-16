@@ -7,7 +7,8 @@ import { Test } from "@nestjs/testing";
 import { Pool } from "pg";
 import request from "supertest";
 import { AppModule } from "../src/app.module.js";
-import { APP_ENV, readEnv, type AppEnv } from "../src/config/env.js";
+import { APP_ENV, type AppEnv } from "../src/config/env.js";
+import { testEnv } from "./test-env.js";
 import { applyHttpSecurity } from "../src/http.js";
 import { resetLoginThrottle } from "../src/identity/login-throttle.js";
 import { setupOpenApi } from "../src/openapi.js";
@@ -103,7 +104,7 @@ describe("motocicleta y documentos", () => {
     resetLoginThrottle();
     await resetDatabase(databaseUrl);
     currentApp = await createApp(
-      readEnv({
+      testEnv({
         DATABASE_URL: databaseUrl,
         APP_NAME: "DOMIGOO",
         STORAGE_DIR: storageDir,
