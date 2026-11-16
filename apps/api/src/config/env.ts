@@ -7,6 +7,8 @@ export type AppEnv = {
   readonly port: number;
   readonly cookieSecure: boolean;
   readonly storageDir: string;
+  readonly pinPepper: Uint8Array;
+  readonly dataEncryptionKey: Uint8Array;
 };
 
 export const APP_ENV = Symbol("APP_ENV");
@@ -28,7 +30,21 @@ export function readEnv(env: NodeJS.ProcessEnv): AppEnv {
     port: readPort(env["PORT"]),
     cookieSecure: env["NODE_ENV"] === "production",
     storageDir: readStorageDir(env["STORAGE_DIR"]),
+    pinPepper: readSecret(env["PIN_PEPPER"], "PIN_PEPPER"),
+    dataEncryptionKey: readSecret(env["DATA_ENCRYPTION_KEY"], "DATA_ENCRYPTION_KEY"),
   };
+}
+
+function readSecret(raw: string | undefined, name: string): Uint8Array {
+  const value = raw?.trim() ?? "";
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(value)) {
+    throw new Error(`${name} debe ser 32 bytes en base64`);
+  }
+  const bytes = Buffer.from(value, "base64");
+  if (bytes.length !== 32) {
+    throw new Error(`${name} debe ser 32 bytes en base64`);
+  }
+  return bytes;
 }
 
 function readStorageDir(raw: string | undefined): string {

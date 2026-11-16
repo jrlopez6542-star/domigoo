@@ -11,7 +11,7 @@ import {
 } from "@nestjs/common";
 import { ApiOperation, ApiTags } from "@nestjs/swagger";
 import { SessionGuard, type AuthenticatedRequest } from "../identity/session.guard.js";
-import { OrderRepository, type DraftOrder } from "./order.repository.js";
+import { OrderRepository, type DraftOrder, type RestaurantOrder } from "./order.repository.js";
 import { PublishRepository, type OpenWave, type PublishedOrder } from "./publish.repository.js";
 
 @ApiTags("pedidos")
@@ -96,7 +96,10 @@ export class OrdersController {
 
   @Get(":id")
   @ApiOperation({ summary: "Lee el borrador, incluida la comida, para el restaurante" })
-  async getOne(@Param("id") id: string, @Req() request: AuthenticatedRequest): Promise<DraftOrder> {
+  async getOne(
+    @Param("id") id: string,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<RestaurantOrder> {
     const userId = request.auth?.userId;
     if (userId === undefined) {
       throw new NotFoundException();

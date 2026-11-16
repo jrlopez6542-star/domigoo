@@ -1,6 +1,8 @@
 import { randomBytes } from "node:crypto";
-import { Injectable } from "@nestjs/common";
+import { Inject, Injectable } from "@nestjs/common";
+import { APP_ENV, type AppEnv } from "../config/env.js";
 import { Database } from "../database.js";
+import { openPin, showsPickupPin } from "./pin.js";
 
 const METHODS = new Set(["CASH", "NEQUI", "DAVIPLATA", "TRANSFER"]);
 
@@ -12,9 +14,21 @@ export type DraftOrder = {
   paymentMethod: string;
 };
 
+export type RestaurantOrder = {
+  id: string;
+  status: string;
+  foodAmountCop: number;
+  deliveryFeeCop: number;
+  paymentMethod: string;
+  pickupPin?: string;
+};
+
 @Injectable()
 export class OrderRepository {
-  constructor(private readonly database: Database) {}
+  constructor(
+    private readonly database: Database,
+    @Inject(APP_ENV) private readonly env: AppEnv,
+  ) {}
 
   async createDraft(input: {
     userId: string;
@@ -73,10 +87,17 @@ export class OrderRepository {
     throw new Error("No se pudo asignar un código de pedido");
   }
 
-  async findForMember(id: string, userId: string): Promise<DraftOrder | null> {
-    const result = await this.database.pool.query<DraftOrder>(
+  async findForMember(id: string, userId: string): Promise<RestaurantOrder | null> {
+    const result = await this.database.pool.query<{
+      id: string;
+      status: string;
+      foodAmountCop: number;
+      deliveryFeeCop: number;
+      paymentMethod: string | null;
+      pickupPinCiphertext: string | null;
+    }>(
       `SELECT o.id, o.status::text AS status, o."foodAmountCop", o."deliveryFeeCop",
-              o."paymentMethod"::text AS "paymentMethod"
+              o."paymentMethod"::text AS "paymentMethod", o."pickupPinCiphertext"
        FROM orders o
        JOIN restaurant_memberships m ON m."restaurantId" = o."restaurantId"
        WHERE o.id = $1 AND m."userId" = $2 AND m.status = 'ACTIVE'`,
@@ -86,7 +107,26 @@ export class OrderRepository {
     if (row === undefined) {
       return null;
     }
-    return { ...row, status: "DRAFT" };
+    const order: RestaurantOrder = {
+      id: row.id,
+      status: row.status,
+      foodAmountCop: row.foodAmountCop,
+      deliveryFeeCop: row.deliveryFeeCop,
+      paymentMethod: row.paymentMethod ?? "",
+    };
+    if (!showsPickupPin(row.status) || row.pickupPinCiphertext === null) {
+      return order;
+    }
+    const pickupPin = openPin(
+      this.env.dataEncryptionKey,
+      row.id,
+      "PICKUP",
+      row.pickupPinCiphertext,
+    );
+    if (pickupPin === null) {
+      return order;
+    }
+    return { ...order, pickupPin };
   }
 }
 

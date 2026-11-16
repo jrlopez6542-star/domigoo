@@ -3,12 +3,13 @@ import { Test } from "@nestjs/testing";
 import { Pool } from "pg";
 import request from "supertest";
 import { AppModule } from "../src/app.module.js";
-import { APP_ENV, readEnv, type AppEnv } from "../src/config/env.js";
+import { APP_ENV, type AppEnv } from "../src/config/env.js";
 import { applyHttpSecurity } from "../src/http.js";
 import { resetLoginThrottle } from "../src/identity/login-throttle.js";
 import { setupOpenApi } from "../src/openapi.js";
 import { migrateDatabase } from "./migrate.js";
 import { resetDatabase } from "./reset-db.js";
+import { testEnv } from "./test-env.js";
 
 const databaseUrl =
   process.env["DATABASE_URL"] ?? "postgresql://domigoo:domigoo@127.0.0.1:5432/domigoo";
@@ -69,13 +70,16 @@ describe("recorrido del pedido", () => {
   beforeEach(async () => {
     resetLoginThrottle();
     await resetDatabase(databaseUrl);
-    currentApp = await createApp(readEnv({ DATABASE_URL: databaseUrl, APP_NAME: "DOMIGOO" }));
+    currentApp = await createApp(testEnv({ DATABASE_URL: databaseUrl, APP_NAME: "DOMIGOO" }));
   });
 
   afterEach(async () => {
     await currentApp?.close();
     currentApp = undefined;
     const pool = new Pool({ connectionString: databaseUrl });
+    await pool.query(`DELETE FROM pin_attempts`);
+    await pool.query(`DELETE FROM incident_events`);
+    await pool.query(`DELETE FROM incidents`);
     await pool.query(`DELETE FROM dispatch_offers`);
     await pool.query(`DELETE FROM order_events`);
     await pool.query(`DELETE FROM notification_outbox`);
@@ -288,11 +292,19 @@ describe("recorrido del pedido", () => {
       .set("Authorization", `Bearer ${other}`)
       .expect(403);
 
+    const shown = await request(server())
+      .get(`/v1/orders/${orderId}`)
+      .set("Authorization", `Bearer ${owner}`)
+      .expect(200);
+    const pickupPin = String(record(shown.body)["pickupPin"]);
+    expect(pickupPin).toMatch(/^\d{6}$/);
+
     const seen = await request(server())
       .get(`/v1/orders/${orderId}/courier`)
       .set("Authorization", `Bearer ${courier}`)
       .expect(200);
     expect(JSON.stringify(seen.body)).not.toContain("foodAmountCop");
+    expect(JSON.stringify(seen.body)).not.toContain(pickupPin);
     expect(record(seen.body)["customerPhoneE164"]).toBe(customerPhone);
 
     await request(server())
@@ -303,11 +315,20 @@ describe("recorrido del pedido", () => {
       .post(`/v1/orders/${orderId}/at-pickup`)
       .set("Authorization", `Bearer ${courier}`)
       .expect(201);
-    const mark = new Pool({ connectionString: databaseUrl });
-    await mark.query(`UPDATE orders SET status = 'PICKED_UP', "updatedAt" = now() WHERE id = $1`, [
-      orderId,
-    ]);
-    await mark.end();
+    const still = await request(server())
+      .get(`/v1/orders/${orderId}`)
+      .set("Authorization", `Bearer ${owner}`)
+      .expect(200);
+    expect(record(still.body)["pickupPin"]).toBe(pickupPin);
+    const picked = await request(server())
+      .post(`/v1/orders/${orderId}/pickup-pin`)
+      .set("Authorization", `Bearer ${courier}`)
+      .set("Idempotency-Key", "recorrido-pin")
+      .send({ pin: pickupPin })
+      .expect(201);
+    expect(record(picked.body)["status"]).toBe("PICKED_UP");
+    expect(JSON.stringify(picked.body)).not.toContain(pickupPin);
+    expect(JSON.stringify(picked.body)).not.toContain("foodAmountCop");
     const dropped = await request(server())
       .post(`/v1/orders/${orderId}/at-dropoff`)
       .set("Authorization", `Bearer ${courier}`)
@@ -325,10 +346,12 @@ describe("recorrido del pedido", () => {
     });
     const toward = pairs.indexOf("ACCEPTED->ARRIVING_PICKUP");
     const arrived = pairs.indexOf("ARRIVING_PICKUP->AT_PICKUP");
+    const collected = pairs.indexOf("AT_PICKUP->PICKED_UP");
     const destination = pairs.indexOf("PICKED_UP->AT_DROPOFF");
     expect(toward).toBeGreaterThanOrEqual(0);
     expect(arrived).toBeGreaterThan(toward);
-    expect(destination).toBeGreaterThan(arrived);
+    expect(collected).toBeGreaterThan(arrived);
+    expect(destination).toBeGreaterThan(collected);
 
     const courierHistory = await request(server())
       .get(`/v1/orders/${orderId}/events`)

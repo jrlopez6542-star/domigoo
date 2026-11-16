@@ -3,7 +3,8 @@ import { Test } from "@nestjs/testing";
 import { Pool } from "pg";
 import request from "supertest";
 import { AppModule } from "../src/app.module.js";
-import { APP_ENV, readEnv, type AppEnv } from "../src/config/env.js";
+import { APP_ENV, type AppEnv } from "../src/config/env.js";
+import { testEnv } from "./test-env.js";
 import { applyHttpSecurity } from "../src/http.js";
 import { resetLoginThrottle } from "../src/identity/login-throttle.js";
 import { setupOpenApi } from "../src/openapi.js";
@@ -58,7 +59,7 @@ describe("tarifas", () => {
     await pool.query(`DELETE FROM tariff_zones`);
     await pool.query(`DELETE FROM tariff_versions`);
     await pool.end();
-    currentApp = await createApp(readEnv({ DATABASE_URL: databaseUrl, APP_NAME: "DOMIGOO" }));
+    currentApp = await createApp(testEnv({ DATABASE_URL: databaseUrl, APP_NAME: "DOMIGOO" }));
   });
 
   afterEach(async () => {

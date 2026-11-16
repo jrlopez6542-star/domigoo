@@ -8,7 +8,7 @@ El restaurante paga una suscripción a DOMIGOO. El domiciliario no paga por reci
 
 ## Estado
 
-M24 registra el recorrido del pedido hasta el destino. La próxima misión es **M25**: los PIN de recogida y de entrega.
+M25 confirma la recogida y la entrega con PIN cifrado. La próxima misión es **M26**: cancelación y vencimiento.
 
 ## Calidad
 

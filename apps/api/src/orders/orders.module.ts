@@ -9,11 +9,19 @@ import { OffersController } from "./offers.controller.js";
 import { OffersRepository } from "./offers.repository.js";
 import { OrderRepository } from "./order.repository.js";
 import { OrdersController } from "./orders.controller.js";
+import { PinController } from "./pin.controller.js";
+import { PinRepository } from "./pin.repository.js";
 import { PublishRepository } from "./publish.repository.js";
 
 @Module({
   imports: [IdentityModule, TariffsModule, GeoModule, SubscriptionsModule],
-  controllers: [OrdersController, OffersController, JourneyController],
-  providers: [OrderRepository, PublishRepository, OffersRepository, JourneyRepository],
+  controllers: [OrdersController, OffersController, JourneyController, PinController],
+  providers: [
+    OrderRepository,
+    PublishRepository,
+    OffersRepository,
+    JourneyRepository,
+    PinRepository,
+  ],
 })
 export class OrdersModule {}
