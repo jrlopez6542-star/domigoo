@@ -199,7 +199,7 @@ describeDb("Contratos HTTP reales para Web, Admin y Móvil (M39)", () => {
            status, "registrationSource", "createdAt", "updatedAt"
          )
          SELECT gen_random_uuid(), id, 'CC', '80039001', 'Domiciliario', 'M39',
-                'PENDING_HUMAN', 'OPEN', now(), now()
+                'PENDING_VERIFICATION', 'OPEN', now(), now()
          FROM users WHERE "phoneE164" = '+573001119939'
          RETURNING id`,
       );
