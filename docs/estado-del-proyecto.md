@@ -2,7 +2,7 @@
 
 Fecha: 2026-11-16. El nombre DOMIGOO es provisional y sale de `APP_NAME`. Este documento no afirma marca ni dominio.
 
-La suite de la API, con M24, tiene **52 pruebas** en local. El CI de esta rama se anota al terminar.
+La suite de la API, con M24, tiene **52 pruebas**. En CI el job API del run [43941218385](https://github.com/jrlopez6542-star/domigoo/actions/runs/43941218385) repitió `Tests: 52 passed`.
 
 ## Hecho
 
@@ -36,11 +36,11 @@ La fase 0 y las misiones M01–M14 entraron juntas a `Contabilidad` en el PR #17
 | M23 | [#26](https://github.com/jrlopez6542-star/domigoo/pull/26) | Ola abierta, aceptación exclusiva e idempotencia. Merge `4c15ac6`. |
 | Preview | [#27](https://github.com/jrlopez6542-star/domigoo/pull/27) | API Nest en el preview de Vercel. Migra solo Preview con `DATABASE_URL_UNPOOLED`. |
 | Estado | [#28](https://github.com/jrlopez6542-star/domigoo/pull/28) | Este inventario. |
-| M24 | este PR | Recorrido: camino a la sucursal, llegada y camino al destino, con historial. |
+| M24 | [#29](https://github.com/jrlopez6542-star/domigoo/pull/29) | Recorrido: camino a la sucursal, llegada y camino al destino, con historial. |
 
 ## En curso
 
-M24 es el cambio de esta rama. No hay otro PR de implementación abierto encima de ella.
+El PR [#29](https://github.com/jrlopez6542-star/domigoo/pull/29) lleva M24. El CI de esa rama ya pasó. Falta que se fusione en `Contabilidad`.
 
 ## Lo que falta
 
