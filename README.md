@@ -42,6 +42,7 @@ La verificación documental combina reglas automáticas y aprobación humana. Ha
 - [Modelo de datos](docs/modelo-datos.md) y el contrato [apps/api/prisma/schema.prisma](apps/api/prisma/schema.prisma).
 - [Módulos y máquinas de estado](docs/modulos.md).
 - [Plan de misiones](docs/plan-misiones.md): M01 en adelante, con pruebas y criterios de aceptación.
+- [Estado del proyecto](docs/estado-del-proyecto.md): qué está hecho, qué falta y qué depende del dueño.
 - [Pruebas y seguridad](docs/pruebas-y-seguridad.md).
 - [Decisiones, riesgos y ejecución autónoma](docs/decisiones/README.md).
 
