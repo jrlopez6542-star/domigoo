@@ -158,7 +158,7 @@ jobs:
 
   web_admin_e2e:
     name: Playwright Web y Admin
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     services:
       postgis:
@@ -193,7 +193,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Instalar Chromium para Playwright
-        run: pnpm --filter @domigoo/web exec playwright install chromium
+        run: pnpm --filter @domigoo/web exec playwright install --with-deps chromium
 
       - name: Migrar base de pruebas
         run: pnpm --filter @domigoo/api exec prisma migrate deploy

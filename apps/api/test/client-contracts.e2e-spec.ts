@@ -170,7 +170,7 @@ describeDb("Contratos HTTP reales para Web, Admin y Móvil (M39)", () => {
         .send({ versionId })
         .expect(201);
 
-      // Restaurante autenticado puede cotizar en /v1/tariffs/quote, pero recibe 403 en /v1/admin/tariffs/quote
+      // Restaurante autenticado puede cotizar en /v1/tariffs/quote, pero recibe 404 en /v1/admin/tariffs/quote (AdminGuard oculta existencia)
       await request(server())
         .post("/v1/admin/tariffs/quote")
         .set("Cookie", webCookie)
@@ -179,7 +179,7 @@ describeDb("Contratos HTTP reales para Web, Admin y Móvil (M39)", () => {
           destination: { longitude: -73.915, latitude: 4.967 },
           at: new Date().toISOString(),
         })
-        .expect(403);
+        .expect(404);
 
       const quote = await request(server())
         .post("/v1/tariffs/quote")
