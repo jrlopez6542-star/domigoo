@@ -7,7 +7,8 @@ import type { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { AppModule } from "../src/app.module.js";
-import { APP_ENV, readEnv, type AppEnv } from "../src/config/env.js";
+import { APP_ENV, type AppEnv } from "../src/config/env.js";
+import { testEnv } from "./test-env.js";
 import { setupOpenApi } from "../src/openapi.js";
 
 const liveDatabaseUrl =
@@ -53,7 +54,7 @@ function validateGeneratedOpenApi(document: unknown): void {
 
 describe("sistema", () => {
   it("responde 200 en /health y 503 en /ready cuando la base no acepta conexiones", async () => {
-    const app = await createApp(readEnv({ DATABASE_URL: downDatabaseUrl, APP_NAME: "DOMIGOO" }));
+    const app = await createApp(testEnv({ DATABASE_URL: downDatabaseUrl, APP_NAME: "DOMIGOO" }));
     try {
       await request(httpServer(app)).get("/health").expect(200).expect({ status: "ok" });
       await request(httpServer(app)).get("/ready").expect(503).expect({ status: "unavailable" });
@@ -63,7 +64,7 @@ describe("sistema", () => {
   });
 
   it("responde 200 en /ready contra PostGIS", async () => {
-    const app = await createApp(readEnv({ DATABASE_URL: liveDatabaseUrl, APP_NAME: "DOMIGOO" }));
+    const app = await createApp(testEnv({ DATABASE_URL: liveDatabaseUrl, APP_NAME: "DOMIGOO" }));
     try {
       await request(httpServer(app)).get("/health").expect(200).expect({ status: "ok" });
       await request(httpServer(app)).get("/ready").expect(200).expect({ status: "ok" });
@@ -74,7 +75,7 @@ describe("sistema", () => {
 
   it("publica una especificación OpenAPI válida, con el título de APP_NAME y sin dominio", async () => {
     const app = await createApp(
-      readEnv({ DATABASE_URL: downDatabaseUrl, APP_NAME: "Nombre de prueba" }),
+      testEnv({ DATABASE_URL: downDatabaseUrl, APP_NAME: "Nombre de prueba" }),
     );
     try {
       const response = await request(httpServer(app)).get("/openapi.json").expect(200);
@@ -119,7 +120,7 @@ describe("sistema", () => {
   });
 
   it("sirve la documentación en /docs", async () => {
-    const app = await createApp(readEnv({ DATABASE_URL: downDatabaseUrl }));
+    const app = await createApp(testEnv({ DATABASE_URL: downDatabaseUrl }));
     try {
       const response = await request(httpServer(app)).get("/docs/").expect(200);
       expect(String(response.headers["content-type"])).toMatch(/html/);

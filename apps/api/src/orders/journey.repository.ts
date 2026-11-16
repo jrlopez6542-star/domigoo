@@ -74,7 +74,7 @@ export class JourneyRepository {
         [orderId, from, to, userId],
       );
       await client.query("COMMIT");
-      return view(orderId, to, row.customerPhoneE164);
+      return toCourierView(orderId, to, row.customerPhoneE164);
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;
@@ -106,7 +106,7 @@ export class JourneyRepository {
     if (row.courierId === null || row.assignedCourierId !== row.courierId) {
       return "forbidden";
     }
-    return view(orderId, row.status, row.customerPhoneE164);
+    return toCourierView(orderId, row.status, row.customerPhoneE164);
   }
 
   async events(orderId: string, userId: string): Promise<OrderStep[] | "missing" | "forbidden"> {
@@ -147,7 +147,7 @@ export class JourneyRepository {
   }
 }
 
-function view(id: string, status: string, phone: string | null): CourierOrderView {
+export function toCourierView(id: string, status: string, phone: string | null): CourierOrderView {
   if (phone !== null && PHONE_STATES.has(status)) {
     return { id, status, customerPhoneE164: phone };
   }

@@ -2,7 +2,7 @@
 
 Fecha: 2026-11-16. El nombre DOMIGOO es provisional y sale de `APP_NAME`. Este documento no afirma marca ni dominio.
 
-La suite de la API, con M24, tiene **52 pruebas**. En CI el job API del run [43941218385](https://github.com/jrlopez6542-star/domigoo/actions/runs/43941218385) repitió `Tests: 52 passed`.
+La suite de la API, con M25, tiene **61 pruebas** en local. El CI de esta rama se anota al terminar.
 
 ## Hecho
 
@@ -36,17 +36,17 @@ La fase 0 y las misiones M01–M14 entraron juntas a `Contabilidad` en el PR #17
 | M23 | [#26](https://github.com/jrlopez6542-star/domigoo/pull/26) | Ola abierta, aceptación exclusiva e idempotencia. Merge `4c15ac6`. |
 | Preview | [#27](https://github.com/jrlopez6542-star/domigoo/pull/27) | API Nest en el preview de Vercel. Migra solo Preview con `DATABASE_URL_UNPOOLED`. |
 | Estado | [#28](https://github.com/jrlopez6542-star/domigoo/pull/28) | Este inventario. |
-| M24 | [#29](https://github.com/jrlopez6542-star/domigoo/pull/29) | Recorrido: camino a la sucursal, llegada y camino al destino, con historial. |
+| M24 | [#29](https://github.com/jrlopez6542-star/domigoo/pull/29) | Recorrido: camino a la sucursal, llegada y camino al destino, con historial. Merge `04d8ffc`. |
+| M25 | este PR | PIN de recogida y de entrega. Hash y cifrado; el intento 5 abre `PIN_LOCKOUT` sin mover el pedido. |
 
 ## En curso
 
-El PR [#29](https://github.com/jrlopez6542-star/domigoo/pull/29) lleva M24. El CI de esa rama ya pasó. Falta que se fusione en `Contabilidad`.
+M25 es el cambio de esta rama. No hay otro PR de implementación abierto encima de ella.
 
 ## Lo que falta
 
 Fase 5, todavía abierta:
 
-- M25. PIN de recogida y de entrega.
 - M26. Cancelación y vencimiento.
 
 Fase 6. Superficies:
@@ -88,6 +88,7 @@ CI sigue en GitHub Actions, con PostGIS propio. No depende de Neon ni de Vercel.
 - El runner `ubuntu-latest` avisa que migrará a Ubuntu 26. No tumba el job.
 - TypeScript 7 no entra: `typescript-eslint` 8.72 exige una versión anterior a 6.1. El repo usa 6.0.3.
 - Cada merge a `Contabilidad` dispara un deployment de producción en Vercel. Ese deployment está protegido y no tiene base. No es una publicación de la app.
+- La API ya no arranca sin `PIN_PEPPER` ni `DATA_ENCRYPTION_KEY` (32 bytes en base64). Este repositorio no guarda esos valores. Preview y el deployment de producción quedan sin atender peticiones hasta que el dueño los defina en Vercel. El build sigue compilando y, en Preview, migrando.
 
 ## Pendientes del dueño
 
@@ -97,6 +98,7 @@ Estos puntos no los resuelve el equipo de implementación:
 - El polígono oficial de Tocancipá.
 - Revisión legal del texto de privacidad y de habeas data.
 - Credenciales de Firebase/FCM y las de producción.
+- Generar `PIN_PEPPER` y `DATA_ENCRYPTION_KEY` y cargarlas en Preview. No van al repositorio.
 - Verificación de la marca y del dominio. DOMIGOO sigue siendo un nombre provisional.
 - Publicación de las apps.
 - Pagos. El sistema registra medios y no cobra.

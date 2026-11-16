@@ -23,3 +23,5 @@ El web todavía no está en el monorepo. Cuando exista, sus rutas se declaran en
 ## Qué no hace este entorno
 
 No compra dominios, no configura pagos y no escribe variables de Production. Un deploy de Production puede compilar, pero no migra y no usa `domigoo-preview`.
+
+Desde M25 el proceso exige `PIN_PEPPER` y `DATA_ENCRYPTION_KEY`: cada una, 32 bytes en base64, generadas fuera del repositorio. Sin ellas Nest no arranca. El build de Preview sigue migrando; las peticiones responden cuando esas dos variables existen en el entorno de Preview. Este repositorio no las carga en Vercel.

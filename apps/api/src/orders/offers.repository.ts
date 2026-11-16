@@ -1,8 +1,10 @@
-import { createHash } from "node:crypto";
-import { Injectable } from "@nestjs/common";
-import { Database } from "../database.js";
+import { createHash, randomBytes } from "node:crypto";
+import { Inject, Injectable } from "@nestjs/common";
 import { redactDiff } from "../audit/redact-diff.js";
+import { APP_ENV, type AppEnv } from "../config/env.js";
+import { Database } from "../database.js";
 import { canTransition } from "./order-machine.js";
+import { generatePin, pinMac, sealPin } from "./pin.js";
 
 export type AcceptResult = {
   offerId: string;
@@ -13,7 +15,10 @@ export type AcceptResult = {
 
 @Injectable()
 export class OffersRepository {
-  constructor(private readonly database: Database) {}
+  constructor(
+    private readonly database: Database,
+    @Inject(APP_ENV) private readonly env: AppEnv,
+  ) {}
 
   async accept(
     offerId: string,
@@ -40,12 +45,14 @@ export class OffersRepository {
         offerStatus: string;
         courierId: string;
         expiresAt: Date | string;
+        pinLength: number;
       }>(
         `SELECT o.id AS "orderId", o.status::text AS "orderStatus", d.status::text AS "offerStatus",
-                d."courierId", d."expiresAt"
+                d."courierId", d."expiresAt", COALESCE(p."pinLength", 6) AS "pinLength"
          FROM dispatch_offers d
          JOIN orders o ON o.id = d."orderId"
          JOIN couriers c ON c.id = d."courierId"
+         LEFT JOIN operations_policies p ON p.id = o."operationsPolicyId"
          WHERE d.id = $1 AND c."userId" = $2
          FOR UPDATE OF o, d`,
         [offerId, userId],
@@ -83,11 +90,18 @@ export class OffersRepository {
          WHERE "orderId" = $1 AND id <> $2 AND status = 'PENDING'`,
         [row.orderId, offerId],
       );
+      const pickupPin = generatePin(row.pinLength, (size) => randomBytes(size));
       await client.query(
         `UPDATE orders
-         SET status = 'ACCEPTED', "assignedCourierId" = $2, "acceptedAt" = now(), "updatedAt" = now()
+         SET status = 'ACCEPTED', "assignedCourierId" = $2, "acceptedAt" = now(),
+             "pickupPinHash" = $3, "pickupPinCiphertext" = $4, "updatedAt" = now()
          WHERE id = $1`,
-        [row.orderId, row.courierId],
+        [
+          row.orderId,
+          row.courierId,
+          pinMac(this.env.pinPepper, row.orderId, "PICKUP", pickupPin).toString("hex"),
+          sealPin(this.env.dataEncryptionKey, row.orderId, "PICKUP", pickupPin),
+        ],
       );
       await client.query(
         `UPDATE courier_availabilities SET state = 'ON_SERVICE', "updatedAt" = now() WHERE "courierId" = $1`,
