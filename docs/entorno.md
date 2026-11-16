@@ -64,3 +64,5 @@ Conclusión para las misiones: la integración con PostGIS se puede ejecutar en 
 ## Implicación para el plan
 
 M01 puede completarse solo con Node. M02 y M04 necesitan Docker. Las misiones de la app móvil no esperan un emulador verde en CI; cubren la lógica con Jest y dejan el recorrido en dispositivo físico como prueba manual descrita, no como compuerta de merge.
+
+El preview de la API en Vercel está descrito en [preview-vercel.md](preview-vercel.md). No es el entorno de CI ni el de producción.
