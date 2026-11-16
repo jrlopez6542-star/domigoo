@@ -1,8 +1,8 @@
 # Estado del proyecto
 
-Fecha: 2026-11-10. El nombre DOMIGOO es provisional y sale de `APP_NAME`. Este documento no afirma marca ni dominio.
+Fecha: 2026-11-16. El nombre DOMIGOO es provisional y sale de `APP_NAME`. Este documento no afirma marca ni dominio.
 
-La suite de la API, al cierre de M23, tiene **51 pruebas**. El job API del run 42745740515 repitió `Tests: 51 passed`.
+La suite de la API, con M24, tiene **52 pruebas**. En CI el job API del run [43941218385](https://github.com/jrlopez6542-star/domigoo/actions/runs/43941218385) repitió `Tests: 52 passed`.
 
 ## Hecho
 
@@ -34,16 +34,18 @@ La fase 0 y las misiones M01–M14 entraron juntas a `Contabilidad` en el PR #17
 | M21 | [#24](https://github.com/jrlopez6542-star/domigoo/pull/24) | Borrador con comida y domicilio separados, y máquina pura del pedido. |
 | M22 | [#25](https://github.com/jrlopez6542-star/domigoo/pull/25) | Publicación directa. Los seis documentos tienen que estar `ACCEPTED`. La cotización queda congelada. |
 | M23 | [#26](https://github.com/jrlopez6542-star/domigoo/pull/26) | Ola abierta, aceptación exclusiva e idempotencia. Merge `4c15ac6`. |
+| Preview | [#27](https://github.com/jrlopez6542-star/domigoo/pull/27) | API Nest en el preview de Vercel. Migra solo Preview con `DATABASE_URL_UNPOOLED`. |
+| Estado | [#28](https://github.com/jrlopez6542-star/domigoo/pull/28) | Este inventario. |
+| M24 | [#29](https://github.com/jrlopez6542-star/domigoo/pull/29) | Recorrido: camino a la sucursal, llegada y camino al destino, con historial. |
 
 ## En curso
 
-El PR [#27](https://github.com/jrlopez6542-star/domigoo/pull/27) prepara el preview de Vercel para la API. No está fusionado. El deployment `dpl_4pScrsAKc6fVQfC6oN6NetDV3yVQ` quedó Ready: https://domigoo-bljjleuye-jrlopez6542-1905.vercel.app. Está protegido con Vercel Authentication. El build migró la base de Preview y compiló Nest. No se llamó a `/health` desde esta máquina porque el CLI de Vercel no tiene sesión.
+El PR [#29](https://github.com/jrlopez6542-star/domigoo/pull/29) lleva M24. El CI de esa rama ya pasó. Falta que se fusione en `Contabilidad`.
 
 ## Lo que falta
 
 Fase 5, todavía abierta:
 
-- M24. Recorrido del pedido.
 - M25. PIN de recogida y de entrega.
 - M26. Cancelación y vencimiento.
 

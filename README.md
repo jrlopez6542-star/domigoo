@@ -8,7 +8,7 @@ El restaurante paga una suscripción a DOMIGOO. El domiciliario no paga por reci
 
 ## Estado
 
-El preview de Vercel compila la API y migra solo la base de Preview. La próxima misión es **M24**: el recorrido del pedido.
+M24 registra el recorrido del pedido hasta el destino. La próxima misión es **M25**: los PIN de recogida y de entrega.
 
 ## Calidad
 
