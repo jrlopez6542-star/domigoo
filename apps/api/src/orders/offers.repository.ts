@@ -318,7 +318,7 @@ export class OffersRepository {
        WHERE c."userId" = $1
          AND d.status = 'PENDING'
          AND d."expiresAt" > now()
-         AND o.status = 'PUBLISHED'
+         AND o.status = 'SEEKING_COURIER'
        ORDER BY d."createdAt" DESC`,
       [userId],
     );
