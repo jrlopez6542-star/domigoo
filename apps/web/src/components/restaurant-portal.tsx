@@ -1,10 +1,27 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useState, type FormEvent } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
+import { ClipboardList, Home, PlusCircle, ShieldCheck, Store } from "lucide-react";
 import { callProxy } from "@/lib/api-client";
 import type { CreateRestaurantPayload, QuotePayload } from "@/lib/contracts";
+import {
+  clearStoredActiveRole,
+  getStoredActiveRole,
+  ROLE_BASE_PATH,
+  setStoredActiveRole,
+} from "@/lib/role-session";
 import { RoleAuthCard, type SessionUser } from "./role-auth-card";
+import { RolePanelShell, type RoleNavItem } from "./role-panel-shell";
 
 type OrderView = {
   id: string;
@@ -21,13 +38,139 @@ type OrderEvent = {
   createdAt: string;
 };
 
-export function RestaurantPortal({ appName }: { appName: string }) {
+type RestaurantContextValue = {
+  appName: string;
+  sessionUser: SessionUser | null;
+  statusMessage: string;
+  errorMessage: string;
+  busyAction: string | null;
+  loggingOut: boolean;
+  handleLogout: () => Promise<void>;
+  // Geo
+  showGeoConsent: boolean;
+  setShowGeoConsent: (v: boolean) => void;
+  geoConsentChecked: boolean;
+  setGeoConsentChecked: (v: boolean) => void;
+  geoConsentId: string | null;
+  branchGeoStatus: string;
+  dropoffGeoStatus: string;
+  requestBrowserLocation: (target: "branch" | "dropoff") => void;
+  handleAllowGeoConsent: () => Promise<void>;
+  handleRevokeGeoConsent: () => Promise<void>;
+  // Branch
+  legalName: string;
+  setLegalName: (v: string) => void;
+  tradeName: string;
+  setTradeName: (v: string) => void;
+  nit: string;
+  setNit: (v: string) => void;
+  siteEmail: string;
+  setSiteEmail: (v: string) => void;
+  sitePhoneE164: string;
+  setSitePhoneE164: (v: string) => void;
+  establishmentName: string;
+  setEstablishmentName: (v: string) => void;
+  branchName: string;
+  setBranchName: (v: string) => void;
+  addressLine: string;
+  setAddressLine: (v: string) => void;
+  branchLongitude: string;
+  branchLatitude: string;
+  restaurantId: string;
+  branchId: string;
+  setBranchId: (v: string) => void;
+  handleCreateBranch: (e: FormEvent) => Promise<void>;
+  // Order wizard
+  foodAmountCop: string;
+  setFoodAmountCop: (v: string) => void;
+  deliveryFeeCop: string;
+  setDeliveryFeeCop: (v: string) => void;
+  paymentMethod: "CASH" | "TRANSFER";
+  setPaymentMethod: (v: "CASH" | "TRANSFER") => void;
+  quoteSummary: string;
+  orderId: string;
+  setOrderId: (v: string) => void;
+  handleQuote: () => Promise<void>;
+  handleCreateDraft: (e: FormEvent) => Promise<void>;
+  // Publish
+  customerName: string;
+  setCustomerName: (v: string) => void;
+  customerPhone: string;
+  setCustomerPhone: (v: string) => void;
+  dropoffAddress: string;
+  setDropoffAddress: (v: string) => void;
+  dropoffLongitude: string;
+  dropoffLatitude: string;
+  publishMode: "OPEN" | "DIRECT";
+  setPublishMode: (v: "OPEN" | "DIRECT") => void;
+  courierId: string;
+  setCourierId: (v: string) => void;
+  handlePublish: (e: FormEvent) => Promise<void>;
+  // Tracking
+  orderView: OrderView | null;
+  events: OrderEvent[];
+  trackingUrl: string;
+  handleRefreshOrder: () => Promise<void>;
+  handleCreateTrackingLink: () => Promise<void>;
+};
+
+const RestaurantContext = createContext<RestaurantContextValue | null>(null);
+
+const RESTAURANT_NAV_ITEMS: RoleNavItem[] = [
+  {
+    href: "/restaurante",
+    label: "Inicio",
+    shortLabel: "Inicio",
+    icon: <Home size={18} />,
+    testId: "nav-restaurante-inicio",
+  },
+  {
+    href: "/restaurante/negocio",
+    label: "Mi negocio y sucursal",
+    shortLabel: "Negocio",
+    icon: <Store size={18} />,
+    testId: "nav-restaurante-negocio",
+  },
+  {
+    href: "/restaurante/nuevo-domicilio",
+    label: "Nuevo domicilio",
+    shortLabel: "Nuevo",
+    icon: <PlusCircle size={18} />,
+    testId: "nav-restaurante-nuevo",
+  },
+  {
+    href: "/restaurante/pedidos",
+    label: "Pedidos activos",
+    shortLabel: "Pedidos",
+    icon: <ClipboardList size={18} />,
+    testId: "nav-restaurante-pedidos",
+  },
+  {
+    href: "/restaurante/cuenta",
+    label: "Mi cuenta",
+    shortLabel: "Cuenta",
+    icon: <ShieldCheck size={18} />,
+    testId: "nav-restaurante-cuenta",
+  },
+];
+
+export function RestaurantPortalShell({
+  appName,
+  children,
+}: {
+  appName: string;
+  children: ReactNode;
+}) {
+  const router = useRouter();
+  const pathname = usePathname();
   const [statusMessage, setStatusMessage] = useState<string>("");
   const [errorMessage, setErrorMessage] = useState<string>("");
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [sessionUser, setSessionUser] = useState<SessionUser | null>(null);
+  const [checkingSession, setCheckingSession] = useState(true);
+  const [loggingOut, setLoggingOut] = useState(false);
 
-  // Geolocalización (sucursal / entrega)
+  // Geolocalización
   const [showGeoConsent, setShowGeoConsent] = useState(false);
   const [geoConsentChecked, setGeoConsentChecked] = useState(false);
   const [geoConsentId, setGeoConsentId] = useState<string | null>(null);
@@ -38,7 +181,7 @@ export function RestaurantPortal({ appName }: { appName: string }) {
     "Coordenadas por defecto: Tocancipá centro.",
   );
 
-  // 2. Restaurante, establecimiento y sucursal
+  // Sucursal
   const [legalName, setLegalName] = useState("");
   const [tradeName, setTradeName] = useState("");
   const [nit, setNit] = useState("");
@@ -52,14 +195,14 @@ export function RestaurantPortal({ appName }: { appName: string }) {
   const [restaurantId, setRestaurantId] = useState("");
   const [branchId, setBranchId] = useState("");
 
-  // 3. Borrador y cotización
+  // Borrador y cotización
   const [foodAmountCop, setFoodAmountCop] = useState("25000");
   const [deliveryFeeCop, setDeliveryFeeCop] = useState("6000");
   const [paymentMethod, setPaymentMethod] = useState<"CASH" | "TRANSFER">("CASH");
   const [quoteSummary, setQuoteSummary] = useState<string>("");
   const [orderId, setOrderId] = useState("");
 
-  // 4. Publicar
+  // Publicar
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [dropoffAddress, setDropoffAddress] = useState("");
@@ -68,21 +211,72 @@ export function RestaurantPortal({ appName }: { appName: string }) {
   const [publishMode, setPublishMode] = useState<"OPEN" | "DIRECT">("OPEN");
   const [courierId, setCourierId] = useState("");
 
-  // 5. Recorrido
+  // Recorrido
   const [orderView, setOrderView] = useState<OrderView | null>(null);
   const [events, setEvents] = useState<OrderEvent[]>([]);
   const [trackingUrl, setTrackingUrl] = useState<string>("");
 
+  useEffect(() => {
+    let active = true;
+    const storedRole = getStoredActiveRole();
+    callProxy<SessionUser>("auth/me", "GET")
+      .then((user) => {
+        if (!active || !user.id) {
+          return;
+        }
+        if (storedRole && storedRole !== "RESTAURANT") {
+          router.replace(ROLE_BASE_PATH[storedRole]);
+          return;
+        }
+        setStoredActiveRole("RESTAURANT");
+        setSessionUser(user);
+      })
+      .catch(() => {
+        if (active) {
+          setSessionUser(null);
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setCheckingSession(false);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [router]);
+
+  useEffect(() => {
+    if (!checkingSession && !sessionUser && pathname !== "/restaurante") {
+      router.replace("/restaurante");
+    }
+  }, [checkingSession, sessionUser, pathname, router]);
+
   const handleAuthenticated = useCallback((user: SessionUser) => {
+    setStoredActiveRole("RESTAURANT");
     setSessionUser(user);
   }, []);
 
   const handleLoggedOut = useCallback(() => {
+    clearStoredActiveRole();
     setSessionUser(null);
     setOrderView(null);
     setEvents([]);
     setTrackingUrl("");
   }, []);
+
+  const handleLogout = useCallback(async () => {
+    setLoggingOut(true);
+    try {
+      await callProxy<unknown>("auth/logout", "POST");
+    } catch {
+      // Limpiamos sesión local aunque falle la revocación remota.
+    } finally {
+      handleLoggedOut();
+      setLoggingOut(false);
+      router.replace("/restaurante");
+    }
+  }, [handleLoggedOut, router]);
 
   async function runAction(label: string, fn: () => Promise<void>) {
     setErrorMessage("");
@@ -284,53 +478,258 @@ export function RestaurantPortal({ appName }: { appName: string }) {
     });
   }
 
-  return (
-    <div className="dg-stack">
+  if (checkingSession) {
+    return (
       <div className="dg-card">
-        <span
-          className="dg-badge"
-          style={{
-            marginBottom: "8px",
-            background: "var(--dg-blue-soft)",
-            color: "var(--dg-blue)",
-            borderColor: "#bfdbfe",
-          }}
-        >
-          Soy restaurante · Tocancipá
-        </span>
-        <h1 style={{ margin: "4px 0 8px", fontSize: "clamp(1.4rem, 3vw, 1.9rem)" }}>
-          {appName} — Portal de Restaurantes
-        </h1>
         <p className="dg-muted" style={{ margin: 0 }}>
-          Administra tus sucursales, cotiza domicilios, crea borradores y sigue el recorrido de cada
-          entrega en tiempo real.
+          Verificando sesión de restaurante...
         </p>
       </div>
+    );
+  }
 
-      {statusMessage ? (
-        <div role="status" aria-live="polite" className="dg-alert dg-alert--success">
-          {statusMessage}
+  if (!sessionUser) {
+    if (pathname !== "/restaurante") {
+      return (
+        <div className="dg-card">
+          <p className="dg-muted" style={{ margin: 0 }}>
+            Redirigiendo al acceso de restaurante...
+          </p>
         </div>
-      ) : null}
-
-      {errorMessage ? (
-        <div role="alert" aria-live="polite" className="dg-alert dg-alert--error">
-          {errorMessage}
+      );
+    }
+    return (
+      <div className="dg-stack">
+        <div className="dg-card">
+          <span className="dg-badge" style={{ marginBottom: "8px" }}>
+            Soy restaurante · Tocancipá
+          </span>
+          <h1 style={{ margin: "4px 0 8px", fontSize: "clamp(1.4rem, 3vw, 1.9rem)" }}>
+            {appName} — Portal de Restaurantes
+          </h1>
+          <p className="dg-muted" style={{ margin: 0 }}>
+            Inicia sesión o registra tu restaurante para administrar sucursales y domicilios.
+          </p>
         </div>
-      ) : null}
 
-      <RoleAuthCard
-        accountRole="RESTAURANT"
-        roleTitle="1. Acceso de restaurante"
-        roleSubtitle="Inicia sesión o crea tu cuenta de restaurante con correo o teléfono (+57...)."
-        identifierPlaceholder="restaurante@ejemplo.com"
+        <RoleAuthCard
+          accountRole="RESTAURANT"
+          roleTitle="Acceso de restaurante"
+          roleSubtitle="Inicia sesión o crea tu cuenta de restaurante con correo o teléfono (+57...)."
+          identifierPlaceholder="restaurante@ejemplo.com"
+          sessionUser={sessionUser}
+          onAuthenticated={handleAuthenticated}
+          onLoggedOut={handleLoggedOut}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <RestaurantContext.Provider
+      value={{
+        appName,
+        sessionUser,
+        statusMessage,
+        errorMessage,
+        busyAction,
+        loggingOut,
+        handleLogout,
+        showGeoConsent,
+        setShowGeoConsent,
+        geoConsentChecked,
+        setGeoConsentChecked,
+        geoConsentId,
+        branchGeoStatus,
+        dropoffGeoStatus,
+        requestBrowserLocation,
+        handleAllowGeoConsent,
+        handleRevokeGeoConsent,
+        legalName,
+        setLegalName,
+        tradeName,
+        setTradeName,
+        nit,
+        setNit,
+        siteEmail,
+        setSiteEmail,
+        sitePhoneE164,
+        setSitePhoneE164,
+        establishmentName,
+        setEstablishmentName,
+        branchName,
+        setBranchName,
+        addressLine,
+        setAddressLine,
+        branchLongitude,
+        branchLatitude,
+        restaurantId,
+        branchId,
+        setBranchId,
+        handleCreateBranch,
+        foodAmountCop,
+        setFoodAmountCop,
+        deliveryFeeCop,
+        setDeliveryFeeCop,
+        paymentMethod,
+        setPaymentMethod,
+        quoteSummary,
+        orderId,
+        setOrderId,
+        handleQuote,
+        handleCreateDraft,
+        customerName,
+        setCustomerName,
+        customerPhone,
+        setCustomerPhone,
+        dropoffAddress,
+        setDropoffAddress,
+        dropoffLongitude,
+        dropoffLatitude,
+        publishMode,
+        setPublishMode,
+        courierId,
+        setCourierId,
+        handlePublish,
+        orderView,
+        events,
+        trackingUrl,
+        handleRefreshOrder,
+        handleCreateTrackingLink,
+      }}
+    >
+      <RolePanelShell
+        roleBadge="Restaurante"
+        roleHeading={`${appName} — Portal de Restaurantes`}
+        navItems={RESTAURANT_NAV_ITEMS}
         sessionUser={sessionUser}
-        onAuthenticated={handleAuthenticated}
-        onLoggedOut={handleLoggedOut}
-      />
+        onLogout={() => void handleLogout()}
+        loggingOut={loggingOut}
+      >
+        {statusMessage ? (
+          <div role="status" aria-live="polite" className="dg-alert dg-alert--success">
+            {statusMessage}
+          </div>
+        ) : null}
 
+        {errorMessage ? (
+          <div role="alert" aria-live="polite" className="dg-alert dg-alert--error">
+            {errorMessage}
+          </div>
+        ) : null}
+
+        {children}
+      </RolePanelShell>
+    </RestaurantContext.Provider>
+  );
+}
+
+function useRestaurantPortal() {
+  const ctx = useContext(RestaurantContext);
+  if (!ctx) {
+    throw new Error("useRestaurantPortal debe usarse dentro de RestaurantPortalShell");
+  }
+  return ctx;
+}
+
+export function RestaurantHomeScreen() {
+  const { branchId, orderId, orderView } = useRestaurantPortal();
+
+  return (
+    <div className="dg-stack" data-testid="restaurante-home-screen">
+      <div className="dg-card">
+        <span className="dg-badge" style={{ marginBottom: "8px" }}>
+          Inicio · Restaurante
+        </span>
+        <h1 style={{ margin: "4px 0 8px", fontSize: "clamp(1.35rem, 3vw, 1.75rem)" }}>
+          Resumen de tu operación
+        </h1>
+        <p className="dg-muted" style={{ margin: 0 }}>
+          Configura tu sucursal, crea y publica nuevos domicilios por pasos y consulta el recorrido
+          en tiempo real.
+        </p>
+        <div className="dg-btn-row" style={{ marginTop: "14px" }}>
+          <span className="dg-pill">
+            Sucursal: {branchId ? branchId : "Pendiente por configurar"}
+          </span>
+          <span className="dg-pill">
+            Pedido activo: {orderId ? `${orderId} (${orderView?.status ?? "—"})` : "Ninguno"}
+          </span>
+        </div>
+      </div>
+
+      <div className="dg-grid-2">
+        <Link href="/restaurante/negocio" className="dg-card" style={{ textDecoration: "none" }}>
+          <h2 style={{ marginBottom: "6px" }}>Mi negocio y sucursal</h2>
+          <p className="dg-muted" style={{ margin: 0 }}>
+            Registra razón social, NIT, establecimiento y ubicación de tu sucursal.
+          </p>
+        </Link>
+
+        <Link
+          href="/restaurante/nuevo-domicilio"
+          className="dg-card"
+          style={{ textDecoration: "none" }}
+        >
+          <h2 style={{ marginBottom: "6px" }}>Nuevo domicilio</h2>
+          <p className="dg-muted" style={{ margin: 0 }}>
+            Asistente por pasos: cotizar envío, crear borrador y publicar oferta.
+          </p>
+        </Link>
+
+        <Link href="/restaurante/pedidos" className="dg-card" style={{ textDecoration: "none" }}>
+          <h2 style={{ marginBottom: "6px" }}>Pedidos activos y seguimiento</h2>
+          <p className="dg-muted" style={{ margin: 0 }}>
+            Consulta estado, PIN de recogida, eventos y genera el enlace público.
+          </p>
+        </Link>
+
+        <Link href="/restaurante/cuenta" className="dg-card" style={{ textDecoration: "none" }}>
+          <h2 style={{ marginBottom: "6px" }}>Mi cuenta</h2>
+          <p className="dg-muted" style={{ margin: 0 }}>
+            Revisa tu sesión, permisos de geolocalización y documentos legales.
+          </p>
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+export function RestaurantNegocioScreen() {
+  const {
+    sessionUser,
+    busyAction,
+    legalName,
+    setLegalName,
+    tradeName,
+    setTradeName,
+    nit,
+    setNit,
+    siteEmail,
+    setSiteEmail,
+    sitePhoneE164,
+    setSitePhoneE164,
+    establishmentName,
+    setEstablishmentName,
+    branchName,
+    setBranchName,
+    addressLine,
+    setAddressLine,
+    branchLongitude,
+    branchLatitude,
+    branchGeoStatus,
+    restaurantId,
+    branchId,
+    requestBrowserLocation,
+    handleCreateBranch,
+  } = useRestaurantPortal();
+
+  return (
+    <div className="dg-stack" data-testid="restaurante-negocio-screen">
       <section className="dg-card" aria-labelledby="restaurant-branch-title">
-        <h2 id="restaurant-branch-title">2. Sucursal y establecimiento</h2>
+        <h1 id="restaurant-branch-title" style={{ marginBottom: "8px" }}>
+          Mi negocio y sucursal
+        </h1>
         <form
           onSubmit={(e) => {
             void handleCreateBranch(e);
@@ -498,304 +897,482 @@ export function RestaurantPortal({ appName }: { appName: string }) {
           </details>
         </form>
       </section>
+    </div>
+  );
+}
 
-      <section className="dg-card" aria-labelledby="restaurant-draft-title">
-        <h2 id="restaurant-draft-title">3. Cotizar y crear borrador de pedido</h2>
-        <form
-          onSubmit={(e) => {
-            void handleCreateDraft(e);
-          }}
-          className="dg-stack"
-        >
-          <div className="dg-grid-2">
-            <label className="dg-field" htmlFor="rest-branch-id">
-              <span>ID de sucursal</span>
-              <input
-                id="rest-branch-id"
-                className="dg-input"
-                type="text"
-                value={branchId}
-                onChange={(e) => {
-                  setBranchId(e.target.value);
-                }}
-                required
-              />
-            </label>
-            <label className="dg-field" htmlFor="rest-payment-method">
-              <span>Medio de pago</span>
-              <select
-                id="rest-payment-method"
-                className="dg-select"
-                value={paymentMethod}
-                onChange={(e) => {
-                  setPaymentMethod(e.target.value as "CASH" | "TRANSFER");
-                }}
-              >
-                <option value="CASH">Efectivo</option>
-                <option value="TRANSFER">Transferencia</option>
-              </select>
-            </label>
-            <label className="dg-field" htmlFor="rest-food-amount">
-              <span>Valor de la comida (COP)</span>
-              <input
-                id="rest-food-amount"
-                className="dg-input"
-                type="number"
-                value={foodAmountCop}
-                onChange={(e) => {
-                  setFoodAmountCop(e.target.value);
-                }}
-                required
-              />
-            </label>
-            <label className="dg-field" htmlFor="rest-delivery-fee">
-              <span>Valor del domicilio (COP)</span>
-              <input
-                id="rest-delivery-fee"
-                className="dg-input"
-                type="number"
-                value={deliveryFeeCop}
-                onChange={(e) => {
-                  setDeliveryFeeCop(e.target.value);
-                }}
-                required
-              />
-            </label>
-          </div>
-          <div className="dg-btn-row">
-            <button
-              type="button"
-              className="dg-btn dg-btn--secondary"
-              disabled={!sessionUser || busyAction === "quote"}
-              onClick={() => {
-                void handleQuote();
-              }}
-            >
-              {busyAction === "quote" ? "Cotizando..." : "Cotizar domicilio"}
-            </button>
-            <button
-              type="submit"
-              className="dg-btn"
-              disabled={!sessionUser || busyAction === "draft"}
-            >
-              {busyAction === "draft" ? "Creando borrador..." : "Crear borrador"}
-            </button>
-            {quoteSummary ? <span className="dg-pill">{quoteSummary}</span> : null}
-          </div>
-        </form>
-      </section>
+export function RestaurantNuevoDomicilioScreen() {
+  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const {
+    sessionUser,
+    busyAction,
+    branchId,
+    setBranchId,
+    foodAmountCop,
+    setFoodAmountCop,
+    deliveryFeeCop,
+    setDeliveryFeeCop,
+    paymentMethod,
+    setPaymentMethod,
+    quoteSummary,
+    orderId,
+    setOrderId,
+    handleQuote,
+    handleCreateDraft,
+    showGeoConsent,
+    setShowGeoConsent,
+    geoConsentChecked,
+    setGeoConsentChecked,
+    geoConsentId,
+    dropoffGeoStatus,
+    handleAllowGeoConsent,
+    handleRevokeGeoConsent,
+    customerName,
+    setCustomerName,
+    customerPhone,
+    setCustomerPhone,
+    dropoffAddress,
+    setDropoffAddress,
+    dropoffLongitude,
+    dropoffLatitude,
+    publishMode,
+    setPublishMode,
+    courierId,
+    setCourierId,
+    handlePublish,
+  } = useRestaurantPortal();
 
-      <section className="dg-card" aria-labelledby="restaurant-publish-title">
-        <h2 id="restaurant-publish-title">4. Publicar domicilio</h2>
-        <div className="dg-btn-row" style={{ marginBottom: "12px" }}>
+  return (
+    <div className="dg-stack" data-testid="restaurante-nuevo-domicilio-screen">
+      <div className="dg-card">
+        <h1 style={{ marginBottom: "10px" }}>Nuevo domicilio</h1>
+        <div className="dg-stepper" role="group" aria-label="Pasos para crear un domicilio">
           <button
             type="button"
-            data-testid="open-geo-consent"
-            className="dg-btn dg-btn--secondary"
+            className={`dg-step-pill ${quoteSummary ? "dg-step-pill--done" : ""}`}
+            aria-current={step === 1 ? "step" : undefined}
+            data-testid="wizard-step-1"
             onClick={() => {
-              setShowGeoConsent(true);
+              setStep(1);
             }}
           >
-            Usar ubicación para entrega (con consentimiento)
+            1. Cotizar
           </button>
-          {geoConsentId ? (
-            <button
-              type="button"
-              className="dg-btn dg-btn--secondary"
-              onClick={() => {
-                void handleRevokeGeoConsent();
-              }}
-            >
-              Revocar geolocalización
-            </button>
-          ) : null}
+          <button
+            type="button"
+            className={`dg-step-pill ${orderId ? "dg-step-pill--done" : ""}`}
+            aria-current={step === 2 ? "step" : undefined}
+            data-testid="wizard-step-2"
+            onClick={() => {
+              setStep(2);
+            }}
+          >
+            2. Borrador
+          </button>
+          <button
+            type="button"
+            className="dg-step-pill"
+            aria-current={step === 3 ? "step" : undefined}
+            data-testid="wizard-step-3"
+            onClick={() => {
+              setStep(3);
+            }}
+          >
+            3. Publicar
+          </button>
         </div>
 
-        {showGeoConsent ? (
-          <div
-            data-testid="geo-consent-screen"
-            className="dg-card"
-            style={{ background: "var(--dg-surface-muted)", marginBottom: "14px" }}
-          >
-            <h3>Autorización de geolocalización</h3>
-            <p className="dg-muted">
-              Usamos tu ubicación únicamente para ubicar el punto de entrega en Tocancipá. Puedes
-              revocar este permiso en cualquier momento o escribir la dirección manualmente.
-              Consulta la{" "}
-              <Link href="/legal/privacidad" className="dg-footer-link">
-                Política de Privacidad
-              </Link>
-              .
-            </p>
-            <label className="dg-check-row" style={{ marginBottom: "12px" }}>
-              <input
-                type="checkbox"
-                name="geoConsentChecked"
-                checked={geoConsentChecked}
-                onChange={(e) => {
-                  setGeoConsentChecked(e.target.checked);
-                }}
-              />
-              <span>Autorizo el uso de geolocalización para esta entrega.</span>
-            </label>
-            <div className="dg-btn-row">
-              <button
-                type="button"
-                data-testid="geo-consent-allow"
-                className="dg-btn"
-                onClick={() => {
-                  void handleAllowGeoConsent();
-                }}
-              >
-                Permitir
-              </button>
-              <button
-                type="button"
-                data-testid="geo-consent-manual"
-                className="dg-btn dg-btn--secondary"
-                onClick={() => {
-                  setShowGeoConsent(false);
-                }}
-              >
-                Escribir dirección manualmente
-              </button>
-            </div>
-          </div>
-        ) : null}
-
-        <form
-          onSubmit={(e) => {
-            void handlePublish(e);
-          }}
-          className="dg-stack"
-        >
-          <div className="dg-grid-2">
-            <label className="dg-field" htmlFor="rest-publish-mode">
-              <span>Modalidad</span>
-              <select
-                id="rest-publish-mode"
-                className="dg-select"
-                value={publishMode}
-                onChange={(e) => {
-                  setPublishMode(e.target.value as "OPEN" | "DIRECT");
-                }}
-              >
-                <option value="OPEN">Oferta abierta en el radio</option>
-                <option value="DIRECT">Asignación directa</option>
-              </select>
-            </label>
-            {publishMode === "DIRECT" ? (
-              <label className="dg-field" htmlFor="rest-courier-id">
-                <span>ID del domiciliario</span>
+        {step === 1 ? (
+          <div className="dg-stack" data-testid="wizard-panel-1">
+            <h2>Paso 1: Cotizar domicilio</h2>
+            <div className="dg-grid-2">
+              <label className="dg-field" htmlFor="rest-branch-id">
+                <span>ID de sucursal</span>
                 <input
-                  id="rest-courier-id"
+                  id="rest-branch-id"
                   className="dg-input"
                   type="text"
-                  value={courierId}
+                  value={branchId}
                   onChange={(e) => {
-                    setCourierId(e.target.value);
+                    setBranchId(e.target.value);
                   }}
                   required
                 />
               </label>
-            ) : null}
-            <label className="dg-field" htmlFor="rest-customer-name">
-              <span>Nombre del cliente</span>
-              <input
-                id="rest-customer-name"
-                className="dg-input"
-                type="text"
-                value={customerName}
-                onChange={(e) => {
-                  setCustomerName(e.target.value);
-                }}
-                required
-              />
-            </label>
-            <label className="dg-field" htmlFor="rest-customer-phone">
-              <span>Teléfono del cliente (+57...)</span>
-              <input
-                id="rest-customer-phone"
-                className="dg-input"
-                type="text"
-                value={customerPhone}
-                onChange={(e) => {
-                  setCustomerPhone(e.target.value);
-                }}
-                required
-              />
-            </label>
-            <label className="dg-field" htmlFor="rest-dropoff-address">
-              <span>Dirección de entrega</span>
-              <input
-                id="rest-dropoff-address"
-                className="dg-input"
-                type="text"
-                value={dropoffAddress}
-                onChange={(e) => {
-                  setDropoffAddress(e.target.value);
-                }}
-                required
-              />
-            </label>
-          </div>
-
-          <p className="dg-muted" style={{ margin: 0 }}>
-            {dropoffGeoStatus}
-          </p>
-
-          <details className="dg-details">
-            <summary>Opciones avanzadas (ID de pedido y coordenadas de entrega)</summary>
-            <div className="dg-grid-2">
-              <label className="dg-field" htmlFor="rest-order-id">
-                <span>ID del pedido</span>
+              <label className="dg-field" htmlFor="rest-delivery-fee">
+                <span>Valor del domicilio (COP)</span>
                 <input
-                  id="rest-order-id"
+                  id="rest-delivery-fee"
                   className="dg-input"
-                  type="text"
-                  value={orderId}
+                  type="number"
+                  value={deliveryFeeCop}
                   onChange={(e) => {
-                    setOrderId(e.target.value);
+                    setDeliveryFeeCop(e.target.value);
                   }}
-                />
-              </label>
-              <label className="dg-field" htmlFor="rest-dropoff-lng">
-                <span>Longitud de entrega (solo lectura)</span>
-                <input
-                  id="rest-dropoff-lng"
-                  className="dg-input"
-                  type="text"
-                  value={dropoffLongitude}
-                  readOnly
-                />
-              </label>
-              <label className="dg-field" htmlFor="rest-dropoff-lat">
-                <span>Latitud de entrega (solo lectura)</span>
-                <input
-                  id="rest-dropoff-lat"
-                  className="dg-input"
-                  type="text"
-                  value={dropoffLatitude}
-                  readOnly
+                  required
                 />
               </label>
             </div>
-          </details>
-
-          <div className="dg-btn-row">
-            <button
-              type="submit"
-              className="dg-btn"
-              disabled={!sessionUser || !orderId || busyAction === "publish"}
-            >
-              {busyAction === "publish" ? "Publicando..." : "Publicar domicilio"}
-            </button>
+            <div className="dg-btn-row">
+              <button
+                type="button"
+                className="dg-btn dg-btn--secondary"
+                disabled={!sessionUser || busyAction === "quote"}
+                onClick={() => {
+                  void handleQuote();
+                }}
+              >
+                {busyAction === "quote" ? "Cotizando..." : "Cotizar domicilio"}
+              </button>
+              <button
+                type="button"
+                className="dg-btn"
+                onClick={() => {
+                  setStep(2);
+                }}
+              >
+                Siguiente: Confirmar borrador
+              </button>
+              {quoteSummary ? <span className="dg-pill">{quoteSummary}</span> : null}
+            </div>
           </div>
-        </form>
-      </section>
+        ) : null}
 
+        {step === 2 ? (
+          <form
+            onSubmit={(e) => {
+              void handleCreateDraft(e);
+            }}
+            className="dg-stack"
+            data-testid="wizard-panel-2"
+          >
+            <h2>Paso 2: Confirmar y crear borrador</h2>
+            <div className="dg-grid-2">
+              <label className="dg-field" htmlFor="rest-branch-id-step2">
+                <span>ID de sucursal</span>
+                <input
+                  id="rest-branch-id-step2"
+                  className="dg-input"
+                  type="text"
+                  value={branchId}
+                  onChange={(e) => {
+                    setBranchId(e.target.value);
+                  }}
+                  required
+                />
+              </label>
+              <label className="dg-field" htmlFor="rest-payment-method">
+                <span>Medio de pago</span>
+                <select
+                  id="rest-payment-method"
+                  className="dg-select"
+                  value={paymentMethod}
+                  onChange={(e) => {
+                    setPaymentMethod(e.target.value as "CASH" | "TRANSFER");
+                  }}
+                >
+                  <option value="CASH">Efectivo</option>
+                  <option value="TRANSFER">Transferencia</option>
+                </select>
+              </label>
+              <label className="dg-field" htmlFor="rest-food-amount">
+                <span>Valor de la comida (COP)</span>
+                <input
+                  id="rest-food-amount"
+                  className="dg-input"
+                  type="number"
+                  value={foodAmountCop}
+                  onChange={(e) => {
+                    setFoodAmountCop(e.target.value);
+                  }}
+                  required
+                />
+              </label>
+              <label className="dg-field" htmlFor="rest-delivery-fee-step2">
+                <span>Valor del domicilio (COP)</span>
+                <input
+                  id="rest-delivery-fee-step2"
+                  className="dg-input"
+                  type="number"
+                  value={deliveryFeeCop}
+                  onChange={(e) => {
+                    setDeliveryFeeCop(e.target.value);
+                  }}
+                  required
+                />
+              </label>
+            </div>
+            <div className="dg-btn-row">
+              <button
+                type="submit"
+                className="dg-btn"
+                disabled={!sessionUser || busyAction === "draft"}
+              >
+                {busyAction === "draft" ? "Creando borrador..." : "Crear borrador"}
+              </button>
+              <button
+                type="button"
+                className="dg-btn dg-btn--secondary"
+                onClick={() => {
+                  setStep(3);
+                }}
+              >
+                Siguiente: Publicar domicilio
+              </button>
+              {orderId ? <span className="dg-pill">Borrador: {orderId}</span> : null}
+            </div>
+          </form>
+        ) : null}
+
+        {step === 3 ? (
+          <div className="dg-stack" data-testid="wizard-panel-3">
+            <h2>Paso 3: Publicar domicilio</h2>
+            <div className="dg-btn-row">
+              <button
+                type="button"
+                data-testid="open-geo-consent"
+                className="dg-btn dg-btn--secondary"
+                onClick={() => {
+                  setShowGeoConsent(true);
+                }}
+              >
+                Usar ubicación para entrega (con consentimiento)
+              </button>
+              {geoConsentId ? (
+                <button
+                  type="button"
+                  className="dg-btn dg-btn--secondary"
+                  onClick={() => {
+                    void handleRevokeGeoConsent();
+                  }}
+                >
+                  Revocar geolocalización
+                </button>
+              ) : null}
+            </div>
+
+            {showGeoConsent ? (
+              <div
+                data-testid="geo-consent-screen"
+                className="dg-card"
+                style={{ background: "var(--dg-surface-muted)" }}
+              >
+                <h3>Autorización de geolocalización</h3>
+                <p className="dg-muted">
+                  Usamos tu ubicación únicamente para ubicar el punto de entrega en Tocancipá.
+                  Puedes revocar este permiso en cualquier momento o escribir la dirección
+                  manualmente. Consulta la{" "}
+                  <Link href="/legal/privacidad" className="dg-footer-link">
+                    Política de Privacidad
+                  </Link>
+                  .
+                </p>
+                <label className="dg-check-row" style={{ marginBottom: "12px" }}>
+                  <input
+                    type="checkbox"
+                    name="geoConsentChecked"
+                    checked={geoConsentChecked}
+                    onChange={(e) => {
+                      setGeoConsentChecked(e.target.checked);
+                    }}
+                  />
+                  <span>Autorizo el uso de geolocalización para esta entrega.</span>
+                </label>
+                <div className="dg-btn-row">
+                  <button
+                    type="button"
+                    data-testid="geo-consent-allow"
+                    className="dg-btn"
+                    onClick={() => {
+                      void handleAllowGeoConsent();
+                    }}
+                  >
+                    Permitir
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="geo-consent-manual"
+                    className="dg-btn dg-btn--secondary"
+                    onClick={() => {
+                      setShowGeoConsent(false);
+                    }}
+                  >
+                    Escribir dirección manualmente
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
+            <form
+              onSubmit={(e) => {
+                void handlePublish(e);
+              }}
+              className="dg-stack"
+            >
+              <div className="dg-grid-2">
+                <label className="dg-field" htmlFor="rest-publish-mode">
+                  <span>Modalidad</span>
+                  <select
+                    id="rest-publish-mode"
+                    className="dg-select"
+                    value={publishMode}
+                    onChange={(e) => {
+                      setPublishMode(e.target.value as "OPEN" | "DIRECT");
+                    }}
+                  >
+                    <option value="OPEN">Oferta abierta en el radio</option>
+                    <option value="DIRECT">Asignación directa</option>
+                  </select>
+                </label>
+                {publishMode === "DIRECT" ? (
+                  <label className="dg-field" htmlFor="rest-courier-id">
+                    <span>ID del domiciliario</span>
+                    <input
+                      id="rest-courier-id"
+                      className="dg-input"
+                      type="text"
+                      value={courierId}
+                      onChange={(e) => {
+                        setCourierId(e.target.value);
+                      }}
+                      required
+                    />
+                  </label>
+                ) : null}
+                <label className="dg-field" htmlFor="rest-customer-name">
+                  <span>Nombre del cliente</span>
+                  <input
+                    id="rest-customer-name"
+                    className="dg-input"
+                    type="text"
+                    value={customerName}
+                    onChange={(e) => {
+                      setCustomerName(e.target.value);
+                    }}
+                    required
+                  />
+                </label>
+                <label className="dg-field" htmlFor="rest-customer-phone">
+                  <span>Teléfono del cliente (+57...)</span>
+                  <input
+                    id="rest-customer-phone"
+                    className="dg-input"
+                    type="text"
+                    value={customerPhone}
+                    onChange={(e) => {
+                      setCustomerPhone(e.target.value);
+                    }}
+                    required
+                  />
+                </label>
+                <label className="dg-field" htmlFor="rest-dropoff-address">
+                  <span>Dirección de entrega</span>
+                  <input
+                    id="rest-dropoff-address"
+                    className="dg-input"
+                    type="text"
+                    value={dropoffAddress}
+                    onChange={(e) => {
+                      setDropoffAddress(e.target.value);
+                    }}
+                    required
+                  />
+                </label>
+              </div>
+
+              <p className="dg-muted" style={{ margin: 0 }}>
+                {dropoffGeoStatus}
+              </p>
+
+              <details className="dg-details">
+                <summary>Opciones avanzadas (ID de pedido y coordenadas de entrega)</summary>
+                <div className="dg-grid-2">
+                  <label className="dg-field" htmlFor="rest-order-id">
+                    <span>ID del pedido</span>
+                    <input
+                      id="rest-order-id"
+                      className="dg-input"
+                      type="text"
+                      value={orderId}
+                      onChange={(e) => {
+                        setOrderId(e.target.value);
+                      }}
+                    />
+                  </label>
+                  <label className="dg-field" htmlFor="rest-dropoff-lng">
+                    <span>Longitud de entrega (solo lectura)</span>
+                    <input
+                      id="rest-dropoff-lng"
+                      className="dg-input"
+                      type="text"
+                      value={dropoffLongitude}
+                      readOnly
+                    />
+                  </label>
+                  <label className="dg-field" htmlFor="rest-dropoff-lat">
+                    <span>Latitud de entrega (solo lectura)</span>
+                    <input
+                      id="rest-dropoff-lat"
+                      className="dg-input"
+                      type="text"
+                      value={dropoffLatitude}
+                      readOnly
+                    />
+                  </label>
+                </div>
+              </details>
+
+              <div className="dg-btn-row">
+                <button
+                  type="submit"
+                  className="dg-btn"
+                  disabled={!sessionUser || !orderId || busyAction === "publish"}
+                >
+                  {busyAction === "publish" ? "Publicando..." : "Publicar domicilio"}
+                </button>
+              </div>
+            </form>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+export function RestaurantPedidosScreen() {
+  const {
+    sessionUser,
+    busyAction,
+    orderId,
+    setOrderId,
+    orderView,
+    events,
+    trackingUrl,
+    handleRefreshOrder,
+    handleCreateTrackingLink,
+  } = useRestaurantPortal();
+
+  return (
+    <div className="dg-stack" data-testid="restaurante-pedidos-screen">
       <section className="dg-card" aria-labelledby="restaurant-tracking-title">
-        <h2 id="restaurant-tracking-title">5. Recorrido y enlace de seguimiento</h2>
+        <h1 id="restaurant-tracking-title" style={{ marginBottom: "8px" }}>
+          Pedidos activos y seguimiento
+        </h1>
+        <div className="dg-stack" style={{ marginBottom: "12px" }}>
+          <label className="dg-field" htmlFor="rest-pedidos-order-id">
+            <span>ID del pedido</span>
+            <input
+              id="rest-pedidos-order-id"
+              className="dg-input"
+              type="text"
+              value={orderId}
+              onChange={(e) => {
+                setOrderId(e.target.value);
+              }}
+              placeholder="Ej. ord_..."
+            />
+          </label>
+        </div>
         <div className="dg-btn-row" style={{ marginBottom: "12px" }}>
           <button
             type="button"
@@ -848,6 +1425,56 @@ export function RestaurantPortal({ appName }: { appName: string }) {
         <div className="dg-alert dg-alert--soon" style={{ marginBottom: 0 }}>
           <strong>Próximamente:</strong> Listado paginado de pedidos históricos del restaurante (la
           API actual consulta pedidos por ID `GET /v1/orders/:id`).
+        </div>
+      </section>
+    </div>
+  );
+}
+
+export function RestaurantCuentaScreen() {
+  const { sessionUser, geoConsentId, handleRevokeGeoConsent, handleLogout, loggingOut } =
+    useRestaurantPortal();
+
+  return (
+    <div className="dg-stack" data-testid="restaurante-cuenta-screen">
+      <section className="dg-card" aria-labelledby="restaurant-account-title">
+        <h1 id="restaurant-account-title" style={{ marginBottom: "6px" }}>
+          Mi cuenta de restaurante
+        </h1>
+        <p className="dg-muted">
+          Sesión activa: <strong>{sessionUser?.email ?? sessionUser?.phoneE164}</strong> (Estado:{" "}
+          {sessionUser?.status ?? "ACTIVE"}).
+        </p>
+
+        <div className="dg-btn-row" style={{ marginTop: "12px" }}>
+          {geoConsentId ? (
+            <button
+              type="button"
+              className="dg-btn dg-btn--secondary"
+              onClick={() => {
+                void handleRevokeGeoConsent();
+              }}
+            >
+              Revocar geolocalización
+            </button>
+          ) : null}
+          <Link href="/legal/restaurantes" className="dg-btn dg-btn--secondary">
+            Términos Restaurantes
+          </Link>
+          <Link href="/legal/privacidad" className="dg-btn dg-btn--secondary">
+            Política de Privacidad
+          </Link>
+        </div>
+
+        <div className="dg-btn-row" style={{ marginTop: "16px" }}>
+          <button
+            type="button"
+            className="dg-btn dg-btn--danger"
+            onClick={() => void handleLogout()}
+            disabled={loggingOut}
+          >
+            {loggingOut ? "Cerrando sesión..." : "Cerrar sesión"}
+          </button>
         </div>
       </section>
     </div>

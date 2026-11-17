@@ -4,6 +4,14 @@ import Link from "next/link";
 import { useEffect, useState, type FormEvent } from "react";
 import { callProxy } from "@/lib/api-client";
 import { buildLoginPayload } from "@/lib/contracts";
+import {
+  clearStoredActiveRole,
+  getStoredActiveRole,
+  setStoredActiveRole,
+  type AccountRole,
+} from "@/lib/role-session";
+
+export type { AccountRole };
 
 export type SessionUser = {
   id: string;
@@ -11,8 +19,6 @@ export type SessionUser = {
   phoneE164: string | null;
   status: string;
 };
-
-export type AccountRole = "CUSTOMER" | "RESTAURANT" | "COURIER";
 
 export function RoleAuthCard({
   accountRole,
@@ -56,7 +62,11 @@ export function RoleAuthCard({
     callProxy<SessionUser>("auth/me", "GET")
       .then((user) => {
         if (active && user.id) {
-          onAuthenticated(user);
+          const storedRole = getStoredActiveRole();
+          if (!storedRole || storedRole === accountRole) {
+            setStoredActiveRole(accountRole);
+            onAuthenticated(user);
+          }
         }
       })
       .catch(() => {
@@ -70,7 +80,7 @@ export function RoleAuthCard({
     return () => {
       active = false;
     };
-  }, [onAuthenticated]);
+  }, [accountRole, onAuthenticated]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -108,6 +118,7 @@ export function RoleAuthCard({
             }
           : credentials;
       const data = await callProxy<SessionUser>(endpoint, "POST", payload);
+      setStoredActiveRole(accountRole);
       onAuthenticated(data);
       setPassword("");
       setStatusMessage(
@@ -135,6 +146,7 @@ export function RoleAuthCard({
     } catch {
       // Aunque falle la revocación remota, limpiamos estado local.
     } finally {
+      clearStoredActiveRole();
       onLoggedOut();
       setMode("login");
       setLoading(false);

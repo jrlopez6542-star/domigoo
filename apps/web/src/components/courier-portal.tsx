@@ -1,8 +1,26 @@
 "use client";
 
-import { useCallback, useState, type FormEvent } from "react";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
+import { Bike, Home, MapPin, ShieldCheck, UserCheck } from "lucide-react";
 import { callProxy } from "@/lib/api-client";
+import {
+  clearStoredActiveRole,
+  getStoredActiveRole,
+  ROLE_BASE_PATH,
+  setStoredActiveRole,
+} from "@/lib/role-session";
 import { RoleAuthCard, type SessionUser } from "./role-auth-card";
+import { RolePanelShell, type RoleNavItem } from "./role-panel-shell";
 
 type CourierOrderView = {
   id: string;
@@ -13,8 +31,95 @@ type CourierOrderView = {
   customerPhone?: string;
 };
 
-export function CourierPortal() {
+type CourierContextValue = {
+  sessionUser: SessionUser | null;
+  statusMessage: string;
+  errorMessage: string;
+  busyAction: string | null;
+  loggingOut: boolean;
+  handleLogout: () => Promise<void>;
+  // Perfil
+  firstName: string;
+  setFirstName: (v: string) => void;
+  lastName: string;
+  setLastName: (v: string) => void;
+  documentType: string;
+  setDocumentType: (v: string) => void;
+  documentNumber: string;
+  setDocumentNumber: (v: string) => void;
+  courierId: string;
+  handleCreateProfile: (e: FormEvent) => Promise<void>;
+  // Disponibilidad y ubicación
+  availability: "AVAILABLE" | "OFFLINE";
+  longitude: string;
+  latitude: string;
+  geoStatus: string;
+  handleUseMyLocation: () => void;
+  handleAvailability: (nextState: "AVAILABLE" | "OFFLINE") => Promise<void>;
+  handleSendLocation: (e: FormEvent) => Promise<void>;
+  // Entrega
+  offerId: string;
+  setOfferId: (v: string) => void;
+  orderId: string;
+  setOrderId: (v: string) => void;
+  pickupPin: string;
+  setPickupPin: (v: string) => void;
+  deliveryPin: string;
+  setDeliveryPin: (v: string) => void;
+  orderView: CourierOrderView | null;
+  handleAcceptOffer: () => Promise<void>;
+  handleDeclineOffer: () => Promise<void>;
+  handleLoadOrder: () => Promise<void>;
+  handleJourneyStep: (action: "arrive-pickup" | "at-pickup" | "at-dropoff") => Promise<void>;
+  handleVerifyPin: (kind: "pickup-pin" | "delivery-pin", pin: string) => Promise<void>;
+};
+
+const CourierContext = createContext<CourierContextValue | null>(null);
+
+const COURIER_NAV_ITEMS: RoleNavItem[] = [
+  {
+    href: "/domiciliario",
+    label: "Inicio",
+    shortLabel: "Inicio",
+    icon: <Home size={18} />,
+    testId: "nav-domiciliario-inicio",
+  },
+  {
+    href: "/domiciliario/perfil",
+    label: "Mi perfil y documentos",
+    shortLabel: "Perfil",
+    icon: <UserCheck size={18} />,
+    testId: "nav-domiciliario-perfil",
+  },
+  {
+    href: "/domiciliario/ubicacion",
+    label: "Disponibilidad y ubicación",
+    shortLabel: "Ubicación",
+    icon: <MapPin size={18} />,
+    testId: "nav-domiciliario-ubicacion",
+  },
+  {
+    href: "/domiciliario/entrega",
+    label: "Entrega en curso",
+    shortLabel: "Entrega",
+    icon: <Bike size={18} />,
+    testId: "nav-domiciliario-entrega",
+  },
+  {
+    href: "/domiciliario/cuenta",
+    label: "Mi cuenta",
+    shortLabel: "Cuenta",
+    icon: <ShieldCheck size={18} />,
+    testId: "nav-domiciliario-cuenta",
+  },
+];
+
+export function CourierPortalShell({ children }: { children: ReactNode }) {
+  const router = useRouter();
+  const pathname = usePathname();
   const [sessionUser, setSessionUser] = useState<SessionUser | null>(null);
+  const [checkingSession, setCheckingSession] = useState(true);
+  const [loggingOut, setLoggingOut] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [busyAction, setBusyAction] = useState<string | null>(null);
@@ -34,23 +139,74 @@ export function CourierPortal() {
     "Sin ubicación capturada todavía (Tocancipá por defecto).",
   );
 
-  // Oferta y pedido (Opciones avanzadas)
+  // Oferta y pedido
   const [offerId, setOfferId] = useState("");
   const [orderId, setOrderId] = useState("");
   const [pickupPin, setPickupPin] = useState("");
   const [deliveryPin, setDeliveryPin] = useState("");
   const [orderView, setOrderView] = useState<CourierOrderView | null>(null);
 
+  useEffect(() => {
+    let active = true;
+    const storedRole = getStoredActiveRole();
+    callProxy<SessionUser>("auth/me", "GET")
+      .then((user) => {
+        if (!active || !user.id) {
+          return;
+        }
+        if (storedRole && storedRole !== "COURIER") {
+          router.replace(ROLE_BASE_PATH[storedRole]);
+          return;
+        }
+        setStoredActiveRole("COURIER");
+        setSessionUser(user);
+      })
+      .catch(() => {
+        if (active) {
+          setSessionUser(null);
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setCheckingSession(false);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [router]);
+
+  useEffect(() => {
+    if (!checkingSession && !sessionUser && pathname !== "/domiciliario") {
+      router.replace("/domiciliario");
+    }
+  }, [checkingSession, sessionUser, pathname, router]);
+
   const handleAuthenticated = useCallback((user: SessionUser) => {
+    setStoredActiveRole("COURIER");
     setSessionUser(user);
   }, []);
 
   const handleLoggedOut = useCallback(() => {
+    clearStoredActiveRole();
     setSessionUser(null);
     setCourierId("");
     setOrderView(null);
     setAvailability("OFFLINE");
   }, []);
+
+  const handleLogout = useCallback(async () => {
+    setLoggingOut(true);
+    try {
+      await callProxy<unknown>("auth/logout", "POST");
+    } catch {
+      // Limpiamos sesión local aunque falle la revocación remota.
+    } finally {
+      handleLoggedOut();
+      setLoggingOut(false);
+      router.replace("/domiciliario");
+    }
+  }, [handleLoggedOut, router]);
 
   async function runAction(label: string, fn: () => Promise<void>) {
     setErrorMessage("");
@@ -235,56 +391,216 @@ export function CourierPortal() {
     });
   }
 
-  return (
-    <div className="dg-stack">
+  if (checkingSession) {
+    return (
       <div className="dg-card">
-        <span
-          className="dg-badge"
-          style={{
-            marginBottom: "8px",
-            background: "var(--dg-orange-soft)",
-            color: "var(--dg-orange)",
-            borderColor: "#fed7aa",
-          }}
-        >
-          Soy domiciliario · Tocancipá
-        </span>
-        <h1 style={{ margin: "4px 0 8px", fontSize: "clamp(1.4rem, 3vw, 1.9rem)" }}>
-          Panel de domiciliario DOMIGOO
-        </h1>
         <p className="dg-muted" style={{ margin: 0 }}>
-          Inicia sesión o regístrate, completa tu perfil, activa tu disponibilidad y gestiona tus
-          entregas en Tocancipá.
+          Verificando sesión de domiciliario...
         </p>
       </div>
+    );
+  }
 
-      {statusMessage ? (
-        <div role="status" aria-live="polite" className="dg-alert dg-alert--success">
-          {statusMessage}
+  if (!sessionUser) {
+    if (pathname !== "/domiciliario") {
+      return (
+        <div className="dg-card">
+          <p className="dg-muted" style={{ margin: 0 }}>
+            Redirigiendo al acceso de domiciliario...
+          </p>
         </div>
-      ) : null}
-
-      {errorMessage ? (
-        <div role="alert" aria-live="polite" className="dg-alert dg-alert--error">
-          {errorMessage}
+      );
+    }
+    return (
+      <div className="dg-stack">
+        <div className="dg-card">
+          <span className="dg-badge" style={{ marginBottom: "8px" }}>
+            Soy domiciliario · Tocancipá
+          </span>
+          <h1 style={{ margin: "4px 0 8px", fontSize: "clamp(1.4rem, 3vw, 1.9rem)" }}>
+            Tu espacio de domiciliario en DOMIGOO
+          </h1>
+          <p className="dg-muted" style={{ margin: 0 }}>
+            Inicia sesión o regístrate para completar tu perfil, activar tu disponibilidad y
+            gestionar tus entregas.
+          </p>
         </div>
-      ) : null}
 
-      <RoleAuthCard
-        accountRole="COURIER"
-        roleTitle="Acceso de domiciliario"
-        roleSubtitle="Ingresa con tu celular colombiano (+57...) o correo y contraseña."
-        identifierPlaceholder="+573001234567"
+        <RoleAuthCard
+          accountRole="COURIER"
+          roleTitle="Acceso de domiciliario"
+          roleSubtitle="Ingresa con tu celular (+57...) o correo electrónico para trabajar en Tocancipá."
+          identifierPlaceholder="+573001234567"
+          sessionUser={sessionUser}
+          onAuthenticated={handleAuthenticated}
+          onLoggedOut={handleLoggedOut}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <CourierContext.Provider
+      value={{
+        sessionUser,
+        statusMessage,
+        errorMessage,
+        busyAction,
+        loggingOut,
+        handleLogout,
+        firstName,
+        setFirstName,
+        lastName,
+        setLastName,
+        documentType,
+        setDocumentType,
+        documentNumber,
+        setDocumentNumber,
+        courierId,
+        handleCreateProfile,
+        availability,
+        longitude,
+        latitude,
+        geoStatus,
+        handleUseMyLocation,
+        handleAvailability,
+        handleSendLocation,
+        offerId,
+        setOfferId,
+        orderId,
+        setOrderId,
+        pickupPin,
+        setPickupPin,
+        deliveryPin,
+        setDeliveryPin,
+        orderView,
+        handleAcceptOffer,
+        handleDeclineOffer,
+        handleLoadOrder,
+        handleJourneyStep,
+        handleVerifyPin,
+      }}
+    >
+      <RolePanelShell
+        roleBadge="Domiciliario"
+        roleHeading="Portal de Domiciliarios"
+        navItems={COURIER_NAV_ITEMS}
         sessionUser={sessionUser}
-        onAuthenticated={handleAuthenticated}
-        onLoggedOut={handleLoggedOut}
-      />
+        onLogout={() => void handleLogout()}
+        loggingOut={loggingOut}
+      >
+        {statusMessage ? (
+          <div role="status" aria-live="polite" className="dg-alert dg-alert--success">
+            {statusMessage}
+          </div>
+        ) : null}
 
+        {errorMessage ? (
+          <div role="alert" aria-live="polite" className="dg-alert dg-alert--error">
+            {errorMessage}
+          </div>
+        ) : null}
+
+        {children}
+      </RolePanelShell>
+    </CourierContext.Provider>
+  );
+}
+
+function useCourierPortal() {
+  const ctx = useContext(CourierContext);
+  if (!ctx) {
+    throw new Error("useCourierPortal debe usarse dentro de CourierPortalShell");
+  }
+  return ctx;
+}
+
+export function CourierHomeScreen() {
+  const { availability, courierId, orderView } = useCourierPortal();
+
+  return (
+    <div className="dg-stack" data-testid="domiciliario-home-screen">
+      <div className="dg-card">
+        <span className="dg-badge" style={{ marginBottom: "8px" }}>
+          Inicio · Domiciliario
+        </span>
+        <h1 style={{ margin: "4px 0 8px", fontSize: "clamp(1.35rem, 3vw, 1.75rem)" }}>
+          Tu jornada en Tocancipá
+        </h1>
+        <p className="dg-muted" style={{ margin: 0 }}>
+          Revisa tu estado operativo, configura tu perfil documental, comparte ubicación y avanza en
+          tu entrega actual.
+        </p>
+        <div className="dg-btn-row" style={{ marginTop: "14px" }}>
+          <span className="dg-pill">
+            Disponibilidad: {availability === "AVAILABLE" ? "Disponible" : "Desconectado"}
+          </span>
+          <span className="dg-pill">Perfil: {courierId ? courierId : "Pendiente por crear"}</span>
+          {orderView ? (
+            <span className="dg-pill">
+              Entrega activa: {orderView.id} ({orderView.status})
+            </span>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="dg-grid-2">
+        <Link href="/domiciliario/perfil" className="dg-card" style={{ textDecoration: "none" }}>
+          <h2 style={{ marginBottom: "6px" }}>Mi perfil y documentos</h2>
+          <p className="dg-muted" style={{ margin: 0 }}>
+            Registra tus datos básicos y documento para validación administrativa.
+          </p>
+        </Link>
+
+        <Link href="/domiciliario/ubicacion" className="dg-card" style={{ textDecoration: "none" }}>
+          <h2 style={{ marginBottom: "6px" }}>Disponibilidad y ubicación</h2>
+          <p className="dg-muted" style={{ margin: 0 }}>
+            Activa tu disponibilidad y reporta tu ubicación GPS en Tocancipá.
+          </p>
+        </Link>
+
+        <Link href="/domiciliario/entrega" className="dg-card" style={{ textDecoration: "none" }}>
+          <h2 style={{ marginBottom: "6px" }}>Entrega en curso</h2>
+          <p className="dg-muted" style={{ margin: 0 }}>
+            Avanza paso a paso: en camino, en restaurante, PIN recogida, en cliente y PIN entrega.
+          </p>
+        </Link>
+
+        <Link href="/domiciliario/cuenta" className="dg-card" style={{ textDecoration: "none" }}>
+          <h2 style={{ marginBottom: "6px" }}>Mi cuenta</h2>
+          <p className="dg-muted" style={{ margin: 0 }}>
+            Consulta tu sesión, términos para domiciliarios y privacidad.
+          </p>
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+export function CourierPerfilScreen() {
+  const {
+    sessionUser,
+    busyAction,
+    firstName,
+    setFirstName,
+    lastName,
+    setLastName,
+    documentType,
+    setDocumentType,
+    documentNumber,
+    setDocumentNumber,
+    courierId,
+    handleCreateProfile,
+  } = useCourierPortal();
+
+  return (
+    <div className="dg-stack" data-testid="domiciliario-perfil-screen">
       <section className="dg-card" aria-labelledby="courier-profile-title">
-        <h2 id="courier-profile-title">1. Perfil de domiciliario</h2>
+        <h1 id="courier-profile-title" style={{ marginBottom: "8px" }}>
+          Mi perfil y documentos
+        </h1>
         <p className="dg-muted">
-          Registra tus datos básicos si aún no tienes perfil. Requiere consentimiento vigente de
-          tratamiento de documentos.
+          Completa tus datos de identificación para habilitar tu perfil operativo.
         </p>
         <form
           onSubmit={(e) => {
@@ -329,9 +645,9 @@ export function CourierPortal() {
                   setDocumentType(e.target.value);
                 }}
               >
-                <option value="CC">Cédula de Ciudadanía (CC)</option>
-                <option value="CE">Cédula de Extranjería (CE)</option>
-                <option value="PPT">Permiso por Protección Temporal (PPT)</option>
+                <option value="CC">Cédula de ciudadanía (CC)</option>
+                <option value="CE">Cédula de extranjería (CE)</option>
+                <option value="PPT">PPT</option>
               </select>
             </label>
             <label className="dg-field" htmlFor="courier-doc-number">
@@ -354,31 +670,35 @@ export function CourierPortal() {
               className="dg-btn"
               disabled={!sessionUser || busyAction === "profile"}
             >
-              {busyAction === "profile" ? "Guardando..." : "Crear perfil de domiciliario"}
+              {busyAction === "profile" ? "Guardando..." : "Guardar perfil"}
             </button>
-            {courierId ? <span className="dg-pill">ID: {courierId}</span> : null}
+            {courierId ? <span className="dg-pill">ID domiciliario: {courierId}</span> : null}
           </div>
         </form>
       </section>
+    </div>
+  );
+}
 
-      <section className="dg-card" aria-labelledby="courier-avail-title">
-        <div
-          style={{
-            display: "flex",
-            flexWrap: "wrap",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: "8px",
-            marginBottom: "8px",
-          }}
-        >
-          <h2 id="courier-avail-title" style={{ margin: 0 }}>
-            2. Disponibilidad y ubicación
-          </h2>
-          <span className="dg-pill">
-            Estado: {availability === "AVAILABLE" ? "Disponible" : "Desconectado"}
-          </span>
-        </div>
+export function CourierUbicacionScreen() {
+  const {
+    sessionUser,
+    busyAction,
+    availability,
+    longitude,
+    latitude,
+    geoStatus,
+    handleUseMyLocation,
+    handleAvailability,
+    handleSendLocation,
+  } = useCourierPortal();
+
+  return (
+    <div className="dg-stack" data-testid="domiciliario-ubicacion-screen">
+      <section className="dg-card" aria-labelledby="courier-availability-title">
+        <h1 id="courier-availability-title" style={{ marginBottom: "8px" }}>
+          Disponibilidad y ubicación
+        </h1>
         <div className="dg-btn-row" style={{ marginBottom: "14px" }}>
           <button
             type="button"
@@ -388,7 +708,7 @@ export function CourierPortal() {
               void handleAvailability("AVAILABLE");
             }}
           >
-            Pasar a disponible
+            Conectarme (Disponible)
           </button>
           <button
             type="button"
@@ -400,6 +720,9 @@ export function CourierPortal() {
           >
             Desconectarme
           </button>
+          <span className="dg-pill">
+            Estado actual: {availability === "AVAILABLE" ? "Disponible" : "Desconectado"}
+          </span>
         </div>
 
         <form
@@ -425,7 +748,7 @@ export function CourierPortal() {
               className="dg-btn"
               disabled={!sessionUser || busyAction === "location"}
             >
-              {busyAction === "location" ? "Enviando..." : "Enviar ubicación actual"}
+              {busyAction === "location" ? "Enviando..." : "Reportar ubicación"}
             </button>
           </div>
 
@@ -456,19 +779,76 @@ export function CourierPortal() {
           </details>
         </form>
       </section>
+    </div>
+  );
+}
 
-      <section className="dg-card" aria-labelledby="courier-orders-title">
-        <h2 id="courier-orders-title">3. Recorrido de entrega</h2>
+export function CourierEntregaScreen() {
+  const {
+    sessionUser,
+    busyAction,
+    offerId,
+    setOfferId,
+    orderId,
+    setOrderId,
+    pickupPin,
+    setPickupPin,
+    deliveryPin,
+    setDeliveryPin,
+    orderView,
+    handleAcceptOffer,
+    handleDeclineOffer,
+    handleLoadOrder,
+    handleJourneyStep,
+    handleVerifyPin,
+  } = useCourierPortal();
+
+  const status = orderView?.status ?? "";
+  const stepIndex =
+    status === "DELIVERED"
+      ? 5
+      : status === "AT_DROPOFF"
+        ? 4
+        : status === "PICKED_UP"
+          ? 3
+          : status === "AT_PICKUP"
+            ? 2
+            : 1;
+
+  return (
+    <div className="dg-stack" data-testid="domiciliario-entrega-screen">
+      <section className="dg-card" aria-labelledby="courier-delivery-title">
+        <h1 id="courier-delivery-title" style={{ marginBottom: "8px" }}>
+          Entrega en curso
+        </h1>
+
+        <div className="dg-stepper" aria-label="Pasos de entrega">
+          <div className={`dg-step-pill ${stepIndex > 1 ? "dg-step-pill--done" : ""}`}>
+            1. En camino
+          </div>
+          <div className={`dg-step-pill ${stepIndex > 2 ? "dg-step-pill--done" : ""}`}>
+            2. En restaurante
+          </div>
+          <div className={`dg-step-pill ${stepIndex > 3 ? "dg-step-pill--done" : ""}`}>
+            3. PIN recogida
+          </div>
+          <div className={`dg-step-pill ${stepIndex > 4 ? "dg-step-pill--done" : ""}`}>
+            4. En cliente
+          </div>
+          <div className={`dg-step-pill ${stepIndex === 5 ? "dg-step-pill--done" : ""}`}>
+            5. PIN entrega
+          </div>
+        </div>
+
         <div className="dg-stack">
           {orderView ? (
-            <div className="dg-alert dg-alert--success">
-              Estado: <strong>{orderView.status}</strong>
-              {orderView.pickupAddress ? ` · Recogida: ${orderView.pickupAddress}` : ""}
+            <div className="dg-alert dg-alert--success" style={{ marginBottom: 0 }}>
+              Pedido <strong>{orderView.id}</strong> · Estado: <strong>{orderView.status}</strong>
               {orderView.dropoffAddress ? ` · Entrega: ${orderView.dropoffAddress}` : ""}
             </div>
           ) : (
             <p className="dg-muted" style={{ margin: 0 }}>
-              Cuando tengas una oferta o pedido asignado, avanza aquí cada paso de la entrega.
+              Cuando aceptes un domicilio verás aquí los datos de recogida y entrega.
             </p>
           )}
 
@@ -638,6 +1018,47 @@ export function CourierPortal() {
           <strong>Próximamente:</strong> Bandeja automática de ofertas cercanas en tiempo real
           (pendiente de endpoint `GET /v1/offers` en la API para listar ofertas pendientes sin
           ingresar el ID manualmente).
+        </div>
+      </section>
+    </div>
+  );
+}
+
+export function CourierCuentaScreen() {
+  const { sessionUser, handleLogout, loggingOut } = useCourierPortal();
+
+  return (
+    <div className="dg-stack" data-testid="domiciliario-cuenta-screen">
+      <section className="dg-card" aria-labelledby="courier-account-title">
+        <h1 id="courier-account-title" style={{ marginBottom: "6px" }}>
+          Mi cuenta de domiciliario
+        </h1>
+        <p className="dg-muted">
+          Sesión activa: <strong>{sessionUser?.email ?? sessionUser?.phoneE164}</strong> (Estado:{" "}
+          {sessionUser?.status ?? "ACTIVE"}).
+        </p>
+
+        <div className="dg-btn-row" style={{ marginTop: "12px" }}>
+          <Link href="/legal/domiciliarios" className="dg-btn dg-btn--secondary">
+            Términos Domiciliarios
+          </Link>
+          <Link href="/legal/privacidad" className="dg-btn dg-btn--secondary">
+            Política de Privacidad
+          </Link>
+          <Link href="/legal/autorizacion" className="dg-btn dg-btn--secondary">
+            Autorización de Datos
+          </Link>
+        </div>
+
+        <div className="dg-btn-row" style={{ marginTop: "16px" }}>
+          <button
+            type="button"
+            className="dg-btn dg-btn--danger"
+            onClick={() => void handleLogout()}
+            disabled={loggingOut}
+          >
+            {loggingOut ? "Cerrando sesión..." : "Cerrar sesión"}
+          </button>
         </div>
       </section>
     </div>

@@ -1,10 +1,27 @@
 "use client";
 
-import { useCallback, useState, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
+import { Calculator, Home, MapPin, ShieldCheck, UtensilsCrossed } from "lucide-react";
 import { callProxy, extractTrackingToken } from "@/lib/api-client";
 import type { QuotePayload } from "@/lib/contracts";
+import {
+  clearStoredActiveRole,
+  getStoredActiveRole,
+  ROLE_BASE_PATH,
+  setStoredActiveRole,
+} from "@/lib/role-session";
 import { RoleAuthCard, type SessionUser } from "./role-auth-card";
+import { RolePanelShell, type RoleNavItem } from "./role-panel-shell";
 
 type PublicTrackingSummary = {
   status: string;
@@ -13,9 +30,77 @@ type PublicTrackingSummary = {
   deliveryPin?: string;
 };
 
-export function ClientPortal() {
+type ClientPortalContextValue = {
+  sessionUser: SessionUser | null;
+  checkingSession: boolean;
+  trackingInput: string;
+  setTrackingInput: (val: string) => void;
+  trackingLoading: boolean;
+  trackingError: string;
+  trackingPreview: PublicTrackingSummary | null;
+  handleLookupTracking: (e: FormEvent) => Promise<void>;
+  handleOpenTrackingPage: () => void;
+  originLng: string;
+  originLat: string;
+  destLng: string;
+  destLat: string;
+  geoLoading: boolean;
+  geoStatus: string;
+  quoteLoading: boolean;
+  quoteError: string;
+  quoteText: string;
+  handleUseMyLocation: () => void;
+  handleEstimateDelivery: (e: FormEvent) => Promise<void>;
+  handleLogout: () => Promise<void>;
+  loggingOut: boolean;
+};
+
+const ClientPortalContext = createContext<ClientPortalContextValue | null>(null);
+
+const CLIENT_NAV_ITEMS: RoleNavItem[] = [
+  {
+    href: "/cliente",
+    label: "Inicio",
+    shortLabel: "Inicio",
+    icon: <Home size={18} />,
+    testId: "nav-cliente-inicio",
+  },
+  {
+    href: "/cliente/pedir",
+    label: "Pedir comida",
+    shortLabel: "Pedir",
+    icon: <UtensilsCrossed size={18} />,
+    testId: "nav-cliente-pedir",
+  },
+  {
+    href: "/cliente/seguir",
+    label: "Seguir pedido",
+    shortLabel: "Seguir",
+    icon: <MapPin size={18} />,
+    testId: "nav-cliente-seguir",
+  },
+  {
+    href: "/cliente/tarifa",
+    label: "Calcular tarifa",
+    shortLabel: "Tarifa",
+    icon: <Calculator size={18} />,
+    testId: "nav-cliente-tarifa",
+  },
+  {
+    href: "/cliente/cuenta",
+    label: "Mi cuenta",
+    shortLabel: "Cuenta",
+    icon: <ShieldCheck size={18} />,
+    testId: "nav-cliente-cuenta",
+  },
+];
+
+export function ClientPortalShell({ children }: { children: ReactNode }) {
   const router = useRouter();
+  const pathname = usePathname();
   const [sessionUser, setSessionUser] = useState<SessionUser | null>(null);
+  const [checkingSession, setCheckingSession] = useState(true);
+  const [loggingOut, setLoggingOut] = useState(false);
 
   // Seguimiento público
   const [trackingInput, setTrackingInput] = useState("");
@@ -23,7 +108,7 @@ export function ClientPortal() {
   const [trackingError, setTrackingError] = useState("");
   const [trackingPreview, setTrackingPreview] = useState<PublicTrackingSummary | null>(null);
 
-  // Cotizador (requiere sesión)
+  // Cotizador
   const [originLng] = useState("-73.9125");
   const [originLat] = useState("4.9652");
   const [destLng, setDestLng] = useState("-73.9180");
@@ -34,14 +119,65 @@ export function ClientPortal() {
   const [quoteError, setQuoteError] = useState("");
   const [quoteText, setQuoteText] = useState("");
 
+  useEffect(() => {
+    let active = true;
+    const storedRole = getStoredActiveRole();
+    callProxy<SessionUser>("auth/me", "GET")
+      .then((user) => {
+        if (!active || !user.id) {
+          return;
+        }
+        if (storedRole && storedRole !== "CUSTOMER") {
+          router.replace(ROLE_BASE_PATH[storedRole]);
+          return;
+        }
+        setStoredActiveRole("CUSTOMER");
+        setSessionUser(user);
+      })
+      .catch(() => {
+        if (active) {
+          setSessionUser(null);
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setCheckingSession(false);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [router]);
+
+  useEffect(() => {
+    if (!checkingSession && !sessionUser && pathname !== "/cliente") {
+      router.replace("/cliente");
+    }
+  }, [checkingSession, sessionUser, pathname, router]);
+
   const handleAuthenticated = useCallback((user: SessionUser) => {
+    setStoredActiveRole("CUSTOMER");
     setSessionUser(user);
   }, []);
 
   const handleLoggedOut = useCallback(() => {
+    clearStoredActiveRole();
     setSessionUser(null);
     setQuoteText("");
   }, []);
+
+  const handleLogout = useCallback(async () => {
+    setLoggingOut(true);
+    try {
+      await callProxy<unknown>("auth/logout", "POST");
+    } catch {
+      // Limpiamos sesión local aunque falle la revocación remota.
+    } finally {
+      handleLoggedOut();
+      setLoggingOut(false);
+      router.replace("/cliente");
+    }
+  }, [handleLoggedOut, router]);
 
   function handleUseMyLocation() {
     setQuoteError("");
@@ -132,32 +268,207 @@ export function ClientPortal() {
     }
   }
 
+  if (checkingSession) {
+    return (
+      <div className="dg-card">
+        <p className="dg-muted" style={{ margin: 0 }}>
+          Verificando sesión de cliente...
+        </p>
+      </div>
+    );
+  }
+
+  if (!sessionUser) {
+    if (pathname !== "/cliente") {
+      return (
+        <div className="dg-card">
+          <p className="dg-muted" style={{ margin: 0 }}>
+            Redirigiendo al acceso de cliente...
+          </p>
+        </div>
+      );
+    }
+    return (
+      <div className="dg-stack">
+        <div className="dg-card">
+          <span className="dg-badge" style={{ marginBottom: "8px" }}>
+            Soy cliente · Tocancipá
+          </span>
+          <h1 style={{ margin: "4px 0 8px", fontSize: "clamp(1.4rem, 3vw, 1.9rem)" }}>
+            Tu espacio de cliente en DOMIGOO
+          </h1>
+          <p className="dg-muted" style={{ margin: 0 }}>
+            Ingresa o regístrate con tu correo o celular para acceder a tu panel de cliente.
+          </p>
+        </div>
+
+        <RoleAuthCard
+          accountRole="CUSTOMER"
+          roleTitle="Acceso de cliente"
+          roleSubtitle="Usa tu correo o número celular colombiano (+57...) para iniciar sesión o registrarte."
+          sessionUser={sessionUser}
+          onAuthenticated={handleAuthenticated}
+          onLoggedOut={handleLoggedOut}
+        />
+      </div>
+    );
+  }
+
   return (
-    <div className="dg-stack">
+    <ClientPortalContext.Provider
+      value={{
+        sessionUser,
+        checkingSession,
+        trackingInput,
+        setTrackingInput,
+        trackingLoading,
+        trackingError,
+        trackingPreview,
+        handleLookupTracking,
+        handleOpenTrackingPage,
+        originLng,
+        originLat,
+        destLng,
+        destLat,
+        geoLoading,
+        geoStatus,
+        quoteLoading,
+        quoteError,
+        quoteText,
+        handleUseMyLocation,
+        handleEstimateDelivery,
+        handleLogout,
+        loggingOut,
+      }}
+    >
+      <RolePanelShell
+        roleBadge="Cliente"
+        roleHeading="Panel de Cliente"
+        navItems={CLIENT_NAV_ITEMS}
+        sessionUser={sessionUser}
+        onLogout={() => void handleLogout()}
+        loggingOut={loggingOut}
+      >
+        {children}
+      </RolePanelShell>
+    </ClientPortalContext.Provider>
+  );
+}
+
+function useClientPortal() {
+  const ctx = useContext(ClientPortalContext);
+  if (!ctx) {
+    throw new Error("useClientPortal debe usarse dentro de ClientPortalShell");
+  }
+  return ctx;
+}
+
+export function ClientHomeScreen() {
+  const { sessionUser } = useClientPortal();
+
+  return (
+    <div className="dg-stack" data-testid="cliente-home-screen">
       <div className="dg-card">
         <span className="dg-badge" style={{ marginBottom: "8px" }}>
-          Soy cliente · Tocancipá
+          Inicio · Cliente
         </span>
-        <h1 style={{ margin: "4px 0 8px", fontSize: "clamp(1.4rem, 3vw, 1.9rem)" }}>
-          Tu espacio de cliente en DOMIGOO
+        <h1 style={{ margin: "4px 0 8px", fontSize: "clamp(1.35rem, 3vw, 1.75rem)" }}>
+          ¡Hola, {sessionUser?.email ?? sessionUser?.phoneE164 ?? "Cliente"}!
         </h1>
         <p className="dg-muted" style={{ margin: 0 }}>
-          Ingresa o regístrate con tu correo o celular, sigue tu pedido en vivo y consulta tarifas
-          de domicilio en Tocancipá.
+          Desde aquí puedes seguir tus pedidos en vivo, calcular tarifas de domicilio en Tocancipá o
+          revisar tu cuenta.
         </p>
       </div>
 
-      <RoleAuthCard
-        accountRole="CUSTOMER"
-        roleTitle="Acceso de cliente"
-        roleSubtitle="Usa tu correo o número celular colombiano (+57...) para iniciar sesión o registrarte."
-        sessionUser={sessionUser}
-        onAuthenticated={handleAuthenticated}
-        onLoggedOut={handleLoggedOut}
-      />
+      <div className="dg-grid-2">
+        <Link href="/cliente/pedir" className="dg-card" style={{ textDecoration: "none" }}>
+          <h2 style={{ marginBottom: "6px" }}>Pedir comida</h2>
+          <p className="dg-muted" style={{ margin: 0 }}>
+            Próximamente (M50): catálogo de restaurantes de Tocancipá y carrito en línea.
+          </p>
+        </Link>
 
+        <Link href="/cliente/seguir" className="dg-card" style={{ textDecoration: "none" }}>
+          <h2 style={{ marginBottom: "6px" }}>Seguir pedido</h2>
+          <p className="dg-muted" style={{ margin: 0 }}>
+            Consulta el estado en vivo con el código o enlace compartido por el restaurante.
+          </p>
+        </Link>
+
+        <Link href="/cliente/tarifa" className="dg-card" style={{ textDecoration: "none" }}>
+          <h2 style={{ marginBottom: "6px" }}>Calcular tarifa</h2>
+          <p className="dg-muted" style={{ margin: 0 }}>
+            Estima el valor del domicilio usando tu ubicación actual o coordenadas.
+          </p>
+        </Link>
+
+        <Link href="/cliente/cuenta" className="dg-card" style={{ textDecoration: "none" }}>
+          <h2 style={{ marginBottom: "6px" }}>Mi cuenta</h2>
+          <p className="dg-muted" style={{ margin: 0 }}>
+            Revisa tus datos de sesión, autorizaciones de privacidad y enlaces legales.
+          </p>
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+export function ClientPedirScreen() {
+  return (
+    <div className="dg-stack" data-testid="cliente-pedir-screen">
+      <section className="dg-card" aria-labelledby="client-pedir-title">
+        <span className="dg-badge" style={{ marginBottom: "8px" }}>
+          Próximamente · M50
+        </span>
+        <h1 id="client-pedir-title" style={{ margin: "4px 0 8px" }}>
+          Pedir comida en Tocancipá
+        </h1>
+        <p className="dg-muted">
+          Este espacio alojará el catálogo de restaurantes aliados, menús y carrito de compra en la
+          siguiente etapa (M50).
+        </p>
+        <div className="dg-grid-2">
+          <div className="dg-alert dg-alert--soon" style={{ marginBottom: 0 }}>
+            <strong>Próximamente:</strong> Catálogo de restaurantes de Tocancipá y carrito para
+            pedir directamente desde la web (pendiente de endpoints públicos de menú y creación de
+            pedido por cliente en la API).
+          </div>
+          <div className="dg-alert dg-alert--soon" style={{ marginBottom: 0 }}>
+            <strong>Próximamente:</strong> Historial de mis pedidos anteriores (pendiente de
+            endpoint de listado de pedidos por cliente en la API).
+          </div>
+        </div>
+        <div className="dg-btn-row" style={{ marginTop: "16px" }}>
+          <Link href="/cliente/seguir" className="dg-btn">
+            Seguir un pedido existente
+          </Link>
+          <Link href="/cliente/tarifa" className="dg-btn dg-btn--secondary">
+            Calcular tarifa de domicilio
+          </Link>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+export function ClientSeguirScreen() {
+  const {
+    trackingInput,
+    setTrackingInput,
+    trackingLoading,
+    trackingError,
+    trackingPreview,
+    handleLookupTracking,
+    handleOpenTrackingPage,
+  } = useClientPortal();
+
+  return (
+    <div className="dg-stack" data-testid="cliente-seguir-screen">
       <section className="dg-card" aria-labelledby="tracking-lookup-title">
-        <h2 id="tracking-lookup-title">Seguir mi pedido</h2>
+        <h1 id="tracking-lookup-title" style={{ marginBottom: "6px" }}>
+          Seguir mi pedido
+        </h1>
         <p className="dg-muted">
           Pega el enlace o código de seguimiento que te compartió el restaurante.
         </p>
@@ -208,12 +519,34 @@ export function ClientPortal() {
           </div>
         ) : null}
       </section>
+    </div>
+  );
+}
 
+export function ClientTarifaScreen() {
+  const {
+    sessionUser,
+    originLng,
+    originLat,
+    destLng,
+    destLat,
+    geoLoading,
+    geoStatus,
+    quoteLoading,
+    quoteError,
+    quoteText,
+    handleUseMyLocation,
+    handleEstimateDelivery,
+  } = useClientPortal();
+
+  return (
+    <div className="dg-stack" data-testid="cliente-tarifa-screen">
       <section className="dg-card" aria-labelledby="client-quote-title">
-        <h2 id="client-quote-title">Calcular tarifa de domicilio</h2>
+        <h1 id="client-quote-title" style={{ marginBottom: "6px" }}>
+          Calcular tarifa de domicilio
+        </h1>
         <p className="dg-muted">
-          Estima el costo de envío en Tocancipá usando tu ubicación actual (requiere iniciar
-          sesión).
+          Estima el costo de envío en Tocancipá usando tu ubicación actual.
         </p>
         <form
           onSubmit={(e) => {
@@ -295,18 +628,49 @@ export function ClientPortal() {
           </div>
         ) : null}
       </section>
+    </div>
+  );
+}
 
-      <section className="dg-card" aria-labelledby="client-soon-title">
-        <h2 id="client-soon-title">Funciones en camino</h2>
-        <div className="dg-grid-2">
+export function ClientCuentaScreen() {
+  const { sessionUser, handleLogout, loggingOut } = useClientPortal();
+
+  return (
+    <div className="dg-stack" data-testid="cliente-cuenta-screen">
+      <section className="dg-card" aria-labelledby="client-account-title">
+        <h1 id="client-account-title" style={{ marginBottom: "6px" }}>
+          Mi cuenta y privacidad
+        </h1>
+        <p className="dg-muted">
+          Sesión activa: <strong>{sessionUser?.email ?? sessionUser?.phoneE164}</strong> (Estado:{" "}
+          {sessionUser?.status ?? "ACTIVE"}).
+        </p>
+
+        <div className="dg-stack" style={{ marginTop: "12px" }}>
           <div className="dg-alert dg-alert--soon" style={{ marginBottom: 0 }}>
-            <strong>Próximamente:</strong> Catálogo de restaurantes de Tocancipá y carrito para
-            pedir directamente desde la web (pendiente de endpoints públicos de menú y creación de
-            pedido por cliente en la API).
+            Tus consentimientos de Términos y Tratamiento de Datos quedaron registrados al momento
+            de crear tu cuenta conforme a la Ley 1581 de 2012.
           </div>
-          <div className="dg-alert dg-alert--soon" style={{ marginBottom: 0 }}>
-            <strong>Próximamente:</strong> Historial de mis pedidos anteriores (pendiente de
-            endpoint de listado de pedidos por cliente en la API).
+          <div className="dg-btn-row">
+            <Link href="/legal/terminos" className="dg-btn dg-btn--secondary">
+              Términos y Condiciones
+            </Link>
+            <Link href="/legal/privacidad" className="dg-btn dg-btn--secondary">
+              Política de Privacidad
+            </Link>
+            <Link href="/legal/autorizacion" className="dg-btn dg-btn--secondary">
+              Autorización de Datos
+            </Link>
+          </div>
+          <div className="dg-btn-row" style={{ marginTop: "8px" }}>
+            <button
+              type="button"
+              className="dg-btn dg-btn--danger"
+              onClick={() => void handleLogout()}
+              disabled={loggingOut}
+            >
+              {loggingOut ? "Cerrando sesión..." : "Cerrar sesión"}
+            </button>
           </div>
         </div>
       </section>

@@ -80,27 +80,37 @@ test.describe("HOME-002 (Futuro Urbano), Legal (M45) y Tracking público (M30)",
     await expect(footer.getByRole("link", { name: "Administración" })).toBeVisible();
     await expect(footer).not.toContainText(/próximamente/i);
 
-    // Navegación a Cliente
+    // Iniciar sesión y Crear cuenta llevan al selector de rol (/acceso)
+    await loginBtn.click();
+    await expect(page).toHaveURL(/\/acceso\?modo=login$/);
+    await expect(page.getByTestId("select-role-cliente")).toBeVisible();
+    await expect(page.getByTestId("select-role-restaurante")).toBeVisible();
+    await expect(page.getByTestId("select-role-domiciliario")).toBeVisible();
+
+    await page.goto("/");
+    await registerLink.click();
+    await expect(page).toHaveURL(/\/acceso\?modo=registro$/);
+
+    // Antes del login, cada rol muestra SOLO su pantalla de acceso (sin apilar formularios internos)
+    await page.goto("/");
     await pedirCard.click();
     await expect(page).toHaveURL(/\/cliente$/);
     await expect(page.getByRole("heading", { name: /cliente/i }).first()).toBeVisible();
-    await expect(page.getByRole("button", { name: "Usar mi ubicación" })).toBeVisible();
+    await expect(page.getByTestId("tab-login")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Usar mi ubicación" })).toHaveCount(0);
 
-    // Navegación a Restaurante
     await page.goto("/");
     await restaurantLink.click();
     await expect(page).toHaveURL(/\/restaurante$/);
-    await expect(page.getByText("Valor de la comida (COP)")).toBeVisible();
-    await expect(page.getByText("Valor del domicilio (COP)")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Usar mi ubicación" })).toBeVisible();
+    await expect(page.getByTestId("tab-login")).toBeVisible();
+    await expect(page.getByText("Valor de la comida (COP)")).toHaveCount(0);
 
-    // Navegación a Domiciliario
     await page.goto("/");
     await domiciliarioCard.click();
     await expect(page).toHaveURL(/\/domiciliario$/);
     await expect(page.getByRole("heading", { name: /domiciliario/i }).first()).toBeVisible();
-    await expect(page.getByRole("button", { name: "Usar mi ubicación" })).toBeVisible();
-    await expect(page.getByText("Opciones avanzadas (ID de oferta / pedido)")).toBeVisible();
+    await expect(page.getByTestId("tab-login")).toBeVisible();
+    await expect(page.getByText("Opciones avanzadas (ID de oferta / pedido)")).toHaveCount(0);
 
     // Token inválido muestra estado genérico sin ficha de datos
     await page.goto("/tracking/token-invalido-000");
@@ -124,7 +134,7 @@ test.describe("HOME-002 (Futuro Urbano), Legal (M45) y Tracking público (M30)",
     }
   });
 
-  test("muestra páginas legales en borrador, casillas no premarcadas en registro y consentimiento de geolocalización (M45)", async ({
+  test("muestra páginas legales en borrador y casillas no premarcadas en registro (M45)", async ({
     page,
   }) => {
     await page.goto("/restaurante");
@@ -136,16 +146,6 @@ test.describe("HOME-002 (Futuro Urbano), Legal (M45) y Tracking público (M30)",
     await expect(consents.locator('input[name="termsAccepted"]')).not.toBeChecked();
     await expect(consents.locator('input[name="privacyAccepted"]')).not.toBeChecked();
     await expect(consents.locator('input[name="marketingAccepted"]')).not.toBeChecked();
-
-    // Pantalla de consentimiento de geolocalización con alternativa manual
-    await page.getByTestId("open-geo-consent").click();
-    const geoScreen = page.getByTestId("geo-consent-screen");
-    await expect(geoScreen).toBeVisible();
-    await expect(geoScreen.locator('input[name="geoConsentChecked"]')).not.toBeChecked();
-    await expect(geoScreen.getByTestId("geo-consent-allow")).toBeVisible();
-    await expect(geoScreen.getByTestId("geo-consent-manual")).toBeVisible();
-    await geoScreen.getByTestId("geo-consent-manual").click();
-    await expect(geoScreen).toBeHidden();
 
     // Páginas públicas /legal/* con banner "Borrador en revisión legal"
     for (const route of [
@@ -161,6 +161,125 @@ test.describe("HOME-002 (Futuro Urbano), Legal (M45) y Tracking público (M30)",
       );
       await expect(page.locator("footer")).not.toContainText(/próximamente/i);
     }
+  });
+
+  test("M49: protección de rutas sin sesión, navegación por rol, aislamiento entre roles y consentimiento geo", async ({
+    page,
+  }) => {
+    // Sin sesión, las subrutas protegidas redirigen al acceso del rol
+    await page.goto("/cliente/tarifa");
+    await expect(page).toHaveURL(/\/cliente$/);
+    await page.goto("/restaurante/nuevo-domicilio");
+    await expect(page).toHaveURL(/\/restaurante$/);
+    await page.goto("/domiciliario/entrega");
+    await expect(page).toHaveURL(/\/domiciliario$/);
+
+    // Mock de sesión para probar navegación entre pantallas, wizard y aislamiento de roles
+    let activeUser: { id: string; email: string; phoneE164: null; status: string } | null = null;
+    await page.route("**/api/proxy/**", async (route) => {
+      const url = route.request().url();
+      if (url.endsWith("/auth/me")) {
+        if (!activeUser) {
+          await route.fulfill({ status: 401, contentType: "application/json", body: "{}" });
+          return;
+        }
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(activeUser),
+        });
+        return;
+      }
+      if (url.endsWith("/auth/login") || url.endsWith("/auth/register")) {
+        const body = route.request().postDataJSON() as { email?: string };
+        activeUser = {
+          id: "usr-mock-1",
+          email: body.email ?? "demo@domigoo.co",
+          phoneE164: null,
+          status: "ACTIVE",
+        };
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(activeUser),
+        });
+        return;
+      }
+      if (url.endsWith("/auth/logout")) {
+        activeUser = null;
+        await route.fulfill({ status: 204, body: "" });
+        return;
+      }
+      await route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
+    });
+
+    // 1. Cliente: login y navegación entre sus 5 pantallas (desktop)
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto("/cliente");
+    await page.getByLabel(/Correo electrónico o celular/i).fill("cliente-m49@ejemplo.com");
+    await page.getByLabel(/Contraseña/i).fill("ClavePruebaDomigoo2026");
+    await page.getByRole("button", { name: "Ingresar" }).click();
+    await expect(page.getByTestId("cliente-home-screen")).toBeVisible();
+
+    await page.getByTestId("nav-cliente-pedir-sidebar").click();
+    await expect(page).toHaveURL(/\/cliente\/pedir$/);
+    await expect(page.getByTestId("cliente-pedir-screen")).toBeVisible();
+
+    await page.getByTestId("nav-cliente-seguir-sidebar").click();
+    await expect(page).toHaveURL(/\/cliente\/seguir$/);
+    await expect(page.getByTestId("cliente-seguir-screen")).toBeVisible();
+
+    await page.getByTestId("nav-cliente-tarifa-sidebar").click();
+    await expect(page).toHaveURL(/\/cliente\/tarifa$/);
+    await expect(page.getByRole("button", { name: "Usar mi ubicación" })).toBeVisible();
+
+    // Aislamiento: Cliente no puede entrar a pantallas de Restaurante ni Domiciliario
+    await page.goto("/restaurante/nuevo-domicilio");
+    await expect(page).toHaveURL(/\/cliente$/);
+    await page.goto("/domiciliario/entrega");
+    await expect(page).toHaveURL(/\/cliente$/);
+
+    // Cerrar sesión como Cliente
+    await page.getByRole("button", { name: "Cerrar sesión" }).click();
+    await expect(page.getByTestId("tab-login")).toBeVisible();
+
+    // 2. Restaurante: login, navegación, wizard de 3 pasos y geo consent
+    await page.goto("/restaurante");
+    await page.getByLabel(/Correo electrónico o celular/i).fill("restaurante-m49@ejemplo.com");
+    await page.getByLabel(/Contraseña/i).fill("ClavePruebaDomigoo2026");
+    await page.getByRole("button", { name: "Ingresar" }).click();
+    await expect(page.getByTestId("restaurante-home-screen")).toBeVisible();
+
+    await page.getByTestId("nav-restaurante-nuevo-sidebar").click();
+    await expect(page).toHaveURL(/\/restaurante\/nuevo-domicilio$/);
+    await expect(page.getByTestId("wizard-panel-1")).toBeVisible();
+    await page.getByTestId("wizard-step-2").click();
+    await expect(page.getByTestId("wizard-panel-2")).toBeVisible();
+    await expect(page.getByText("Valor de la comida (COP)")).toBeVisible();
+    await page.getByTestId("wizard-step-3").click();
+    await expect(page.getByTestId("wizard-panel-3")).toBeVisible();
+
+    await page.getByTestId("open-geo-consent").click();
+    const geoScreen = page.getByTestId("geo-consent-screen");
+    await expect(geoScreen).toBeVisible();
+    await expect(geoScreen.locator('input[name="geoConsentChecked"]')).not.toBeChecked();
+    await geoScreen.getByTestId("geo-consent-manual").click();
+    await expect(geoScreen).toBeHidden();
+
+    await page.getByRole("button", { name: "Cerrar sesión" }).click();
+
+    // 3. Domiciliario: login en móvil (barra inferior) y entrega en curso
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/domiciliario");
+    await page.getByLabel(/Correo electrónico o celular/i).fill("domiciliario-m49@ejemplo.com");
+    await page.getByLabel(/Contraseña/i).fill("ClavePruebaDomigoo2026");
+    await page.getByRole("button", { name: "Ingresar" }).click();
+    await expect(page.getByTestId("domiciliario-home-screen")).toBeVisible();
+
+    await page.getByTestId("nav-domiciliario-entrega-bottom").click();
+    await expect(page).toHaveURL(/\/domiciliario\/entrega$/);
+    await expect(page.getByRole("button", { name: "Voy en camino" })).toBeVisible();
+    await expect(page.getByText("Opciones avanzadas (ID de oferta / pedido)")).toBeVisible();
   });
 
   test("cada rol permite registro e ingreso contra la API local", async ({ page, request }) => {

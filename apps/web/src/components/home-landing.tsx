@@ -166,19 +166,19 @@ export function HomeLanding({ appName }: { appName: string }) {
               <button type="submit" className="dg-btn" style={{ flex: 1 }}>
                 Consultar estado
               </button>
-              <Link href="/cliente#seguimiento" className="dg-btn dg-btn--secondary">
+              <Link href="/cliente/seguir" className="dg-btn dg-btn--secondary">
                 Ir al portal cliente
               </Link>
             </div>
           </form>
         ) : null}
 
-        <Link href="/cliente?modo=login" className="dg-home-pill-btn" data-testid="home-btn-login">
+        <Link href="/acceso?modo=login" className="dg-home-pill-btn" data-testid="home-btn-login">
           Iniciar sesión
         </Link>
 
         <Link
-          href="/cliente?modo=registro"
+          href="/acceso?modo=registro"
           className="dg-home-create-link"
           data-testid="home-link-register"
         >
