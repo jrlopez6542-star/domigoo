@@ -298,7 +298,14 @@ export class OffersRepository {
     }
   }
 
-  async listAvailableForUser(userId: string): Promise<AvailableOfferItem[]> {
+  async listAvailableForUser(userId: string): Promise<AvailableOfferItem[] | "forbidden"> {
+    const courierCheck = await this.database.pool.query<{ id: string }>(
+      `SELECT id FROM couriers WHERE "userId" = $1 LIMIT 1`,
+      [userId],
+    );
+    if (courierCheck.rows.length === 0) {
+      return "forbidden";
+    }
     const result = await this.database.pool.query<AvailableOfferItem>(
       `SELECT
          d.id AS "offerId",

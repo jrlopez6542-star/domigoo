@@ -258,13 +258,20 @@ test.describe("HOME-002 (Futuro Urbano), Legal (M45) y Tracking público (M30)",
     await expect(page.getByText("Valor de la comida (COP)")).toBeVisible();
     await page.getByTestId("wizard-step-3").click();
     await expect(page.getByTestId("wizard-panel-3")).toBeVisible();
+    await expect(page.locator("#rest-order-id")).toHaveCount(0);
 
     await page.getByTestId("open-geo-consent").click();
     const geoScreen = page.getByTestId("geo-consent-screen");
     await expect(geoScreen).toBeVisible();
     await expect(geoScreen.locator('input[name="geoConsentChecked"]')).not.toBeChecked();
+    await expect(geoScreen.getByTestId("geo-consent-allow")).toBeVisible();
+    await expect(geoScreen.getByTestId("geo-consent-manual")).toBeVisible();
     await geoScreen.getByTestId("geo-consent-manual").click();
     await expect(geoScreen).toBeHidden();
+
+    await page.getByTestId("nav-restaurante-pedidos-sidebar").click();
+    await expect(page).toHaveURL(/\/restaurante\/pedidos$/);
+    await expect(page.locator("#rest-pedidos-order-id")).toHaveCount(0);
 
     // Aislamiento: Restaurante no puede entrar a pantallas de Cliente ni Domiciliario
     await page.goto("/cliente/tarifa");
@@ -293,6 +300,8 @@ test.describe("HOME-002 (Futuro Urbano), Legal (M45) y Tracking público (M30)",
     await expect(page.getByRole("button", { name: "Voy en camino" })).toBeVisible();
     await expect(page.getByTestId("courier-no-offers")).toHaveText("No hay ofertas por ahora.");
     await expect(page.getByLabel("ID de oferta")).toHaveCount(0);
+    await expect(page.locator("#courier-order-id")).toHaveCount(0);
+    await expect(page.locator('input[placeholder="UUID del pedido"]')).toHaveCount(0);
   });
 
   test("M49-PULIDO: restaurante crea domicilio sin escribir ID y domiciliario acepta oferta desde tarjeta", async ({

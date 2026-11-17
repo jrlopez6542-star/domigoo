@@ -296,6 +296,11 @@ jobs:
         with:
           node-version: 22
 
+      - name: Instalar dependencias y Chromium para Playwright Preview
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm --filter @domigoo/web exec playwright install --with-deps chromium
+
       - name: Esperar Vercel Preview del commit actual
         id: wait_preview
         env:
@@ -315,3 +320,14 @@ jobs:
           STAGING_SEED_PASSWORD: ${{ secrets.STAGING_SEED_PASSWORD }}
           SMOKE_REPORT_PATH: /tmp/smoke-vercel-preview-report.json
         run: pnpm smoke:staging
+
+      - name: Ejecutar Playwright 3 roles contra Vercel Preview Web real
+        env:
+          PREVIEW_E2E: "1"
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+        run: |
+          BRANCH_SLUG="$(echo "$HEAD_REF" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9-]+/-/g; s/^-+//; s/-+$//')"
+          WEB_PREVIEW_URL="https://domigoo-web-git-${BRANCH_SLUG}-jrlopez6542-1905.vercel.app"
+          echo "Verificando Playwright 3 roles en $WEB_PREVIEW_URL"
+          WEB_BASE_URL="$WEB_PREVIEW_URL" pnpm --filter @domigoo/web exec playwright test tests/preview-m49.spec.ts

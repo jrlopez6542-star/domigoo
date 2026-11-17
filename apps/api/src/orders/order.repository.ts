@@ -58,6 +58,20 @@ export type CourierOrderView = {
   events: OrderEventItem[];
 };
 
+export type MyOrderSummary = {
+  id: string;
+  referenceCode: string;
+  status: string;
+  branchName: string;
+  foodAmountCop: number;
+  deliveryFeeCop: number;
+  paymentMethod: string | null;
+  customerName: string | null;
+  dropoffAddress: string | null;
+  pickupPin?: string;
+  createdAt: string;
+};
+
 export type OrderViewResult =
   | { kind: "ok"; order: RestaurantOrderView | CourierOrderView }
   | { kind: "forbidden" }
@@ -261,6 +275,127 @@ export class OrderRepository {
       actorKind: row.actorKind,
       createdAt: row.createdAt instanceof Date ? row.createdAt.toISOString() : row.createdAt,
     }));
+  }
+
+  async listMine(
+    userId: string,
+  ): Promise<{ role: "RESTAURANT" | "COURIER"; orders: MyOrderSummary[] } | "forbidden"> {
+    const memberCheck = await this.database.pool.query<{ id: string }>(
+      `SELECT id FROM restaurant_memberships WHERE "userId" = $1 AND status = 'ACTIVE' LIMIT 1`,
+      [userId],
+    );
+    if (memberCheck.rows.length > 0) {
+      const result = await this.database.pool.query<{
+        id: string;
+        referenceCode: string;
+        status: string;
+        branchName: string;
+        foodAmountCop: number;
+        deliveryFeeCop: number;
+        paymentMethod: string | null;
+        customerName: string | null;
+        dropoffAddress: string | null;
+        pickupPinCiphertext: string | null;
+        createdAt: Date | string;
+      }>(
+        `SELECT DISTINCT ON (o."createdAt", o.id)
+           o.id,
+           o."referenceCode",
+           o.status::text AS status,
+           b.name AS "branchName",
+           o."foodAmountCop",
+           o."deliveryFeeCop",
+           o."paymentMethod"::text AS "paymentMethod",
+           o."customerName",
+           o."dropoffAddress",
+           o."pickupPinCiphertext",
+           o."createdAt"
+         FROM orders o
+         JOIN branches b ON b.id = o."branchId"
+         JOIN restaurant_memberships m ON m."restaurantId" = o."restaurantId"
+         WHERE m."userId" = $1 AND m.status = 'ACTIVE'
+         ORDER BY o."createdAt" DESC, o.id DESC
+         LIMIT 30`,
+        [userId],
+      );
+      return {
+        role: "RESTAURANT",
+        orders: result.rows.map((row) => {
+          const pickupPin =
+            RESTAURANT_PICKUP_PIN_STATUSES.has(row.status) && row.pickupPinCiphertext !== null
+              ? decryptPin(row.pickupPinCiphertext, row.id, "PICKUP", this.pinEnv.appEncryptionKey)
+              : undefined;
+          return {
+            id: row.id,
+            referenceCode: row.referenceCode,
+            status: row.status,
+            branchName: row.branchName,
+            foodAmountCop: row.foodAmountCop,
+            deliveryFeeCop: row.deliveryFeeCop,
+            paymentMethod: row.paymentMethod,
+            customerName: row.customerName,
+            dropoffAddress: row.dropoffAddress,
+            ...(pickupPin !== undefined ? { pickupPin } : {}),
+            createdAt: row.createdAt instanceof Date ? row.createdAt.toISOString() : row.createdAt,
+          };
+        }),
+      };
+    }
+
+    const courierCheck = await this.database.pool.query<{ id: string }>(
+      `SELECT id FROM couriers WHERE "userId" = $1 LIMIT 1`,
+      [userId],
+    );
+    const courierId = courierCheck.rows[0]?.id;
+    if (courierId !== undefined) {
+      const result = await this.database.pool.query<{
+        id: string;
+        referenceCode: string;
+        status: string;
+        branchName: string;
+        foodAmountCop: number;
+        deliveryFeeCop: number;
+        paymentMethod: string | null;
+        customerName: string | null;
+        dropoffAddress: string | null;
+        createdAt: Date | string;
+      }>(
+        `SELECT
+           o.id,
+           o."referenceCode",
+           o.status::text AS status,
+           b.name AS "branchName",
+           o."foodAmountCop",
+           o."deliveryFeeCop",
+           o."paymentMethod"::text AS "paymentMethod",
+           o."customerName",
+           o."dropoffAddress",
+           o."createdAt"
+         FROM orders o
+         JOIN branches b ON b.id = o."branchId"
+         WHERE o."assignedCourierId" = $1
+         ORDER BY o."createdAt" DESC, o.id DESC
+         LIMIT 20`,
+        [courierId],
+      );
+      return {
+        role: "COURIER",
+        orders: result.rows.map((row) => ({
+          id: row.id,
+          referenceCode: row.referenceCode,
+          status: row.status,
+          branchName: row.branchName,
+          foodAmountCop: row.foodAmountCop,
+          deliveryFeeCop: row.deliveryFeeCop,
+          paymentMethod: row.paymentMethod,
+          customerName: row.customerName,
+          dropoffAddress: row.dropoffAddress,
+          createdAt: row.createdAt instanceof Date ? row.createdAt.toISOString() : row.createdAt,
+        })),
+      };
+    }
+
+    return "forbidden";
   }
 }
 

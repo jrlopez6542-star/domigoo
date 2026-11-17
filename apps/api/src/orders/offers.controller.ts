@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  ForbiddenException,
   Get,
   Headers,
   HttpException,
@@ -34,6 +35,9 @@ export class OffersController {
       throw new NotFoundException();
     }
     const offers = await this.offers.listAvailableForUser(userId);
+    if (offers === "forbidden") {
+      throw new ForbiddenException();
+    }
     return { offers };
   }
 

@@ -305,7 +305,14 @@ export class RestaurantRepository {
     return { membershipId: membership.id, from: membership.role, to: input.role };
   }
 
-  async listBranchesForUser(userId: string): Promise<MyBranchItem[]> {
+  async listBranchesForUser(userId: string): Promise<MyBranchItem[] | "forbidden"> {
+    const memberCheck = await this.database.pool.query<{ id: string }>(
+      `SELECT id FROM restaurant_memberships WHERE "userId" = $1 AND status = 'ACTIVE' LIMIT 1`,
+      [userId],
+    );
+    if (memberCheck.rows.length === 0) {
+      return "forbidden";
+    }
     const result = await this.database.pool.query<MyBranchItem>(
       `SELECT
          b.id,

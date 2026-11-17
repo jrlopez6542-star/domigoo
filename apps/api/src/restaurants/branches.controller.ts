@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  ForbiddenException,
   Get,
   HttpException,
   NotFoundException,
@@ -35,6 +36,9 @@ export class BranchesController {
       throw new NotFoundException();
     }
     const branches = await this.restaurants.listBranchesForUser(userId);
+    if (branches === "forbidden") {
+      throw new ForbiddenException();
+    }
     return { branches };
   }
 

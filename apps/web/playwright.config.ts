@@ -6,6 +6,13 @@ export default defineConfig({
   use: {
     baseURL: process.env["WEB_BASE_URL"] || "http://127.0.0.1:3000",
     headless: true,
+    ...(process.env["VERCEL_AUTOMATION_BYPASS_SECRET"]
+      ? {
+          extraHTTPHeaders: {
+            "x-vercel-protection-bypass": process.env["VERCEL_AUTOMATION_BYPASS_SECRET"],
+          },
+        }
+      : {}),
     ...(process.env["PLAYWRIGHT_EXECUTABLE_PATH"]
       ? {
           launchOptions: {

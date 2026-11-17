@@ -48,6 +48,20 @@ export type RestaurantBranchItem = {
   status: string;
 };
 
+export type RestaurantOrderSummary = {
+  id: string;
+  referenceCode: string;
+  status: string;
+  branchName: string;
+  foodAmountCop: number;
+  deliveryFeeCop: number;
+  paymentMethod: string | null;
+  customerName: string | null;
+  dropoffAddress: string | null;
+  pickupPin?: string;
+  createdAt: string;
+};
+
 type RestaurantContextValue = {
   appName: string;
   sessionUser: SessionUser | null;
@@ -120,11 +134,14 @@ type RestaurantContextValue = {
   setCourierId: (v: string) => void;
   handlePublish: (e: FormEvent) => Promise<void>;
   // Tracking
+  myOrders: RestaurantOrderSummary[];
+  loadingOrders: boolean;
+  loadMyOrders: () => Promise<void>;
   orderView: OrderView | null;
   events: OrderEvent[];
   trackingUrl: string;
-  handleRefreshOrder: () => Promise<void>;
-  handleCreateTrackingLink: () => Promise<void>;
+  handleRefreshOrder: (targetOrderId?: string) => Promise<void>;
+  handleCreateTrackingLink: (targetOrderId?: string) => Promise<void>;
 };
 
 const RestaurantContext = createContext<RestaurantContextValue | null>(null);
@@ -227,6 +244,8 @@ export function RestaurantPortalShell({
   const [courierId, setCourierId] = useState("");
 
   // Recorrido
+  const [myOrders, setMyOrders] = useState<RestaurantOrderSummary[]>([]);
+  const [loadingOrders, setLoadingOrders] = useState(false);
   const [orderView, setOrderView] = useState<OrderView | null>(null);
   const [events, setEvents] = useState<OrderEvent[]>([]);
   const [trackingUrl, setTrackingUrl] = useState<string>("");
@@ -289,11 +308,26 @@ export function RestaurantPortalShell({
     }
   }, []);
 
+  const loadMyOrders = useCallback(async () => {
+    setLoadingOrders(true);
+    try {
+      const data = await callProxy<{ orders?: RestaurantOrderSummary[] }>("orders/mine", "GET");
+      const list = Array.isArray(data.orders) ? data.orders : [];
+      setMyOrders(list);
+      setOrderId((prev) => prev || list[0]?.id || "");
+    } catch {
+      // Mantiene el estado actual si aún no hay membresía o falla la consulta.
+    } finally {
+      setLoadingOrders(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (sessionUser) {
       void loadMyBranches();
+      void loadMyOrders();
     }
-  }, [sessionUser, loadMyBranches]);
+  }, [sessionUser, loadMyBranches, loadMyOrders]);
 
   const handleAuthenticated = useCallback((user: SessionUser) => {
     setStoredActiveRole("RESTAURANT");
@@ -306,6 +340,7 @@ export function RestaurantPortalShell({
     setBranches([]);
     setBranchId("");
     setRestaurantId("");
+    setMyOrders([]);
     setOrderView(null);
     setEvents([]);
     setTrackingUrl("");
@@ -518,25 +553,30 @@ export function RestaurantPortalShell({
       );
       setOrderView({ id: orderId, status: data.status });
       setStatusMessage(`Pedido publicado: ${data.status}`);
+      await loadMyOrders();
     });
   }
 
-  async function handleRefreshOrder() {
-    if (!orderId) return;
+  async function handleRefreshOrder(targetOrderId?: string) {
+    const id = targetOrderId ?? orderId;
+    if (!id) return;
+    setOrderId(id);
     await runAction("refresh", async () => {
       const [view, evs] = await Promise.all([
-        callProxy<OrderView>(`orders/${orderId}`, "GET"),
-        callProxy<{ events: OrderEvent[] }>(`orders/${orderId}/events`, "GET"),
+        callProxy<OrderView>(`orders/${id}`, "GET"),
+        callProxy<{ events: OrderEvent[] }>(`orders/${id}/events`, "GET"),
       ]);
       setOrderView(view);
       setEvents(evs.events);
     });
   }
 
-  async function handleCreateTrackingLink() {
-    if (!orderId) return;
+  async function handleCreateTrackingLink(targetOrderId?: string) {
+    const id = targetOrderId ?? orderId;
+    if (!id) return;
+    setOrderId(id);
     await runAction("tracking", async () => {
-      const res = await callProxy<{ token: string }>(`orders/${orderId}/tracking-link`, "POST", {});
+      const res = await callProxy<{ token: string }>(`orders/${id}/tracking-link`, "POST", {});
       setTrackingUrl(`/tracking/${res.token}`);
       setStatusMessage("Enlace público de seguimiento generado.");
     });
@@ -658,6 +698,9 @@ export function RestaurantPortalShell({
         courierId,
         setCourierId,
         handlePublish,
+        myOrders,
+        loadingOrders,
+        loadMyOrders,
         orderView,
         events,
         trackingUrl,
@@ -985,7 +1028,6 @@ export function RestaurantNuevoDomicilioScreen() {
     setPaymentMethod,
     quoteSummary,
     orderId,
-    setOrderId,
     handleQuote,
     handleCreateDraft,
     showGeoConsent,
@@ -1383,20 +1425,8 @@ export function RestaurantNuevoDomicilioScreen() {
               </p>
 
               <details className="dg-details">
-                <summary>Opciones avanzadas (ID de pedido y coordenadas de entrega)</summary>
+                <summary>Opciones avanzadas (coordenadas de entrega)</summary>
                 <div className="dg-grid-2">
-                  <label className="dg-field" htmlFor="rest-order-id">
-                    <span>ID del pedido</span>
-                    <input
-                      id="rest-order-id"
-                      className="dg-input"
-                      type="text"
-                      value={orderId}
-                      onChange={(e) => {
-                        setOrderId(e.target.value);
-                      }}
-                    />
-                  </label>
                   <label className="dg-field" htmlFor="rest-dropoff-lng">
                     <span>Longitud de entrega (solo lectura)</span>
                     <input
@@ -1442,7 +1472,9 @@ export function RestaurantPedidosScreen() {
     sessionUser,
     busyAction,
     orderId,
-    setOrderId,
+    myOrders,
+    loadingOrders,
+    loadMyOrders,
     orderView,
     events,
     trackingUrl,
@@ -1453,46 +1485,105 @@ export function RestaurantPedidosScreen() {
   return (
     <div className="dg-stack" data-testid="restaurante-pedidos-screen">
       <section className="dg-card" aria-labelledby="restaurant-tracking-title">
-        <h1 id="restaurant-tracking-title" style={{ marginBottom: "8px" }}>
-          Pedidos activos y seguimiento
-        </h1>
-        <div className="dg-stack" style={{ marginBottom: "12px" }}>
-          <label className="dg-field" htmlFor="rest-pedidos-order-id">
-            <span>ID del pedido</span>
-            <input
-              id="rest-pedidos-order-id"
-              className="dg-input"
-              type="text"
-              value={orderId}
-              onChange={(e) => {
-                setOrderId(e.target.value);
-              }}
-              placeholder="Ej. ord_..."
-            />
-          </label>
-        </div>
-        <div className="dg-btn-row" style={{ marginBottom: "12px" }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: "12px",
+            marginBottom: "12px",
+            flexWrap: "wrap",
+          }}
+        >
+          <h1 id="restaurant-tracking-title" style={{ margin: 0 }}>
+            Pedidos activos y seguimiento
+          </h1>
           <button
             type="button"
             className="dg-btn dg-btn--secondary"
-            disabled={!orderId || !sessionUser || busyAction === "refresh"}
+            disabled={!sessionUser || loadingOrders}
             onClick={() => {
-              void handleRefreshOrder();
+              void loadMyOrders();
             }}
           >
-            Consultar estado y eventos
-          </button>
-          <button
-            type="button"
-            className="dg-btn"
-            disabled={!orderId || !sessionUser || busyAction === "tracking"}
-            onClick={() => {
-              void handleCreateTrackingLink();
-            }}
-          >
-            Generar enlace público
+            {loadingOrders ? "Actualizando..." : "Actualizar pedidos"}
           </button>
         </div>
+
+        {myOrders.length === 0 ? (
+          <p className="dg-muted" style={{ marginBottom: "12px" }}>
+            {loadingOrders
+              ? "Cargando pedidos..."
+              : "Aún no tienes pedidos registrados. Crea uno en Nuevo domicilio."}
+          </p>
+        ) : (
+          <div
+            className="dg-stack"
+            style={{ marginBottom: "14px" }}
+            data-testid="restaurant-orders-list"
+          >
+            {myOrders.map((item) => {
+              const isSelected = item.id === orderId;
+              return (
+                <article
+                  key={item.id}
+                  data-testid={`restaurant-order-card-${item.id}`}
+                  className="dg-card"
+                  style={{
+                    margin: 0,
+                    padding: "14px",
+                    borderColor: isSelected ? "var(--dg-accent, #0f766e)" : undefined,
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      gap: "8px",
+                      flexWrap: "wrap",
+                      marginBottom: "6px",
+                    }}
+                  >
+                    <strong>
+                      Pedido #{item.referenceCode} · {item.branchName}
+                    </strong>
+                    <span className="dg-pill">{item.status}</span>
+                  </div>
+                  <p className="dg-muted" style={{ margin: "0 0 8px" }}>
+                    {item.customerName ? `Cliente: ${item.customerName} · ` : ""}
+                    {item.dropoffAddress ? `Destino: ${item.dropoffAddress} · ` : ""}
+                    Domicilio: ${item.deliveryFeeCop.toLocaleString("es-CO")} COP
+                    {item.pickupPin ? ` · PIN recogida: ${item.pickupPin}` : ""}
+                  </p>
+                  <div className="dg-btn-row">
+                    <button
+                      type="button"
+                      className="dg-btn dg-btn--secondary"
+                      disabled={!sessionUser || busyAction === "refresh"}
+                      onClick={() => {
+                        void handleRefreshOrder(item.id);
+                      }}
+                    >
+                      Consultar estado y eventos
+                    </button>
+                    <button
+                      type="button"
+                      className="dg-btn"
+                      disabled={!sessionUser || busyAction === "tracking"}
+                      onClick={() => {
+                        void handleCreateTrackingLink(item.id);
+                      }}
+                    >
+                      Generar enlace público
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
+
         {orderView ? (
           <div className="dg-alert dg-alert--success">
             Pedido <strong>{orderView.id}</strong> · Estado: <strong>{orderView.status}</strong>
@@ -1521,8 +1612,8 @@ export function RestaurantPedidosScreen() {
       <section className="dg-card" aria-labelledby="restaurant-soon-title">
         <h2 id="restaurant-soon-title">Funciones en camino</h2>
         <div className="dg-alert dg-alert--soon" style={{ marginBottom: 0 }}>
-          <strong>Próximamente:</strong> Listado paginado de pedidos históricos del restaurante (la
-          API actual consulta pedidos por ID `GET /v1/orders/:id`).
+          <strong>Próximamente:</strong> Filtros avanzados e historial exportable de pedidos del
+          restaurante.
         </div>
       </section>
     </div>

@@ -82,7 +82,7 @@ type CourierContextValue = {
   orderView: CourierOrderView | null;
   handleAcceptOffer: (targetOfferId: string) => Promise<void>;
   handleDeclineOffer: (targetOfferId: string) => Promise<void>;
-  handleLoadOrder: () => Promise<void>;
+  loadMyActiveOrder: () => Promise<void>;
   handleJourneyStep: (action: "arrive-pickup" | "at-pickup" | "at-dropoff") => Promise<void>;
   handleVerifyPin: (kind: "pickup-pin" | "delivery-pin", pin: string) => Promise<void>;
 };
@@ -211,18 +211,44 @@ export function CourierPortalShell({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const loadMyActiveOrder = useCallback(async () => {
+    try {
+      const data = await callProxy<{ orders?: CourierOrderView[] }>("orders/mine", "GET");
+      const list = Array.isArray(data.orders) ? data.orders : [];
+      const activeOrder =
+        list.find(
+          (item) =>
+            ![
+              "DELIVERED",
+              "EXPIRED",
+              "CANCELLED_RESTAURANT",
+              "CANCELLED_COURIER",
+              "CANCELLED_ADMIN",
+              "FAILED",
+            ].includes(item.status),
+        ) ?? list[0];
+      if (activeOrder) {
+        setOrderId(activeOrder.id);
+        setOrderView(activeOrder);
+      }
+    } catch {
+      // Mantiene el estado actual si aún no tiene perfil o falla la consulta.
+    }
+  }, []);
+
   useEffect(() => {
     if (!sessionUser) {
       return;
     }
     void loadAvailableOffers();
+    void loadMyActiveOrder();
     const timer = setInterval(() => {
       void loadAvailableOffers();
     }, 20000);
     return () => {
       clearInterval(timer);
     };
-  }, [sessionUser, loadAvailableOffers]);
+  }, [sessionUser, loadAvailableOffers, loadMyActiveOrder]);
 
   const handleAuthenticated = useCallback((user: SessionUser) => {
     setStoredActiveRole("COURIER");
@@ -397,24 +423,9 @@ export function CourierPortalShell({ children }: { children: ReactNode }) {
     });
   }
 
-  async function handleLoadOrder() {
-    if (!orderId.trim()) {
-      setErrorMessage("Ingresa el ID del pedido.");
-      return;
-    }
-    await runAction("load-order", async () => {
-      const data = await callProxy<CourierOrderView>(
-        `orders/${encodeURIComponent(orderId.trim())}`,
-        "GET",
-      );
-      setOrderView(data);
-      setStatusMessage(`Pedido en estado ${data.status}.`);
-    });
-  }
-
   async function handleJourneyStep(action: "arrive-pickup" | "at-pickup" | "at-dropoff") {
     if (!orderId.trim()) {
-      setErrorMessage("Primero selecciona o ingresa un pedido en Opciones avanzadas.");
+      setErrorMessage("Primero acepta una oferta disponible para tener un pedido activo.");
       return;
     }
     await runAction(action, async () => {
@@ -538,7 +549,7 @@ export function CourierPortalShell({ children }: { children: ReactNode }) {
         orderView,
         handleAcceptOffer,
         handleDeclineOffer,
-        handleLoadOrder,
+        loadMyActiveOrder,
         handleJourneyStep,
         handleVerifyPin,
       }}
@@ -974,14 +985,12 @@ export function CourierEntregaScreen() {
   const {
     sessionUser,
     busyAction,
-    orderId,
-    setOrderId,
     pickupPin,
     setPickupPin,
     deliveryPin,
     setDeliveryPin,
     orderView,
-    handleLoadOrder,
+    loadMyActiveOrder,
     handleJourneyStep,
     handleVerifyPin,
   } = useCourierPortal();
@@ -1124,36 +1133,18 @@ export function CourierEntregaScreen() {
             </div>
           </div>
 
-          <details className="dg-details">
-            <summary>Consultar pedido activo manualmente (soporte)</summary>
-            <div className="dg-grid-2" style={{ marginTop: "10px" }}>
-              <label className="dg-field" htmlFor="courier-order-id">
-                <span>ID de pedido asignado</span>
-                <input
-                  id="courier-order-id"
-                  className="dg-input"
-                  type="text"
-                  value={orderId}
-                  onChange={(e) => {
-                    setOrderId(e.target.value);
-                  }}
-                  placeholder="UUID del pedido"
-                />
-              </label>
-              <div className="dg-btn-row" style={{ alignSelf: "end" }}>
-                <button
-                  type="button"
-                  className="dg-btn dg-btn--secondary"
-                  disabled={!sessionUser || busyAction !== null}
-                  onClick={() => {
-                    void handleLoadOrder();
-                  }}
-                >
-                  Consultar pedido
-                </button>
-              </div>
-            </div>
-          </details>
+          <div className="dg-btn-row">
+            <button
+              type="button"
+              className="dg-btn dg-btn--secondary"
+              disabled={!sessionUser || busyAction !== null}
+              onClick={() => {
+                void loadMyActiveOrder();
+              }}
+            >
+              Actualizar pedido activo
+            </button>
+          </div>
         </div>
       </section>
     </div>
