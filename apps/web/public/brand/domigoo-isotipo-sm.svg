@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="DOMIGOO">
+  <defs>
+    <linearGradient id="sm-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#352F52"/>
+      <stop offset="100%" stop-color="#29243E"/>
+    </linearGradient>
+    <linearGradient id="sm-turq" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#19C2BC"/>
+      <stop offset="100%" stop-color="#8EF2EC"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#sm-bg)"/>
+  <path d="M 15 16 L 34 16 C 46 16 52 24 49 36 C 47 44 41 49 31 50 L 34 42 C 39 41 41 37 42 32 C 43 26 39 23 32 23 L 22 23 L 18 42 L 10 44 Z" fill="#F5F7FA"/>
+  <path d="M 10 53 C 23 47 36 47 46 42 C 50 40 53 36 54 31 C 55 39 50 48 41 52 C 31 56 18 55 10 53 Z" fill="url(#sm-turq)"/>
+  <path d="M 48 9 C 43 9 39 13 39 18 C 39 24 46 29 48 31 C 50 29 57 24 57 18 C 57 13 53 9 48 9 Z" fill="url(#sm-turq)"/>
+  <circle cx="48" cy="18" r="3.4" fill="#29243E"/>
+</svg>
