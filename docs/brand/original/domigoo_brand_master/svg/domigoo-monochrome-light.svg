@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="280" viewBox="0 0 1120 280">
+<title>DOMIGOO — Tu ciudad a tu puerta</title>
+<desc>Identidad conceptual Futuro Urbano: D, motociclista, pin y ruta.</desc>
+<rect width="100%" height="100%" fill="#29243E"/>
+
+<g transform="translate(20 35) scale(0.92)">
+<g id="domigoo-emblem">
+  <path d="M34 180 L80 38 Q88 18 111 18 H205 Q286 18 286 100 Q286 175 205 175 H103"
+        fill="none" stroke="#F5F7FA" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M18 93 L59 93 M9 119 L48 119" stroke="#F5F7FA" stroke-width="8" stroke-linecap="round"/>
+  <path d="M70 192 Q147 218 224 184 Q260 168 282 132" fill="none" stroke="#F5F7FA" stroke-width="18" stroke-linecap="round"/>
+  <path d="M105 194 L121 190 M151 194 L167 188 M198 183 L212 175" stroke="#29243E" stroke-width="5" stroke-linecap="round"/>
+  <!-- Location pin -->
+  <path d="M283 28 C283 9 298 -4 316 -4 C334 -4 349 10 349 28 C349 51 316 82 316 82 C316 82 283 51 283 28Z"
+        fill="#F5F7FA"/>
+  <circle cx="316" cy="28" r="10" fill="#29243E"/>
+  <!-- Simplified courier and motorcycle -->
+  <circle cx="158" cy="120" r="10" fill="#F5F7FA"/>
+  <path d="M151 111 L159 99 L169 103" fill="none" stroke="#F5F7FA" stroke-width="6" stroke-linecap="round"/>
+  <path d="M158 131 L176 143 L191 128 L207 136" fill="none" stroke="#F5F7FA" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M175 143 L165 157 M191 128 L201 151" fill="none" stroke="#F5F7FA" stroke-width="6" stroke-linecap="round"/>
+  <circle cx="163" cy="160" r="13" fill="none" stroke="#F5F7FA" stroke-width="5"/>
+  <circle cx="211" cy="160" r="13" fill="none" stroke="#F5F7FA" stroke-width="5"/>
+  <path d="M163 160 L184 139 L211 160 L190 160 L184 139 L176 143" fill="none" stroke="#F5F7FA" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="130" y="124" width="22" height="18" rx="3" fill="#F5F7FA"/>
+</g>
+</g>
+<text x="370" y="155" font-family="Montserrat, Arial, sans-serif" font-size="104" font-weight="800" letter-spacing="-5" fill="#F5F7FA">DOMIGOO</text>
+<text x="378" y="205" font-family="Inter, Arial, sans-serif" font-size="25" font-weight="600" letter-spacing="5" fill="#F5F7FA">TU CIUDAD A TU PUERTA</text>
+
+</svg>
