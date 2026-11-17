@@ -64,19 +64,34 @@ describe("incidentes operativos (M34)", () => {
   it("autor ve incidente, otro restaurante recibe 404, conserva historial al resolver y fail exige incidente CRITICAL", async () => {
     const owner1Res = await request(server())
       .post("/v1/auth/register")
-      .send({ email: "owner1-m34@example.invalid", password, client: "MOBILE" })
+      .send({
+        email: "owner1-m34@example.invalid",
+        password,
+        client: "MOBILE",
+        consents: { termsAccepted: true, privacyAccepted: true },
+      })
       .expect(201);
     const owner1Token = String(record(owner1Res.body)["token"]);
 
     const owner2Res = await request(server())
       .post("/v1/auth/register")
-      .send({ email: "owner2-m34@example.invalid", password, client: "MOBILE" })
+      .send({
+        email: "owner2-m34@example.invalid",
+        password,
+        client: "MOBILE",
+        consents: { termsAccepted: true, privacyAccepted: true },
+      })
       .expect(201);
     const owner2Token = String(record(owner2Res.body)["token"]);
 
     const opsRes = await request(server())
       .post("/v1/auth/register")
-      .send({ email: "ops-m34@example.invalid", password, client: "MOBILE" })
+      .send({
+        email: "ops-m34@example.invalid",
+        password,
+        client: "MOBILE",
+        consents: { termsAccepted: true, privacyAccepted: true },
+      })
       .expect(201);
     const opsToken = String(record(opsRes.body)["token"]);
 

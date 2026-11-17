@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useState, type FormEvent } from "react";
 import { callProxy } from "@/lib/api-client";
 import type { CreateRestaurantPayload, QuotePayload } from "@/lib/contracts";
@@ -25,6 +26,17 @@ export function RestaurantPortal({ appName }: { appName: string }) {
   const [errorMessage, setErrorMessage] = useState<string>("");
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [sessionUser, setSessionUser] = useState<SessionUser | null>(null);
+
+  // Geolocalización (sucursal / entrega)
+  const [showGeoConsent, setShowGeoConsent] = useState(false);
+  const [geoConsentChecked, setGeoConsentChecked] = useState(false);
+  const [geoConsentId, setGeoConsentId] = useState<string | null>(null);
+  const [branchGeoStatus, setBranchGeoStatus] = useState(
+    "Coordenadas por defecto: Tocancipá centro.",
+  );
+  const [dropoffGeoStatus, setDropoffGeoStatus] = useState(
+    "Coordenadas por defecto: Tocancipá centro.",
+  );
 
   // 2. Restaurante, establecimiento y sucursal
   const [legalName, setLegalName] = useState("");
@@ -83,6 +95,75 @@ export function RestaurantPortal({ appName }: { appName: string }) {
     } finally {
       setBusyAction(null);
     }
+  }
+
+  function requestBrowserLocation(target: "branch" | "dropoff") {
+    setErrorMessage("");
+    setStatusMessage("");
+    if (typeof navigator === "undefined" || !("geolocation" in navigator)) {
+      setErrorMessage("Tu navegador no soporta geolocalización.");
+      return;
+    }
+    setBusyAction(`geo-${target}`);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lng = pos.coords.longitude.toFixed(6);
+        const lat = pos.coords.latitude.toFixed(6);
+        if (target === "branch") {
+          setBranchLongitude(lng);
+          setBranchLatitude(lat);
+          setBranchGeoStatus(`Ubicación de sucursal: ${lat}, ${lng}`);
+        } else {
+          setDropoffLongitude(lng);
+          setDropoffLatitude(lat);
+          setDropoffGeoStatus(`Ubicación de entrega: ${lat}, ${lng}`);
+        }
+        setStatusMessage("Ubicación obtenida desde tu dispositivo.");
+        setBusyAction(null);
+      },
+      (err) => {
+        setErrorMessage(
+          err.code === err.PERMISSION_DENIED
+            ? "Permiso de ubicación denegado. Actívalo en tu navegador o escribe la dirección manualmente."
+            : "No pudimos obtener tu ubicación actual.",
+        );
+        setBusyAction(null);
+      },
+      { enableHighAccuracy: true, timeout: 10000 },
+    );
+  }
+
+  async function handleAllowGeoConsent() {
+    setErrorMessage("");
+    if (!geoConsentChecked) {
+      setErrorMessage("Marca la casilla de autorización de geolocalización antes de continuar.");
+      return;
+    }
+    try {
+      if (sessionUser) {
+        const granted = await callProxy<{ id: string }>("consents", "POST", {
+          purpose: "GEOLOCATION",
+          channel: "WEB",
+        });
+        setGeoConsentId(granted.id);
+      }
+      setShowGeoConsent(false);
+      requestBrowserLocation("dropoff");
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : "No se pudo guardar el consentimiento.");
+    }
+  }
+
+  async function handleRevokeGeoConsent() {
+    if (!geoConsentId) {
+      return;
+    }
+    await runAction("revoke-geo", async () => {
+      await callProxy<unknown>(`consents/${geoConsentId}/revoke`, "POST", {});
+      setGeoConsentId(null);
+      setGeoConsentChecked(false);
+      setStatusMessage("Consentimiento de geolocalización revocado.");
+    });
   }
 
   async function handleCreateBranch(e: FormEvent) {
@@ -239,6 +320,7 @@ export function RestaurantPortal({ appName }: { appName: string }) {
       ) : null}
 
       <RoleAuthCard
+        accountRole="RESTAURANT"
         roleTitle="1. Acceso de restaurante"
         roleSubtitle="Inicia sesión o crea tu cuenta de restaurante con correo o teléfono (+57...)."
         identifierPlaceholder="restaurante@ejemplo.com"
@@ -249,7 +331,12 @@ export function RestaurantPortal({ appName }: { appName: string }) {
 
       <section className="dg-card" aria-labelledby="restaurant-branch-title">
         <h2 id="restaurant-branch-title">2. Sucursal y establecimiento</h2>
-        <form onSubmit={(e) => void handleCreateBranch(e)} className="dg-stack">
+        <form
+          onSubmit={(e) => {
+            void handleCreateBranch(e);
+          }}
+          className="dg-stack"
+        >
           <div className="dg-grid-2">
             <label className="dg-field" htmlFor="rest-legal-name">
               <span>Razón social</span>
@@ -356,32 +443,23 @@ export function RestaurantPortal({ appName }: { appName: string }) {
                 required
               />
             </label>
-            <label className="dg-field" htmlFor="rest-lng">
-              <span>Longitud</span>
-              <input
-                id="rest-lng"
-                className="dg-input"
-                type="text"
-                value={branchLongitude}
-                onChange={(e) => {
-                  setBranchLongitude(e.target.value);
-                }}
-              />
-            </label>
-            <label className="dg-field" htmlFor="rest-lat">
-              <span>Latitud</span>
-              <input
-                id="rest-lat"
-                className="dg-input"
-                type="text"
-                value={branchLatitude}
-                onChange={(e) => {
-                  setBranchLatitude(e.target.value);
-                }}
-              />
-            </label>
           </div>
+
+          <p className="dg-muted" style={{ margin: 0 }}>
+            {branchGeoStatus}
+          </p>
+
           <div className="dg-btn-row">
+            <button
+              type="button"
+              className="dg-btn dg-btn--secondary"
+              disabled={busyAction === "geo-branch"}
+              onClick={() => {
+                requestBrowserLocation("branch");
+              }}
+            >
+              {busyAction === "geo-branch" ? "Obteniendo ubicación..." : "Usar mi ubicación"}
+            </button>
             <button
               type="submit"
               className="dg-btn"
@@ -392,12 +470,43 @@ export function RestaurantPortal({ appName }: { appName: string }) {
             {restaurantId ? <span className="dg-pill">Restaurante: {restaurantId}</span> : null}
             {branchId ? <span className="dg-pill">Sucursal: {branchId}</span> : null}
           </div>
+
+          <details className="dg-details">
+            <summary>Opciones avanzadas (coordenadas de sucursal)</summary>
+            <div className="dg-grid-2">
+              <label className="dg-field" htmlFor="rest-lng">
+                <span>Longitud (solo lectura)</span>
+                <input
+                  id="rest-lng"
+                  className="dg-input"
+                  type="text"
+                  value={branchLongitude}
+                  readOnly
+                />
+              </label>
+              <label className="dg-field" htmlFor="rest-lat">
+                <span>Latitud (solo lectura)</span>
+                <input
+                  id="rest-lat"
+                  className="dg-input"
+                  type="text"
+                  value={branchLatitude}
+                  readOnly
+                />
+              </label>
+            </div>
+          </details>
         </form>
       </section>
 
       <section className="dg-card" aria-labelledby="restaurant-draft-title">
         <h2 id="restaurant-draft-title">3. Cotizar y crear borrador de pedido</h2>
-        <form onSubmit={(e) => void handleCreateDraft(e)} className="dg-stack">
+        <form
+          onSubmit={(e) => {
+            void handleCreateDraft(e);
+          }}
+          className="dg-stack"
+        >
           <div className="dg-grid-2">
             <label className="dg-field" htmlFor="rest-branch-id">
               <span>ID de sucursal</span>
@@ -458,7 +567,9 @@ export function RestaurantPortal({ appName }: { appName: string }) {
               type="button"
               className="dg-btn dg-btn--secondary"
               disabled={!sessionUser || busyAction === "quote"}
-              onClick={() => void handleQuote()}
+              onClick={() => {
+                void handleQuote();
+              }}
             >
               {busyAction === "quote" ? "Cotizando..." : "Cotizar domicilio"}
             </button>
@@ -476,21 +587,89 @@ export function RestaurantPortal({ appName }: { appName: string }) {
 
       <section className="dg-card" aria-labelledby="restaurant-publish-title">
         <h2 id="restaurant-publish-title">4. Publicar domicilio</h2>
-        <form onSubmit={(e) => void handlePublish(e)} className="dg-stack">
-          <div className="dg-grid-2">
-            <label className="dg-field" htmlFor="rest-order-id">
-              <span>ID del pedido</span>
+        <div className="dg-btn-row" style={{ marginBottom: "12px" }}>
+          <button
+            type="button"
+            data-testid="open-geo-consent"
+            className="dg-btn dg-btn--secondary"
+            onClick={() => {
+              setShowGeoConsent(true);
+            }}
+          >
+            Usar ubicación para entrega (con consentimiento)
+          </button>
+          {geoConsentId ? (
+            <button
+              type="button"
+              className="dg-btn dg-btn--secondary"
+              onClick={() => {
+                void handleRevokeGeoConsent();
+              }}
+            >
+              Revocar geolocalización
+            </button>
+          ) : null}
+        </div>
+
+        {showGeoConsent ? (
+          <div
+            data-testid="geo-consent-screen"
+            className="dg-card"
+            style={{ background: "var(--dg-surface-muted)", marginBottom: "14px" }}
+          >
+            <h3>Autorización de geolocalización</h3>
+            <p className="dg-muted">
+              Usamos tu ubicación únicamente para ubicar el punto de entrega en Tocancipá. Puedes
+              revocar este permiso en cualquier momento o escribir la dirección manualmente.
+              Consulta la{" "}
+              <Link href="/legal/privacidad" className="dg-footer-link">
+                Política de Privacidad
+              </Link>
+              .
+            </p>
+            <label className="dg-check-row" style={{ marginBottom: "12px" }}>
               <input
-                id="rest-order-id"
-                className="dg-input"
-                type="text"
-                value={orderId}
+                type="checkbox"
+                name="geoConsentChecked"
+                checked={geoConsentChecked}
                 onChange={(e) => {
-                  setOrderId(e.target.value);
+                  setGeoConsentChecked(e.target.checked);
                 }}
-                required
               />
+              <span>Autorizo el uso de geolocalización para esta entrega.</span>
             </label>
+            <div className="dg-btn-row">
+              <button
+                type="button"
+                data-testid="geo-consent-allow"
+                className="dg-btn"
+                onClick={() => {
+                  void handleAllowGeoConsent();
+                }}
+              >
+                Permitir
+              </button>
+              <button
+                type="button"
+                data-testid="geo-consent-manual"
+                className="dg-btn dg-btn--secondary"
+                onClick={() => {
+                  setShowGeoConsent(false);
+                }}
+              >
+                Escribir dirección manualmente
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        <form
+          onSubmit={(e) => {
+            void handlePublish(e);
+          }}
+          className="dg-stack"
+        >
+          <div className="dg-grid-2">
             <label className="dg-field" htmlFor="rest-publish-mode">
               <span>Modalidad</span>
               <select
@@ -559,36 +738,55 @@ export function RestaurantPortal({ appName }: { appName: string }) {
                 required
               />
             </label>
-            <label className="dg-field" htmlFor="rest-dropoff-lng">
-              <span>Longitud de entrega</span>
-              <input
-                id="rest-dropoff-lng"
-                className="dg-input"
-                type="text"
-                value={dropoffLongitude}
-                onChange={(e) => {
-                  setDropoffLongitude(e.target.value);
-                }}
-              />
-            </label>
-            <label className="dg-field" htmlFor="rest-dropoff-lat">
-              <span>Latitud de entrega</span>
-              <input
-                id="rest-dropoff-lat"
-                className="dg-input"
-                type="text"
-                value={dropoffLatitude}
-                onChange={(e) => {
-                  setDropoffLatitude(e.target.value);
-                }}
-              />
-            </label>
           </div>
+
+          <p className="dg-muted" style={{ margin: 0 }}>
+            {dropoffGeoStatus}
+          </p>
+
+          <details className="dg-details">
+            <summary>Opciones avanzadas (ID de pedido y coordenadas de entrega)</summary>
+            <div className="dg-grid-2">
+              <label className="dg-field" htmlFor="rest-order-id">
+                <span>ID del pedido</span>
+                <input
+                  id="rest-order-id"
+                  className="dg-input"
+                  type="text"
+                  value={orderId}
+                  onChange={(e) => {
+                    setOrderId(e.target.value);
+                  }}
+                />
+              </label>
+              <label className="dg-field" htmlFor="rest-dropoff-lng">
+                <span>Longitud de entrega (solo lectura)</span>
+                <input
+                  id="rest-dropoff-lng"
+                  className="dg-input"
+                  type="text"
+                  value={dropoffLongitude}
+                  readOnly
+                />
+              </label>
+              <label className="dg-field" htmlFor="rest-dropoff-lat">
+                <span>Latitud de entrega (solo lectura)</span>
+                <input
+                  id="rest-dropoff-lat"
+                  className="dg-input"
+                  type="text"
+                  value={dropoffLatitude}
+                  readOnly
+                />
+              </label>
+            </div>
+          </details>
+
           <div className="dg-btn-row">
             <button
               type="submit"
               className="dg-btn"
-              disabled={!sessionUser || busyAction === "publish"}
+              disabled={!sessionUser || !orderId || busyAction === "publish"}
             >
               {busyAction === "publish" ? "Publicando..." : "Publicar domicilio"}
             </button>
@@ -603,7 +801,9 @@ export function RestaurantPortal({ appName }: { appName: string }) {
             type="button"
             className="dg-btn dg-btn--secondary"
             disabled={!orderId || !sessionUser || busyAction === "refresh"}
-            onClick={() => void handleRefreshOrder()}
+            onClick={() => {
+              void handleRefreshOrder();
+            }}
           >
             Consultar estado y eventos
           </button>
@@ -611,7 +811,9 @@ export function RestaurantPortal({ appName }: { appName: string }) {
             type="button"
             className="dg-btn"
             disabled={!orderId || !sessionUser || busyAction === "tracking"}
-            onClick={() => void handleCreateTrackingLink()}
+            onClick={() => {
+              void handleCreateTrackingLink();
+            }}
           >
             Generar enlace público
           </button>

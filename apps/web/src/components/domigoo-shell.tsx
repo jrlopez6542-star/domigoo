@@ -1,7 +1,8 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-export type ActiveRoleRoute = "home" | "cliente" | "restaurante" | "domiciliario" | "tracking";
+export type ActiveRoleRoute =
+  "home" | "cliente" | "restaurante" | "domiciliario" | "tracking" | "legal";
 
 export function DomigooShell({
   appName,
@@ -69,11 +70,22 @@ export function DomigooShell({
             <strong>{appName}</strong> · Domicilios en Tocancipá, Cundinamarca
           </span>
 
-          <div className="dg-footer-links">
-            {/* Espacio preparado para enlaces legales de M45 (/legal/terminos, /legal/privacidad, etc.) */}
-            <span data-testid="footer-legal-slot" className="dg-muted">
-              Términos y privacidad (próximamente)
-            </span>
+          <nav className="dg-footer-links" aria-label="Enlaces legales y administración">
+            <Link href="/legal/terminos" className="dg-footer-link">
+              Términos y Condiciones
+            </Link>
+            <Link href="/legal/privacidad" className="dg-footer-link">
+              Política de Privacidad
+            </Link>
+            <Link href="/legal/autorizacion" className="dg-footer-link">
+              Autorización de Datos
+            </Link>
+            <Link href="/legal/restaurantes" className="dg-footer-link">
+              Términos Restaurantes
+            </Link>
+            <Link href="/legal/domiciliarios" className="dg-footer-link">
+              Términos Domiciliarios
+            </Link>
             <a
               href={adminAppUrl}
               target="_blank"
@@ -82,7 +94,7 @@ export function DomigooShell({
             >
               Administración
             </a>
-          </div>
+          </nav>
         </div>
       </footer>
     </div>

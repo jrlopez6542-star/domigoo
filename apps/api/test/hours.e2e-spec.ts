@@ -63,7 +63,12 @@ describe("horario y activación", () => {
   it("exige punto y franja, rechaza el día 0 y deja la sucursal activa con punto", async () => {
     const owner = await request(server())
       .post("/v1/auth/register")
-      .send({ email: "horario@example.invalid", password, client: "MOBILE" })
+      .send({
+        email: "horario@example.invalid",
+        password,
+        client: "MOBILE",
+        consents: { termsAccepted: true, privacyAccepted: true },
+      })
       .expect(201);
     const token = String(record(owner.body)["token"]);
     const created = await request(server())
@@ -144,7 +149,12 @@ describe("horario y activación", () => {
       .expect(201);
     const admin = await request(server())
       .post("/v1/auth/register")
-      .send({ email: "activa@example.invalid", password, client: "MOBILE" })
+      .send({
+        email: "activa@example.invalid",
+        password,
+        client: "MOBILE",
+        consents: { termsAccepted: true, privacyAccepted: true },
+      })
       .expect(201);
     const adminIdPool = new Pool({ connectionString: databaseUrl });
     const adminRow = await adminIdPool.query<{ id: string }>(

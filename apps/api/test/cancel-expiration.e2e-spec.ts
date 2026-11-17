@@ -65,13 +65,23 @@ describe("cancelación y vencimiento (M26)", () => {
   it("cancelar en AT_PICKUP libera al domiciliario, cancelar en PICKED_UP como restaurante da 422 y expirar dos veces no duplica evento", async () => {
     const ownerRes = await request(server())
       .post("/v1/auth/register")
-      .send({ email: "owner-m26@example.invalid", password, client: "MOBILE" })
+      .send({
+        email: "owner-m26@example.invalid",
+        password,
+        client: "MOBILE",
+        consents: { termsAccepted: true, privacyAccepted: true },
+      })
       .expect(201);
     const ownerToken = String(record(ownerRes.body)["token"]);
 
     const courierRes = await request(server())
       .post("/v1/auth/register")
-      .send({ email: "courier-m26@example.invalid", password, client: "MOBILE" })
+      .send({
+        email: "courier-m26@example.invalid",
+        password,
+        client: "MOBILE",
+        consents: { termsAccepted: true, privacyAccepted: true },
+      })
       .expect(201);
     expect(record(courierRes.body)["token"]).toBeDefined();
 

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState, type FormEvent } from "react";
 import { callProxy } from "@/lib/api-client";
 import { buildLoginPayload } from "@/lib/contracts";
@@ -11,7 +12,10 @@ export type SessionUser = {
   status: string;
 };
 
+export type AccountRole = "CUSTOMER" | "RESTAURANT" | "COURIER";
+
 export function RoleAuthCard({
+  accountRole,
   roleTitle,
   roleSubtitle,
   identifierPlaceholder,
@@ -19,6 +23,7 @@ export function RoleAuthCard({
   onAuthenticated,
   onLoggedOut,
 }: {
+  accountRole: AccountRole;
   roleTitle: string;
   roleSubtitle: string;
   identifierPlaceholder?: string;
@@ -29,6 +34,10 @@ export function RoleAuthCard({
   const [mode, setMode] = useState<"login" | "register">("login");
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [privacyAccepted, setPrivacyAccepted] = useState(false);
+  const [sensitiveDataAccepted, setSensitiveDataAccepted] = useState(false);
+  const [marketingAccepted, setMarketingAccepted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [checkingSession, setCheckingSession] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
@@ -59,10 +68,37 @@ export function RoleAuthCard({
     e.preventDefault();
     setErrorMessage("");
     setStatusMessage("");
+    if (mode === "register") {
+      if (!termsAccepted || !privacyAccepted) {
+        setErrorMessage(
+          "Debes aceptar los Términos y Condiciones y la Autorización de Tratamiento de Datos Personales.",
+        );
+        return;
+      }
+      if (accountRole === "COURIER" && !sensitiveDataAccepted) {
+        setErrorMessage(
+          "Para registrarte como domiciliario debes autorizar el tratamiento de datos sensibles.",
+        );
+        return;
+      }
+    }
     setLoading(true);
     try {
-      const payload = buildLoginPayload(identifier, password, "WEB");
+      const credentials = buildLoginPayload(identifier, password, "WEB");
       const endpoint = mode === "login" ? "auth/login" : "auth/register";
+      const payload =
+        mode === "register"
+          ? {
+              ...credentials,
+              role: accountRole,
+              consents: {
+                termsAccepted,
+                privacyAccepted,
+                ...(accountRole === "COURIER" ? { sensitiveDataAccepted } : {}),
+                marketingAccepted,
+              },
+            }
+          : credentials;
       const data = await callProxy<SessionUser>(endpoint, "POST", payload);
       onAuthenticated(data);
       setPassword("");
@@ -156,6 +192,7 @@ export function RoleAuthCard({
             <button
               type="button"
               role="tab"
+              data-testid="tab-login"
               aria-selected={mode === "login"}
               className="dg-tab"
               onClick={() => {
@@ -168,6 +205,7 @@ export function RoleAuthCard({
             <button
               type="button"
               role="tab"
+              data-testid="tab-register"
               aria-selected={mode === "register"}
               className="dg-tab"
               onClick={() => {
@@ -215,6 +253,85 @@ export function RoleAuthCard({
                 />
               </label>
             </div>
+
+            {mode === "register" ? (
+              <div className="dg-check-group" data-testid="register-consents">
+                <label className="dg-check-row">
+                  <input
+                    type="checkbox"
+                    name="termsAccepted"
+                    checked={termsAccepted}
+                    onChange={(e) => {
+                      setTermsAccepted(e.target.checked);
+                    }}
+                  />
+                  <span>
+                    Acepto los{" "}
+                    <Link href="/legal/terminos" className="dg-footer-link">
+                      Términos y Condiciones
+                    </Link>{" "}
+                    de DOMIGOO. (Obligatorio)
+                  </span>
+                </label>
+
+                <label className="dg-check-row">
+                  <input
+                    type="checkbox"
+                    name="privacyAccepted"
+                    checked={privacyAccepted}
+                    onChange={(e) => {
+                      setPrivacyAccepted(e.target.checked);
+                    }}
+                  />
+                  <span>
+                    Autorizo el{" "}
+                    <Link href="/legal/autorizacion" className="dg-footer-link">
+                      Tratamiento de Datos Personales
+                    </Link>{" "}
+                    conforme a la{" "}
+                    <Link href="/legal/privacidad" className="dg-footer-link">
+                      Política de Privacidad
+                    </Link>
+                    . (Obligatorio)
+                  </span>
+                </label>
+
+                {accountRole === "COURIER" ? (
+                  <label className="dg-check-row">
+                    <input
+                      type="checkbox"
+                      name="sensitiveDataAccepted"
+                      checked={sensitiveDataAccepted}
+                      onChange={(e) => {
+                        setSensitiveDataAccepted(e.target.checked);
+                      }}
+                    />
+                    <span>
+                      Autorizo el tratamiento de datos sensibles para verificación de domiciliarios
+                      según los{" "}
+                      <Link href="/legal/domiciliarios" className="dg-footer-link">
+                        Términos de Domiciliarios
+                      </Link>
+                      . (Obligatorio)
+                    </span>
+                  </label>
+                ) : null}
+
+                <label className="dg-check-row">
+                  <input
+                    type="checkbox"
+                    name="marketingAccepted"
+                    checked={marketingAccepted}
+                    onChange={(e) => {
+                      setMarketingAccepted(e.target.checked);
+                    }}
+                  />
+                  <span>
+                    Deseo recibir novedades y comunicaciones comerciales de DOMIGOO. (Opcional)
+                  </span>
+                </label>
+              </div>
+            ) : null}
 
             <div className="dg-btn-row">
               <button type="submit" className="dg-btn" disabled={loading}>

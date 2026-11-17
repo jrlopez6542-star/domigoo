@@ -509,3 +509,47 @@ a {
 .dg-footer-link:hover {
   color: var(--dg-text);
 }
+
+.dg-details {
+  border: 1px solid var(--dg-border);
+  border-radius: var(--dg-radius-sm);
+  padding: 10px 14px;
+  background: var(--dg-surface-muted);
+}
+
+.dg-details summary {
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 0.92rem;
+  color: var(--dg-text);
+  list-style-position: inside;
+}
+
+.dg-details[open] summary {
+  margin-bottom: 12px;
+}
+
+.dg-check-group {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--dg-border);
+  border-radius: var(--dg-radius-sm);
+  background: var(--dg-surface-muted);
+}
+
+.dg-check-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 0.9rem;
+  color: var(--dg-text);
+  cursor: pointer;
+}
+
+.dg-check-row input[type="checkbox"] {
+  margin-top: 3px;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}

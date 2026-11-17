@@ -3,6 +3,7 @@ import type { CourierOfferView, CourierOrderState } from "../api/client.js";
 export type ScreenName =
   | "LOGIN"
   | "PROFILE"
+  | "GEOLOCATION_CONSENT"
   | "AVAILABILITY"
   | "OFFER"
   | "JOURNEY"
@@ -14,6 +15,7 @@ export type CourierMachineState = {
   screen: ScreenName;
   hasProfile: boolean;
   hasGeolocationConsent: boolean;
+  geolocationConsentId: string | null;
   available: boolean;
   offer: CourierOfferView | null;
   order: CourierOrderState | null;
@@ -24,6 +26,7 @@ export function initialCourierState(): CourierMachineState {
     screen: "LOGIN",
     hasProfile: false,
     hasGeolocationConsent: false,
+    geolocationConsentId: null,
     available: false,
     offer: null,
     order: null,

@@ -1,6 +1,6 @@
 import { StatusBar } from "expo-status-bar";
 import { useState } from "react";
-import { Button, SafeAreaView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Button, SafeAreaView, StyleSheet, Switch, Text, TextInput, View } from "react-native";
 import { CourierApiClient } from "./api/client.js";
 import {
   initialCourierState,
@@ -19,6 +19,7 @@ export default function App() {
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [pinDigits, setPinDigits] = useState("");
+  const [geoConsentBox, setGeoConsentBox] = useState(false);
   const [feedback, setFeedback] = useState("");
 
   async function onLogin() {
@@ -27,15 +28,79 @@ export default function App() {
       await client.login(phone, password);
       setState((prev) => ({
         ...prev,
-        screen: nextScreenAfterLogin(prev.hasProfile),
+        screen: prev.hasGeolocationConsent
+          ? nextScreenAfterLogin(prev.hasProfile)
+          : "GEOLOCATION_CONSENT",
       }));
     } catch (err) {
       setFeedback(err instanceof Error ? err.message : "No se pudo iniciar sesión");
     }
   }
 
+  async function onAllowGeolocation() {
+    setFeedback("");
+    if (!geoConsentBox) {
+      setFeedback("Debes marcar la autorización de ubicación antes de permitirla.");
+      return;
+    }
+    try {
+      const { consentId } = await client.grantGeolocationConsent();
+      setState((prev) => ({
+        ...prev,
+        hasGeolocationConsent: true,
+        geolocationConsentId: consentId,
+        screen: nextScreenAfterLogin(prev.hasProfile),
+      }));
+    } catch (err) {
+      setFeedback(
+        err instanceof Error ? err.message : "No se pudo registrar el consentimiento de ubicación",
+      );
+    }
+  }
+
+  function onDeclineGeolocation() {
+    setGeoConsentBox(false);
+    setState((prev) => ({
+      ...prev,
+      hasGeolocationConsent: false,
+      available: false,
+      screen: "AVAILABILITY",
+    }));
+    setFeedback(
+      "Permiso de ubicación omitido. Puedes usar tu cuenta, pero sin activar turnos ni recibir entregas.",
+    );
+  }
+
+  async function onRevokeGeolocation() {
+    setFeedback("");
+    try {
+      if (state.geolocationConsentId) {
+        await client.revokeGeolocationConsent(state.geolocationConsentId);
+      }
+      if (state.available) {
+        await client.setAvailability("OFFLINE").catch(() => undefined);
+      }
+      setGeoConsentBox(false);
+      setState((prev) => ({
+        ...prev,
+        hasGeolocationConsent: false,
+        geolocationConsentId: null,
+        available: false,
+      }));
+      setFeedback(
+        "Ubicación desactivada. DOMIGOO dejó de recibir la ubicación de este dispositivo. Los datos ya recogidos se conservarán solo durante los plazos de la Política de Tratamiento de Datos.",
+      );
+    } catch (err) {
+      setFeedback(err instanceof Error ? err.message : "No se pudo revocar la ubicación");
+    }
+  }
+
   async function onToggleAvailable(next: boolean) {
     setFeedback("");
+    if (next && !state.hasGeolocationConsent) {
+      setState((prev) => ({ ...prev, screen: "GEOLOCATION_CONSENT" }));
+      return;
+    }
     try {
       await client.setAvailability(next ? "AVAILABLE" : "OFFLINE");
       setState((prev) => ({ ...prev, available: next }));
@@ -72,6 +137,9 @@ export default function App() {
     <SafeAreaView style={styles.container}>
       <StatusBar style="auto" />
       <Text style={styles.title}>DOMIGOO — Domiciliarios</Text>
+      {state.available && state.hasGeolocationConsent ? (
+        <Text style={styles.locationBadge}>Compartiendo ubicación</Text>
+      ) : null}
       {feedback ? <Text style={styles.error}>{feedback}</Text> : null}
 
       {state.screen === "LOGIN" ? (
@@ -93,6 +161,32 @@ export default function App() {
         </View>
       ) : null}
 
+      {state.screen === "GEOLOCATION_CONSENT" ? (
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Compartir tu ubicación con DOMIGOO</Text>
+          <Text>
+            Para recibir y realizar entregas necesitamos conocer tu ubicación en tiempo real solo
+            mientras tengas el turno activado o una entrega en curso. Cuando terminas el turno,
+            dejamos de recibir tu ubicación.
+          </Text>
+          <Text>
+            Este permiso es voluntario y puedes retirarlo cuando quieras en Configuración →
+            Privacidad → Ubicación o en los ajustes de tu teléfono.
+          </Text>
+          <View style={styles.switchRow}>
+            <Switch value={geoConsentBox} onValueChange={setGeoConsentBox} />
+            <Text style={styles.switchLabel}>
+              Autorizo de forma expresa a DOMIGOO a recolectar y tratar mi ubicación en tiempo real
+              en los términos anteriores.
+            </Text>
+          </View>
+          <View style={styles.buttonRow}>
+            <Button title="Permitir" onPress={() => void onAllowGeolocation()} />
+            <Button title="Ahora no" onPress={onDeclineGeolocation} />
+          </View>
+        </View>
+      ) : null}
+
       {state.screen === "AVAILABILITY" ? (
         <View style={styles.card}>
           <Text>Estado: {state.available ? "Disponible" : "Desconectado"}</Text>
@@ -100,6 +194,19 @@ export default function App() {
             title={state.available ? "Pasar a desconectado" : "Pasar a disponible"}
             onPress={() => void onToggleAvailable(!state.available)}
           />
+          <View style={styles.privacySection}>
+            <Text style={styles.sectionTitle}>Configuración → Privacidad → Ubicación</Text>
+            {state.hasGeolocationConsent ? (
+              <Button title="Revocar ubicación" onPress={() => void onRevokeGeolocation()} />
+            ) : (
+              <Button
+                title="Activar consentimiento de ubicación"
+                onPress={() => {
+                  setState((prev) => ({ ...prev, screen: "GEOLOCATION_CONSENT" }));
+                }}
+              />
+            )}
+          </View>
         </View>
       ) : null}
 
@@ -162,6 +269,18 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     marginBottom: 16,
   },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  locationBadge: {
+    backgroundColor: "#dcfce7",
+    color: "#166534",
+    padding: 8,
+    borderRadius: 6,
+    marginBottom: 12,
+    fontWeight: "600",
+  },
   card: {
     backgroundColor: "#ffffff",
     padding: 16,
@@ -173,6 +292,26 @@ const styles = StyleSheet.create({
     borderColor: "#cbd5e1",
     borderRadius: 6,
     padding: 10,
+  },
+  switchRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  switchLabel: {
+    flex: 1,
+  },
+  buttonRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  privacySection: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#e2e8f0",
+    gap: 8,
   },
   error: {
     color: "#dc2626",

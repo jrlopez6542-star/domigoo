@@ -64,7 +64,12 @@ async function createApp(env: AppEnv): Promise<INestApplication> {
 async function registerAdmin(pool: Pool, email: string): Promise<string> {
   const res = await request(server())
     .post("/v1/auth/register")
-    .send({ email, password, client: "ADMIN" })
+    .send({
+      email,
+      password,
+      client: "ADMIN",
+      consents: { termsAccepted: true, privacyAccepted: true },
+    })
     .expect(201);
   const cookie = sessionCookie(res.headers);
   await pool.query(
@@ -109,7 +114,12 @@ async function registerAndVerifyRestaurant(
 ): Promise<{ ownerCookie: string; restaurantId: string; branchId: string }> {
   const ownerRes = await request(server())
     .post("/v1/auth/register")
-    .send({ email: ownerEmail, password, client: "WEB" })
+    .send({
+      email: ownerEmail,
+      password,
+      client: "WEB",
+      consents: { termsAccepted: true, privacyAccepted: true },
+    })
     .expect(201);
   const ownerCookie = sessionCookie(ownerRes.headers);
 
@@ -195,7 +205,12 @@ async function registerAndVerifyCourier(params: {
 }): Promise<{ token: string; courierId: string }> {
   const reg = await request(server())
     .post("/v1/auth/register")
-    .send({ email: params.email, password, client: "MOBILE" })
+    .send({
+      email: params.email,
+      password,
+      client: "MOBILE",
+      consents: { termsAccepted: true, privacyAccepted: true },
+    })
     .expect(201);
   const token = String(record(reg.body)["token"]);
 
@@ -354,7 +369,12 @@ describe("flujo completo de punta a punta, casos negativos y concurrencia (M40)"
       // Segundo domiciliario registrado (no asignado) para validar errores de actor no autorizado
       const otherReg = await request(server())
         .post("/v1/auth/register")
-        .send({ email: "courier2-m40@example.invalid", password, client: "MOBILE" })
+        .send({
+          email: "courier2-m40@example.invalid",
+          password,
+          client: "MOBILE",
+          consents: { termsAccepted: true, privacyAccepted: true },
+        })
         .expect(201);
       const otherCourierToken = String(record(otherReg.body)["token"]);
       await request(server())

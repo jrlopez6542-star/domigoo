@@ -30,8 +30,11 @@ export function CourierPortal() {
   const [availability, setAvailability] = useState<"AVAILABLE" | "OFFLINE">("OFFLINE");
   const [longitude, setLongitude] = useState("-73.9130");
   const [latitude, setLatitude] = useState("4.9660");
+  const [geoStatus, setGeoStatus] = useState<string>(
+    "Sin ubicación capturada todavía (Tocancipá por defecto).",
+  );
 
-  // Oferta y pedido
+  // Oferta y pedido (Opciones avanzadas)
   const [offerId, setOfferId] = useState("");
   const [orderId, setOrderId] = useState("");
   const [pickupPin, setPickupPin] = useState("");
@@ -60,6 +63,36 @@ export function CourierPortal() {
     } finally {
       setBusyAction(null);
     }
+  }
+
+  function handleUseMyLocation() {
+    setErrorMessage("");
+    setStatusMessage("");
+    if (typeof navigator === "undefined" || !("geolocation" in navigator)) {
+      setErrorMessage("Tu navegador no soporta geolocalización.");
+      return;
+    }
+    setBusyAction("geo");
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lng = pos.coords.longitude.toFixed(6);
+        const lat = pos.coords.latitude.toFixed(6);
+        setLongitude(lng);
+        setLatitude(lat);
+        setGeoStatus(`Ubicación capturada: ${lat}, ${lng}`);
+        setStatusMessage("Ubicación obtenida desde tu dispositivo.");
+        setBusyAction(null);
+      },
+      (err) => {
+        setErrorMessage(
+          err.code === err.PERMISSION_DENIED
+            ? "Permiso de ubicación denegado. Actívalo en tu navegador para compartir tu posición."
+            : "No pudimos obtener tu ubicación actual. Verifica el GPS e intenta de nuevo.",
+        );
+        setBusyAction(null);
+      },
+      { enableHighAccuracy: true, timeout: 10000 },
+    );
   }
 
   async function handleCreateProfile(e: FormEvent) {
@@ -164,7 +197,7 @@ export function CourierPortal() {
 
   async function handleJourneyStep(action: "arrive-pickup" | "at-pickup" | "at-dropoff") {
     if (!orderId.trim()) {
-      setErrorMessage("Ingresa el ID del pedido.");
+      setErrorMessage("Primero selecciona o ingresa un pedido en Opciones avanzadas.");
       return;
     }
     await runAction(action, async () => {
@@ -184,7 +217,7 @@ export function CourierPortal() {
 
   async function handleVerifyPin(kind: "pickup-pin" | "delivery-pin", pin: string) {
     if (!orderId.trim() || !pin.trim()) {
-      setErrorMessage("Ingresa el ID del pedido y el PIN.");
+      setErrorMessage("Ingresa el PIN y asegúrate de tener un pedido activo.");
       return;
     }
     await runAction(kind, async () => {
@@ -238,6 +271,7 @@ export function CourierPortal() {
       ) : null}
 
       <RoleAuthCard
+        accountRole="COURIER"
         roleTitle="Acceso de domiciliario"
         roleSubtitle="Ingresa con tu celular colombiano (+57...) o correo y contraseña."
         identifierPlaceholder="+573001234567"
@@ -252,7 +286,12 @@ export function CourierPortal() {
           Registra tus datos básicos si aún no tienes perfil. Requiere consentimiento vigente de
           tratamiento de documentos.
         </p>
-        <form onSubmit={(e) => void handleCreateProfile(e)} className="dg-stack">
+        <form
+          onSubmit={(e) => {
+            void handleCreateProfile(e);
+          }}
+          className="dg-stack"
+        >
           <div className="dg-grid-2">
             <label className="dg-field" htmlFor="courier-first-name">
               <span>Nombres</span>
@@ -345,7 +384,9 @@ export function CourierPortal() {
             type="button"
             className="dg-btn"
             disabled={!sessionUser || busyAction === "availability"}
-            onClick={() => void handleAvailability("AVAILABLE")}
+            onClick={() => {
+              void handleAvailability("AVAILABLE");
+            }}
           >
             Pasar a disponible
           </button>
@@ -353,128 +394,92 @@ export function CourierPortal() {
             type="button"
             className="dg-btn dg-btn--secondary"
             disabled={!sessionUser || busyAction === "availability"}
-            onClick={() => void handleAvailability("OFFLINE")}
+            onClick={() => {
+              void handleAvailability("OFFLINE");
+            }}
           >
             Desconectarme
           </button>
         </div>
 
-        <form onSubmit={(e) => void handleSendLocation(e)} className="dg-stack">
-          <div className="dg-grid-2">
-            <label className="dg-field" htmlFor="courier-lng">
-              <span>Longitud</span>
-              <input
-                id="courier-lng"
-                className="dg-input"
-                type="text"
-                value={longitude}
-                onChange={(e) => {
-                  setLongitude(e.target.value);
-                }}
-              />
-            </label>
-            <label className="dg-field" htmlFor="courier-lat">
-              <span>Latitud</span>
-              <input
-                id="courier-lat"
-                className="dg-input"
-                type="text"
-                value={latitude}
-                onChange={(e) => {
-                  setLatitude(e.target.value);
-                }}
-              />
-            </label>
-          </div>
+        <form
+          onSubmit={(e) => {
+            void handleSendLocation(e);
+          }}
+          className="dg-stack"
+        >
+          <p className="dg-muted" style={{ margin: 0 }}>
+            {geoStatus}
+          </p>
           <div className="dg-btn-row">
             <button
-              type="submit"
+              type="button"
               className="dg-btn dg-btn--secondary"
+              disabled={busyAction === "geo"}
+              onClick={handleUseMyLocation}
+            >
+              {busyAction === "geo" ? "Obteniendo ubicación..." : "Usar mi ubicación"}
+            </button>
+            <button
+              type="submit"
+              className="dg-btn"
               disabled={!sessionUser || busyAction === "location"}
             >
               {busyAction === "location" ? "Enviando..." : "Enviar ubicación actual"}
             </button>
           </div>
+
+          <details className="dg-details">
+            <summary>Opciones avanzadas (coordenadas)</summary>
+            <div className="dg-grid-2">
+              <label className="dg-field" htmlFor="courier-lng">
+                <span>Longitud (solo lectura)</span>
+                <input
+                  id="courier-lng"
+                  className="dg-input"
+                  type="text"
+                  value={longitude}
+                  readOnly
+                />
+              </label>
+              <label className="dg-field" htmlFor="courier-lat">
+                <span>Latitud (solo lectura)</span>
+                <input
+                  id="courier-lat"
+                  className="dg-input"
+                  type="text"
+                  value={latitude}
+                  readOnly
+                />
+              </label>
+            </div>
+          </details>
         </form>
       </section>
 
       <section className="dg-card" aria-labelledby="courier-orders-title">
-        <h2 id="courier-orders-title">3. Ofertas y recorrido de entrega</h2>
+        <h2 id="courier-orders-title">3. Recorrido de entrega</h2>
         <div className="dg-stack">
-          <div className="dg-grid-2">
-            <label className="dg-field" htmlFor="courier-offer-id">
-              <span>ID de oferta</span>
-              <input
-                id="courier-offer-id"
-                className="dg-input"
-                type="text"
-                value={offerId}
-                onChange={(e) => {
-                  setOfferId(e.target.value);
-                }}
-                placeholder="UUID de la oferta"
-              />
-            </label>
-            <div className="dg-btn-row" style={{ alignSelf: "end" }}>
-              <button
-                type="button"
-                className="dg-btn"
-                disabled={!sessionUser || busyAction !== null}
-                onClick={() => void handleAcceptOffer()}
-              >
-                Aceptar oferta
-              </button>
-              <button
-                type="button"
-                className="dg-btn dg-btn--secondary"
-                disabled={!sessionUser || busyAction !== null}
-                onClick={() => void handleDeclineOffer()}
-              >
-                Rechazar
-              </button>
-            </div>
-          </div>
-
-          <div className="dg-grid-2">
-            <label className="dg-field" htmlFor="courier-order-id">
-              <span>ID de pedido asignado</span>
-              <input
-                id="courier-order-id"
-                className="dg-input"
-                type="text"
-                value={orderId}
-                onChange={(e) => {
-                  setOrderId(e.target.value);
-                }}
-                placeholder="UUID del pedido"
-              />
-            </label>
-            <div className="dg-btn-row" style={{ alignSelf: "end" }}>
-              <button
-                type="button"
-                className="dg-btn dg-btn--secondary"
-                disabled={!sessionUser || busyAction !== null}
-                onClick={() => void handleLoadOrder()}
-              >
-                Consultar pedido
-              </button>
-            </div>
-          </div>
-
           {orderView ? (
             <div className="dg-alert dg-alert--success">
               Estado: <strong>{orderView.status}</strong>
               {orderView.pickupAddress ? ` · Recogida: ${orderView.pickupAddress}` : ""}
               {orderView.dropoffAddress ? ` · Entrega: ${orderView.dropoffAddress}` : ""}
             </div>
-          ) : null}
+          ) : (
+            <p className="dg-muted" style={{ margin: 0 }}>
+              Cuando tengas una oferta o pedido asignado, avanza aquí cada paso de la entrega.
+            </p>
+          )}
 
           <div className="dg-btn-row">
             <button
               type="button"
               className="dg-btn dg-btn--secondary"
               disabled={!sessionUser || busyAction !== null}
-              onClick={() => void handleJourneyStep("arrive-pickup")}
+              onClick={() => {
+                void handleJourneyStep("arrive-pickup");
+              }}
             >
               Voy en camino
             </button>
@@ -482,7 +487,9 @@ export function CourierPortal() {
               type="button"
               className="dg-btn dg-btn--secondary"
               disabled={!sessionUser || busyAction !== null}
-              onClick={() => void handleJourneyStep("at-pickup")}
+              onClick={() => {
+                void handleJourneyStep("at-pickup");
+              }}
             >
               Llegué al restaurante
             </button>
@@ -490,7 +497,9 @@ export function CourierPortal() {
               type="button"
               className="dg-btn dg-btn--secondary"
               disabled={!sessionUser || busyAction !== null}
-              onClick={() => void handleJourneyStep("at-dropoff")}
+              onClick={() => {
+                void handleJourneyStep("at-dropoff");
+              }}
             >
               Llegué al cliente
             </button>
@@ -515,7 +524,9 @@ export function CourierPortal() {
                 type="button"
                 className="dg-btn"
                 disabled={!sessionUser || busyAction !== null}
-                onClick={() => void handleVerifyPin("pickup-pin", pickupPin)}
+                onClick={() => {
+                  void handleVerifyPin("pickup-pin", pickupPin);
+                }}
               >
                 Confirmar recogida
               </button>
@@ -539,12 +550,85 @@ export function CourierPortal() {
                 type="button"
                 className="dg-btn"
                 disabled={!sessionUser || busyAction !== null}
-                onClick={() => void handleVerifyPin("delivery-pin", deliveryPin)}
+                onClick={() => {
+                  void handleVerifyPin("delivery-pin", deliveryPin);
+                }}
               >
                 Confirmar entrega
               </button>
             </div>
           </div>
+
+          <details className="dg-details">
+            <summary>Opciones avanzadas (ID de oferta / pedido)</summary>
+            <div className="dg-stack">
+              <div className="dg-grid-2">
+                <label className="dg-field" htmlFor="courier-offer-id">
+                  <span>ID de oferta</span>
+                  <input
+                    id="courier-offer-id"
+                    className="dg-input"
+                    type="text"
+                    value={offerId}
+                    onChange={(e) => {
+                      setOfferId(e.target.value);
+                    }}
+                    placeholder="UUID de la oferta"
+                  />
+                </label>
+                <div className="dg-btn-row" style={{ alignSelf: "end" }}>
+                  <button
+                    type="button"
+                    className="dg-btn"
+                    disabled={!sessionUser || busyAction !== null}
+                    onClick={() => {
+                      void handleAcceptOffer();
+                    }}
+                  >
+                    Aceptar oferta
+                  </button>
+                  <button
+                    type="button"
+                    className="dg-btn dg-btn--secondary"
+                    disabled={!sessionUser || busyAction !== null}
+                    onClick={() => {
+                      void handleDeclineOffer();
+                    }}
+                  >
+                    Rechazar
+                  </button>
+                </div>
+              </div>
+
+              <div className="dg-grid-2">
+                <label className="dg-field" htmlFor="courier-order-id">
+                  <span>ID de pedido asignado</span>
+                  <input
+                    id="courier-order-id"
+                    className="dg-input"
+                    type="text"
+                    value={orderId}
+                    onChange={(e) => {
+                      setOrderId(e.target.value);
+                    }}
+                    placeholder="UUID del pedido"
+                  />
+                </label>
+                <div className="dg-btn-row" style={{ alignSelf: "end" }}>
+                  <button
+                    type="button"
+                    className="dg-btn dg-btn--secondary"
+                    disabled={!sessionUser || busyAction !== null}
+                    onClick={() => {
+                      void handleLoadOrder();
+                    }}
+                  >
+                    Consultar pedido
+                  </button>
+                </div>
+              </div>
+            </div>
+          </details>
         </div>
       </section>
 

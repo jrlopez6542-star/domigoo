@@ -24,10 +24,12 @@ export function ClientPortal() {
   const [trackingPreview, setTrackingPreview] = useState<PublicTrackingSummary | null>(null);
 
   // Cotizador (requiere sesión)
-  const [originLng, setOriginLng] = useState("-73.9125");
-  const [originLat, setOriginLat] = useState("4.9652");
+  const [originLng] = useState("-73.9125");
+  const [originLat] = useState("4.9652");
   const [destLng, setDestLng] = useState("-73.9180");
   const [destLat, setDestLat] = useState("4.9701");
+  const [geoLoading, setGeoLoading] = useState(false);
+  const [geoStatus, setGeoStatus] = useState("Destino por defecto: centro de Tocancipá.");
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [quoteError, setQuoteError] = useState("");
   const [quoteText, setQuoteText] = useState("");
@@ -40,6 +42,34 @@ export function ClientPortal() {
     setSessionUser(null);
     setQuoteText("");
   }, []);
+
+  function handleUseMyLocation() {
+    setQuoteError("");
+    if (typeof navigator === "undefined" || !("geolocation" in navigator)) {
+      setQuoteError("Tu navegador no soporta geolocalización.");
+      return;
+    }
+    setGeoLoading(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lng = pos.coords.longitude.toFixed(6);
+        const lat = pos.coords.latitude.toFixed(6);
+        setDestLng(lng);
+        setDestLat(lat);
+        setGeoStatus(`Tu ubicación de entrega: ${lat}, ${lng}`);
+        setGeoLoading(false);
+      },
+      (err) => {
+        setQuoteError(
+          err.code === err.PERMISSION_DENIED
+            ? "Permiso de ubicación denegado. Actívalo en tu navegador o usa la ubicación por defecto."
+            : "No pudimos obtener tu ubicación actual.",
+        );
+        setGeoLoading(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000 },
+    );
+  }
 
   async function handleLookupTracking(e: FormEvent) {
     e.preventDefault();
@@ -118,6 +148,7 @@ export function ClientPortal() {
       </div>
 
       <RoleAuthCard
+        accountRole="CUSTOMER"
         roleTitle="Acceso de cliente"
         roleSubtitle="Usa tu correo o número celular colombiano (+57...) para iniciar sesión o registrarte."
         sessionUser={sessionUser}
@@ -130,7 +161,12 @@ export function ClientPortal() {
         <p className="dg-muted">
           Pega el enlace o código de seguimiento que te compartió el restaurante.
         </p>
-        <form onSubmit={(e) => void handleLookupTracking(e)} className="dg-stack">
+        <form
+          onSubmit={(e) => {
+            void handleLookupTracking(e);
+          }}
+          className="dg-stack"
+        >
           <label className="dg-field" htmlFor="client-tracking-input">
             <span>Código o enlace de seguimiento</span>
             <input
@@ -176,64 +212,77 @@ export function ClientPortal() {
       <section className="dg-card" aria-labelledby="client-quote-title">
         <h2 id="client-quote-title">Calcular tarifa de domicilio</h2>
         <p className="dg-muted">
-          Estima el costo de envío entre dos puntos de Tocancipá (requiere iniciar sesión).
+          Estima el costo de envío en Tocancipá usando tu ubicación actual (requiere iniciar
+          sesión).
         </p>
-        <form onSubmit={(e) => void handleEstimateDelivery(e)} className="dg-stack">
-          <div className="dg-grid-2">
-            <label className="dg-field" htmlFor="client-origin-lng">
-              <span>Longitud origen</span>
-              <input
-                id="client-origin-lng"
-                className="dg-input"
-                type="text"
-                value={originLng}
-                onChange={(e) => {
-                  setOriginLng(e.target.value);
-                }}
-              />
-            </label>
-            <label className="dg-field" htmlFor="client-origin-lat">
-              <span>Latitud origen</span>
-              <input
-                id="client-origin-lat"
-                className="dg-input"
-                type="text"
-                value={originLat}
-                onChange={(e) => {
-                  setOriginLat(e.target.value);
-                }}
-              />
-            </label>
-            <label className="dg-field" htmlFor="client-dest-lng">
-              <span>Longitud destino</span>
-              <input
-                id="client-dest-lng"
-                className="dg-input"
-                type="text"
-                value={destLng}
-                onChange={(e) => {
-                  setDestLng(e.target.value);
-                }}
-              />
-            </label>
-            <label className="dg-field" htmlFor="client-dest-lat">
-              <span>Latitud destino</span>
-              <input
-                id="client-dest-lat"
-                className="dg-input"
-                type="text"
-                value={destLat}
-                onChange={(e) => {
-                  setDestLat(e.target.value);
-                }}
-              />
-            </label>
-          </div>
+        <form
+          onSubmit={(e) => {
+            void handleEstimateDelivery(e);
+          }}
+          className="dg-stack"
+        >
+          <p className="dg-muted" style={{ margin: 0 }}>
+            {geoStatus}
+          </p>
           <div className="dg-btn-row">
+            <button
+              type="button"
+              className="dg-btn dg-btn--secondary"
+              disabled={geoLoading}
+              onClick={handleUseMyLocation}
+            >
+              {geoLoading ? "Obteniendo ubicación..." : "Usar mi ubicación"}
+            </button>
             <button type="submit" className="dg-btn" disabled={!sessionUser || quoteLoading}>
               {quoteLoading ? "Calculando..." : "Calcular tarifa"}
             </button>
           </div>
+
+          <details className="dg-details">
+            <summary>Opciones avanzadas (coordenadas)</summary>
+            <div className="dg-grid-2">
+              <label className="dg-field" htmlFor="client-origin-lng">
+                <span>Longitud origen (solo lectura)</span>
+                <input
+                  id="client-origin-lng"
+                  className="dg-input"
+                  type="text"
+                  value={originLng}
+                  readOnly
+                />
+              </label>
+              <label className="dg-field" htmlFor="client-origin-lat">
+                <span>Latitud origen (solo lectura)</span>
+                <input
+                  id="client-origin-lat"
+                  className="dg-input"
+                  type="text"
+                  value={originLat}
+                  readOnly
+                />
+              </label>
+              <label className="dg-field" htmlFor="client-dest-lng">
+                <span>Longitud destino (solo lectura)</span>
+                <input
+                  id="client-dest-lng"
+                  className="dg-input"
+                  type="text"
+                  value={destLng}
+                  readOnly
+                />
+              </label>
+              <label className="dg-field" htmlFor="client-dest-lat">
+                <span>Latitud destino (solo lectura)</span>
+                <input
+                  id="client-dest-lat"
+                  className="dg-input"
+                  type="text"
+                  value={destLat}
+                  readOnly
+                />
+              </label>
+            </div>
+          </details>
         </form>
         {quoteError ? (
           <div role="alert" className="dg-alert dg-alert--error" style={{ marginTop: "12px" }}>

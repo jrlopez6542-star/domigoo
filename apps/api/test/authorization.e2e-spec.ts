@@ -59,11 +59,14 @@ async function query<T extends Record<string, unknown>>(
 }
 
 async function tokenFor(email: string): Promise<string> {
-  const response = await request(server()).post("/v1/auth/register").send({
-    email,
-    password,
-    client: "MOBILE",
-  });
+  const response = await request(server())
+    .post("/v1/auth/register")
+    .send({
+      email,
+      password,
+      client: "MOBILE",
+      consents: { termsAccepted: true, privacyAccepted: true },
+    });
   if (response.status !== 201) {
     throw new Error(`No se pudo registrar ${email}`);
   }
