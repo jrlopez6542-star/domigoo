@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { BarChart3, CreditCard, FileCheck2, LogIn, ShieldCheck } from "lucide-react";
 import {
   buildAdminLoginPayload,
   buildVerificationDecisionPayload,
@@ -167,259 +168,288 @@ export function AdminPortal({ appName }: { appName: string }) {
   }
 
   return (
-    <main style={{ maxWidth: "56rem", margin: "2rem auto", padding: "0 1rem" }}>
-      <header style={{ marginBottom: "1.5rem" }}>
-        <h1 style={{ margin: 0 }}>{appName} — Panel Administrativo</h1>
-        <p style={{ color: "#475569", marginTop: "0.25rem" }}>
-          Revisión documental, reconocimiento de declaraciones de suscripción y operación.
-        </p>
+    <div className="adm-shell">
+      <header className="adm-topbar">
+        <div className="adm-topbar-inner">
+          <div className="adm-brand">
+            <img
+              src="/brand/domigoo-horizontal-dark.svg"
+              alt={appName}
+              width={136}
+              height={40}
+              style={{ display: "block", height: "38px", width: "auto" }}
+            />
+            <span className="adm-badge">
+              <ShieldCheck size={14} aria-hidden="true" />
+              Panel Administrativo
+            </span>
+          </div>
+          <span style={{ color: "#C0C6D4", fontSize: "0.85rem" }}>
+            Verificación documental, suscripciones y operación
+          </span>
+        </div>
       </header>
 
-      {statusMessage ? (
-        <div
-          role="status"
-          style={{
-            padding: "0.75rem 1rem",
-            backgroundColor: "#ecfdf5",
-            border: "1px solid #10b981",
-            borderRadius: "8px",
-            marginBottom: "1rem",
-          }}
-        >
-          {statusMessage}
-        </div>
-      ) : null}
+      <div className="adm-layout">
+        <nav className="adm-sidebar" aria-label="Secciones administrativas">
+          <a href="#admin-ingreso" className="adm-nav-item">
+            <LogIn size={18} aria-hidden="true" />
+            1. Ingreso
+          </a>
+          <a href="#admin-verificacion" className="adm-nav-item">
+            <FileCheck2 size={18} aria-hidden="true" />
+            2. Verificación
+          </a>
+          <a href="#admin-suscripciones" className="adm-nav-item">
+            <CreditCard size={18} aria-hidden="true" />
+            3. Suscripciones
+          </a>
+          <a href="#admin-estadisticas" className="adm-nav-item">
+            <BarChart3 size={18} aria-hidden="true" />
+            4. Estadísticas
+          </a>
+        </nav>
 
-      {errorMessage ? (
-        <div
-          role="alert"
-          style={{
-            padding: "0.75rem 1rem",
-            backgroundColor: "#fef2f2",
-            border: "1px solid #ef4444",
-            borderRadius: "8px",
-            marginBottom: "1rem",
-          }}
-        >
-          {errorMessage}
-        </div>
-      ) : null}
+        <main className="adm-content">
+          {statusMessage ? (
+            <div role="status" className="adm-alert adm-alert--success">
+              {statusMessage}
+            </div>
+          ) : null}
 
-      <section
-        style={{
-          backgroundColor: "#ffffff",
-          padding: "1.25rem",
-          borderRadius: "10px",
-          border: "1px solid #e2e8f0",
-          marginBottom: "1rem",
-        }}
-      >
-        <h2 style={{ marginTop: 0 }}>1. Ingreso administrativo</h2>
-        {adminUserId ? <p data-testid="admin-session">Sesión activa: {adminUserId}</p> : null}
-        <form
-          onSubmit={(e) => {
-            void handleLogin(e);
-          }}
-          style={{ display: "grid", gap: "0.75rem" }}
-        >
-          <label>
-            Correo o teléfono (+57...)
-            <input
-              name="identifier"
-              value={identifier}
-              onChange={(e) => {
-                setIdentifier(e.target.value);
+          {errorMessage ? (
+            <div role="alert" className="adm-alert adm-alert--error">
+              {errorMessage}
+            </div>
+          ) : null}
+
+          <section id="admin-ingreso" className="adm-card">
+            <h1 className="adm-card-title" style={{ fontSize: "1.25rem" }}>
+              <LogIn size={20} aria-hidden="true" />
+              1. Ingreso administrativo
+            </h1>
+            {adminUserId ? (
+              <p data-testid="admin-session" className="adm-alert adm-alert--success">
+                Sesión activa: {adminUserId}
+              </p>
+            ) : null}
+            <form
+              onSubmit={(e) => {
+                void handleLogin(e);
               }}
-              placeholder="admin@ejemplo.com o +573001112233"
-              required
-              style={{ display: "block", width: "100%", padding: "0.5rem" }}
-            />
-          </label>
-          <label>
-            Contraseña
-            <input
-              name="password"
-              type="password"
-              value={password}
-              onChange={(e) => {
-                setPassword(e.target.value);
-              }}
-              required
-              style={{ display: "block", width: "100%", padding: "0.5rem" }}
-            />
-          </label>
-          <button type="submit">Entrar</button>
-        </form>
-      </section>
-
-      <section
-        style={{
-          backgroundColor: "#ffffff",
-          padding: "1.25rem",
-          borderRadius: "10px",
-          border: "1px solid #e2e8f0",
-          marginBottom: "1rem",
-        }}
-      >
-        <h2 style={{ marginTop: 0 }}>2. Bandeja de verificación de domiciliarios</h2>
-        <button
-          type="button"
-          onClick={() => {
-            void handleLoadCases();
-          }}
-        >
-          Cargar casos
-        </button>
-
-        {cases.length > 0 ? (
-          <ul data-testid="verification-cases-list">
-            {cases.map((c) => (
-              <li key={c.id}>
-                <code>{c.id}</code> — Domiciliario <code>{c.courierId}</code> — Estado:{" "}
-                <strong>{c.status}</strong>
-              </li>
-            ))}
-          </ul>
-        ) : null}
-
-        <form
-          onSubmit={(e) => {
-            void handleDecideCase(e);
-          }}
-          style={{ display: "grid", gap: "0.75rem", marginTop: "1rem" }}
-        >
-          <label>
-            ID del caso
-            <input
-              name="caseId"
-              value={caseId}
-              onChange={(e) => {
-                setCaseId(e.target.value);
-              }}
-              required
-              style={{ display: "block", width: "100%", padding: "0.5rem" }}
-            />
-          </label>
-          <label>
-            Resultado (outcome)
-            <select
-              name="outcome"
-              value={outcome}
-              onChange={(e) => {
-                setOutcome(e.target.value as VerificationOutcome);
-              }}
-              style={{ display: "block", width: "100%", padding: "0.5rem" }}
+              className="adm-form"
             >
-              <option value="APPROVED">Aprobar (APPROVED)</option>
-              <option value="REJECTED">Rechazar (REJECTED)</option>
-              <option value="NEEDS_CHANGES">Solicitar cambios (NEEDS_CHANGES)</option>
-            </select>
-          </label>
-          <label>
-            Código de motivo (reasonCode)
-            <input
-              name="reasonCode"
-              value={reasonCode}
-              onChange={(e) => {
-                setReasonCode(e.target.value);
-              }}
-              pattern="[A-Za-z0-9_]{1,64}"
-              required
-              style={{ display: "block", width: "100%", padding: "0.5rem" }}
-            />
-          </label>
-          <label>
-            Comentario (comment)
-            <input
-              name="comment"
-              value={comment}
-              onChange={(e) => {
-                setComment(e.target.value);
-              }}
-              required
-              style={{ display: "block", width: "100%", padding: "0.5rem" }}
-            />
-          </label>
-          <button type="submit">Registrar decisión</button>
-        </form>
-      </section>
+              <label className="adm-field">
+                Correo o teléfono (+57...)
+                <input
+                  className="adm-input"
+                  name="identifier"
+                  value={identifier}
+                  onChange={(e) => {
+                    setIdentifier(e.target.value);
+                  }}
+                  placeholder="admin@ejemplo.com o +573001112233"
+                  required
+                />
+              </label>
+              <label className="adm-field">
+                Contraseña
+                <input
+                  className="adm-input"
+                  name="password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                  }}
+                  required
+                />
+              </label>
+              <div>
+                <button type="submit" className="adm-btn">
+                  Entrar
+                </button>
+              </div>
+            </form>
+          </section>
 
-      <section
-        style={{
-          backgroundColor: "#ffffff",
-          padding: "1.25rem",
-          borderRadius: "10px",
-          border: "1px solid #e2e8f0",
-          marginBottom: "1rem",
-        }}
-      >
-        <h2 style={{ marginTop: 0 }}>3. Reconocimiento de declaración de suscripción</h2>
-        <p style={{ color: "#475569", fontSize: "0.875rem" }}>
-          DOMIGOO no procesa pagos electrónicos desde este panel. Aquí únicamente se reconoce una
-          declaración de transferencia o pago reportada por el restaurante.
-        </p>
-        <form
-          onSubmit={(e) => {
-            void handleAcknowledgeDeclaration(e);
-          }}
-          style={{ display: "grid", gap: "0.75rem" }}
-        >
-          <label>
-            ID de declaración
-            <input
-              name="declarationId"
-              value={declarationId}
-              onChange={(e) => {
-                setDeclarationId(e.target.value);
+          <section id="admin-verificacion" className="adm-card">
+            <h2 className="adm-card-title">
+              <FileCheck2 size={20} aria-hidden="true" />
+              2. Bandeja de verificación de domiciliarios
+            </h2>
+            <button
+              type="button"
+              className="adm-btn"
+              onClick={() => {
+                void handleLoadCases();
               }}
-              required
-              style={{ display: "block", width: "100%", padding: "0.5rem" }}
-            />
-          </label>
-          <label>
-            Referencia o nota de verificación
-            <input
-              name="ackReference"
-              value={ackReference}
-              onChange={(e) => {
-                setAckReference(e.target.value);
-              }}
-              required
-              style={{ display: "block", width: "100%", padding: "0.5rem" }}
-            />
-          </label>
-          <button type="submit">Reconocer declaración de pago</button>
-        </form>
-      </section>
+            >
+              Cargar casos
+            </button>
 
-      <section
-        style={{
-          backgroundColor: "#ffffff",
-          padding: "1.25rem",
-          borderRadius: "10px",
-          border: "1px solid #e2e8f0",
-        }}
-      >
-        <h2 style={{ marginTop: 0 }}>4. Estadísticas operativas</h2>
-        <button
-          type="button"
-          onClick={() => {
-            void handleLoadStats();
-          }}
-        >
-          Consultar estadísticas
-        </button>
-        {stats ? (
-          <div data-testid="admin-stats" style={{ marginTop: "1rem" }}>
-            <p>Domiciliarios aprobados y disponibles: {stats.eligibleCouriers}</p>
-            <p>Incidentes abiertos: {stats.openIncidents}</p>
-            <p>
-              Mediana de aceptación (segundos):{" "}
-              {stats.medianAcceptSeconds !== null ? stats.medianAcceptSeconds : "Sin datos"}
+            {cases.length > 0 ? (
+              <ul data-testid="verification-cases-list" className="adm-case-list">
+                {cases.map((c) => (
+                  <li key={c.id} className="adm-case-item">
+                    <code>{c.id}</code> — Domiciliario <code>{c.courierId}</code> — Estado:{" "}
+                    <strong>{c.status}</strong>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+
+            <form
+              onSubmit={(e) => {
+                void handleDecideCase(e);
+              }}
+              className="adm-form"
+              style={{ marginTop: "1rem" }}
+            >
+              <label className="adm-field">
+                ID del caso
+                <input
+                  className="adm-input"
+                  name="caseId"
+                  value={caseId}
+                  onChange={(e) => {
+                    setCaseId(e.target.value);
+                  }}
+                  required
+                />
+              </label>
+              <label className="adm-field">
+                Resultado (outcome)
+                <select
+                  className="adm-select"
+                  name="outcome"
+                  value={outcome}
+                  onChange={(e) => {
+                    setOutcome(e.target.value as VerificationOutcome);
+                  }}
+                >
+                  <option value="APPROVED">Aprobar (APPROVED)</option>
+                  <option value="REJECTED">Rechazar (REJECTED)</option>
+                  <option value="NEEDS_CHANGES">Solicitar cambios (NEEDS_CHANGES)</option>
+                </select>
+              </label>
+              <label className="adm-field">
+                Código de motivo (reasonCode)
+                <input
+                  className="adm-input"
+                  name="reasonCode"
+                  value={reasonCode}
+                  onChange={(e) => {
+                    setReasonCode(e.target.value);
+                  }}
+                  pattern="[A-Za-z0-9_]{1,64}"
+                  required
+                />
+              </label>
+              <label className="adm-field">
+                Comentario (comment)
+                <input
+                  className="adm-input"
+                  name="comment"
+                  value={comment}
+                  onChange={(e) => {
+                    setComment(e.target.value);
+                  }}
+                  required
+                />
+              </label>
+              <div>
+                <button type="submit" className="adm-btn">
+                  Registrar decisión
+                </button>
+              </div>
+            </form>
+          </section>
+
+          <section id="admin-suscripciones" className="adm-card">
+            <h2 className="adm-card-title">
+              <CreditCard size={20} aria-hidden="true" />
+              3. Reconocimiento de declaración de suscripción
+            </h2>
+            <p style={{ color: "#544E6B", fontSize: "0.9rem", marginTop: 0 }}>
+              DOMIGOO no procesa pagos electrónicos desde este panel. Aquí únicamente se reconoce
+              una declaración de transferencia o pago reportada por el restaurante.
             </p>
-          </div>
-        ) : null}
-      </section>
-    </main>
+            <form
+              onSubmit={(e) => {
+                void handleAcknowledgeDeclaration(e);
+              }}
+              className="adm-form"
+            >
+              <label className="adm-field">
+                ID de declaración
+                <input
+                  className="adm-input"
+                  name="declarationId"
+                  value={declarationId}
+                  onChange={(e) => {
+                    setDeclarationId(e.target.value);
+                  }}
+                  required
+                />
+              </label>
+              <label className="adm-field">
+                Referencia o nota de verificación
+                <input
+                  className="adm-input"
+                  name="ackReference"
+                  value={ackReference}
+                  onChange={(e) => {
+                    setAckReference(e.target.value);
+                  }}
+                  required
+                />
+              </label>
+              <div>
+                <button type="submit" className="adm-btn">
+                  Reconocer declaración de pago
+                </button>
+              </div>
+            </form>
+          </section>
+
+          <section id="admin-estadisticas" className="adm-card">
+            <h2 className="adm-card-title">
+              <BarChart3 size={20} aria-hidden="true" />
+              4. Estadísticas operativas
+            </h2>
+            <button
+              type="button"
+              className="adm-btn"
+              onClick={() => {
+                void handleLoadStats();
+              }}
+            >
+              Consultar estadísticas
+            </button>
+            {stats ? (
+              <div data-testid="admin-stats" className="adm-stats-grid">
+                <div className="adm-stat-box">
+                  <div className="adm-stat-value">{stats.eligibleCouriers}</div>
+                  <div>Domiciliarios aprobados y disponibles</div>
+                </div>
+                <div className="adm-stat-box">
+                  <div className="adm-stat-value">{stats.openIncidents}</div>
+                  <div>Incidentes abiertos</div>
+                </div>
+                <div className="adm-stat-box">
+                  <div className="adm-stat-value">
+                    {stats.medianAcceptSeconds !== null
+                      ? `${String(stats.medianAcceptSeconds)} s`
+                      : "—"}
+                  </div>
+                  <div>Mediana de aceptación</div>
+                </div>
+              </div>
+            ) : null}
+          </section>
+        </main>
+      </div>
+    </div>
   );
 }

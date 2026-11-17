@@ -1,0 +1,50 @@
+:root {
+  /* Paleta oficial Futuro Urbano */
+  --domigoo-indigo: #29243e;
+  --domigoo-indigo-deep: #1b172a;
+  --domigoo-indigo-soft: #363052;
+  --domigoo-turquoise: #79d5d0;
+  --domigoo-turquoise-bright: #9ef2ed;
+  --domigoo-turquoise-text: #0e7c77;
+  --domigoo-silver: #c0c6d4;
+  --domigoo-silver-light: #e2e6ef;
+  --domigoo-white: #f5f7fa;
+  --domigoo-surface: #ffffff;
+
+  /* Tipografía oficial (OFL) */
+  --domigoo-font-brand: var(--font-montserrat), "Montserrat", Arial, sans-serif;
+  --domigoo-font-ui: var(--font-inter), "Inter", system-ui, -apple-system, sans-serif;
+
+  /* Tokens de interfaz */
+  --dg-bg: var(--domigoo-white);
+  --dg-surface: var(--domigoo-surface);
+  --dg-surface-muted: #eef1f6;
+  --dg-border: #d9dee8;
+  --dg-border-strong: var(--domigoo-silver);
+  --dg-text: var(--domigoo-indigo);
+  --dg-text-muted: #544e6b;
+  --dg-brand: var(--domigoo-indigo);
+  --dg-brand-hover: var(--domigoo-indigo-soft);
+  --dg-brand-accent: var(--domigoo-turquoise);
+  --dg-brand-accent-text: var(--domigoo-turquoise-text);
+  --dg-brand-soft: #e9f8f7;
+  --dg-brand-ring: var(--domigoo-turquoise);
+
+  /* Semántica accesible */
+  --dg-success-bg: #ecfdf5;
+  --dg-success-border: #a7f3d0;
+  --dg-success-text: #065f46;
+  --dg-error-bg: #fef2f2;
+  --dg-error-border: #fecaca;
+  --dg-error-text: #991b1b;
+  --dg-warn-bg: #fffbeb;
+  --dg-warn-border: #fde68a;
+  --dg-warn-text: #92400e;
+
+  /* Radios y sombras */
+  --dg-radius-sm: 10px;
+  --dg-radius: 16px;
+  --dg-radius-lg: 22px;
+  --dg-shadow: 0 2px 8px rgba(41, 36, 62, 0.06), 0 10px 24px rgba(41, 36, 62, 0.05);
+  --dg-shadow-indigo: 0 10px 28px rgba(41, 36, 62, 0.24);
+}
