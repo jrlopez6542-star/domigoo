@@ -306,11 +306,10 @@ describe("oferta abierta", () => {
     }
     await request(server()).get("/v1/offers/available").expect(401);
 
-    const ownerAvailable = await request(server())
+    await request(server())
       .get("/v1/offers/available")
       .set("Authorization", `Bearer ${owner}`)
-      .expect(200);
-    expect(record(ownerAvailable.body)["offers"]).toEqual([]);
+      .expect(403);
 
     const firstAvailable = await request(server())
       .get("/v1/offers/available")

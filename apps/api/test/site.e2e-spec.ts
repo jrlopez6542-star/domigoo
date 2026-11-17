@@ -145,10 +145,9 @@ describe("sede del restaurante", () => {
       }),
     ]);
 
-    const strangerBranches = await request(server())
+    await request(server())
       .get("/v1/branches/mine")
       .set("Authorization", `Bearer ${String(record(stranger.body)["token"])}`)
-      .expect(200);
-    expect(record(strangerBranches.body)["branches"]).toEqual([]);
+      .expect(403);
   });
 });
