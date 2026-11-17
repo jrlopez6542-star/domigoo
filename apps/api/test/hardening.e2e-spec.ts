@@ -327,8 +327,8 @@ describe("endurecimiento M47 (rate limit, login throttling, storage privado, cro
          VALUES ('rl:auth:old', 3, now() - interval '48 hours', NULL)`,
       );
       await pool.query(
-        `INSERT INTO couriers (id, "userId", "documentType", "documentNumber", "firstName", "lastName", status, "createdAt", "updatedAt")
-         VALUES ($1, $2, 'CC', '9000000099', 'Cron', 'Courier', 'REGISTERING', now(), now())`,
+        `INSERT INTO couriers (id, "userId", "documentType", "documentNumber", "firstName", "lastName", status, "registrationSource", "createdAt", "updatedAt")
+         VALUES ($1, $2, 'CC', '9000000099', 'Cron', 'Courier', 'REGISTERING', 'OPEN', now(), now())`,
         [courierId, user.userId],
       );
       await pool.query(

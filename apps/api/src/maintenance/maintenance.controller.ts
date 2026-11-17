@@ -1,9 +1,10 @@
 import { Controller, Get, HttpCode, Post, UseGuards } from "@nestjs/common";
-import { ApiOperation, ApiTags } from "@nestjs/swagger";
+import { ApiExcludeController, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { CronSecretGuard } from "./cron-secret.guard.js";
 import { MaintenanceService, type MaintenanceSummary } from "./maintenance.service.js";
 
 @ApiTags("mantenimiento")
+@ApiExcludeController()
 @Controller("v1/internal/cron")
 @UseGuards(CronSecretGuard)
 export class MaintenanceController {

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { INestApplication } from "@nestjs/common";
@@ -231,19 +231,24 @@ describe("motocicleta y documentos", () => {
       `SELECT "storageKey" FROM courier_documents WHERE id = $1`,
       [body["id"]],
     );
-    await stored.end();
     const key = row.rows[0]?.storageKey;
     if (key === undefined) {
+      await stored.end();
       throw new Error("No quedó la clave privada");
+    }
+    const storedObject = await stored.query<{ data: Buffer }>(
+      `SELECT data FROM stored_objects WHERE key = $1`,
+      [key],
+    );
+    await stored.end();
+    const objectBytes = storedObject.rows[0]?.data;
+    if (objectBytes === undefined) {
+      throw new Error("No quedaron los bytes privados en stored_objects");
     }
     expect(key.startsWith("http")).toBe(false);
     expect(storageDir.startsWith(tmpdir())).toBe(true);
     expect(storageDir.includes("/workspace/")).toBe(false);
-    expect(
-      createHash("sha256")
-        .update(readFileSync(join(storageDir, key)))
-        .digest("hex"),
-    ).toBe(sha256);
+    expect(createHash("sha256").update(objectBytes).digest("hex")).toBe(sha256);
     await request(server()).get(`/${key}`).expect(404);
   });
 });
