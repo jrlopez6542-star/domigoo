@@ -36,36 +36,29 @@ La fase 0 y las misiones M01–M14 entraron juntas a `Contabilidad` en el PR #17
 | M23 | [#26](https://github.com/jrlopez6542-star/domigoo/pull/26) | Ola abierta, aceptación exclusiva e idempotencia. Merge `4c15ac6`. |
 | Preview | [#27](https://github.com/jrlopez6542-star/domigoo/pull/27) | API Nest en el preview de Vercel. Migra solo Preview con `DATABASE_URL_UNPOOLED`. |
 | Estado | [#28](https://github.com/jrlopez6542-star/domigoo/pull/28) | Este inventario. |
-| M24 | [#29](https://github.com/jrlopez6542-star/domigoo/pull/29) | Recorrido: camino a la sucursal, llegada y camino al destino, con historial. Merge `04d8ffc`. |
-| M25 | [#30](https://github.com/jrlopez6542-star/domigoo/pull/30) | PIN de recogida y de entrega. Hash y cifrado; el intento 5 abre `PIN_LOCKOUT` sin mover el pedido. |
+| M24 | `reconcile/m39-contabilidad` | Recorrido del pedido y `order_events` en `OrdersController` / `journey.repository.ts` (unificado sobre PR #29). |
+| M25 | `reconcile/m39-contabilidad` | PIN de recogida y entrega cifrado con HMAC + AES-256-GCM y `PIN_LOCKOUT` (unificado sobre PR #30). |
+| M26 | `reconcile/m39-contabilidad` | Cancelación y vencimiento idempotente de pedidos y ofertas (`ExpirationRepository`). |
+| M27 | `reconcile/m39-contabilidad` | Enlace público de tracking (`noindex`, `no-referrer`, SHA-256). |
+| M28 | `reconcile/m39-contabilidad` | Puerto `PushSender` y `notification_outbox`. |
+| M29–M30 | `reconcile/m39-contabilidad` | Web de restaurantes (`@domigoo/web`) y página pública de tracking. |
+| M31 | `reconcile/m39-contabilidad` | Panel administrativo (`@domigoo/admin`) de verificación, declaraciones y estadísticas. |
+| M32–M33 | `reconcile/m39-contabilidad` | App del domiciliario (`@domigoo/movil`, Android): sesión, disponibilidad, ofertas, recorrido y PIN. |
+| M34 | `reconcile/m39-contabilidad` | Incidentes append-only y transición a `FAILED` con incidente `CRITICAL`. |
+| M35 | `reconcile/m39-contabilidad` | Suspensiones y rehabilitaciones de domiciliarios y restaurantes. |
+| M36 | `reconcile/m39-contabilidad` | Estadísticas operativas agregadas sin PII ni PIN. |
+| M37 | `reconcile/m39-contabilidad` | Solicitudes de habeas data, revocación GPS y anonimización. |
+| M38 | `reconcile/m39-contabilidad` | Recorrido completo E2E de punta a punta (`e2e-full-flow.e2e-spec.ts`). |
+| M39 | `reconcile/m39-contabilidad` | Alineación de contratos HTTP, `POST /v1/tariffs/quote`, `client-contracts.e2e-spec.ts` y CI Playwright. |
 
 ## En curso
 
-El PR [#30](https://github.com/jrlopez6542-star/domigoo/pull/30) lleva M25. El CI de esa rama ya pasó. Falta que se fusione en `Contabilidad`.
+La rama `reconcile/m39-contabilidad` unifica M24–M39 con `origin/Contabilidad` (incluidos PR #27–#30) mediante Pull Request hacia `Contabilidad`.
 
 ## Lo que falta
 
-Fase 5, todavía abierta:
-
-- M26. Cancelación y vencimiento.
-
-Fase 6. Superficies:
-
-- M27. Enlace de tracking.
-- M28. Puerto de push.
-- M29. Web de restaurantes.
-- M30. Página de tracking.
-- M31. Admin de verificación y suscripciones.
-- M32. App del domiciliario: sesión, disponibilidad y ofertas.
-- M33. App del domiciliario: recorrido y PIN.
-
-Fase 7. Cierre operativo:
-
-- M34. Incidentes.
-- M35. Suspensión.
-- M36. Estadísticas.
-- M37. Solicitudes de habeas data.
-- M38. Recorrido de punta a punta y abusos básicos.
+- Validación final en CI de `reconcile/m39-contabilidad` y revisión/merge del Pull Request hacia `Contabilidad`.
+- Despliegue controlado a staging y pendientes operativos del dueño (listados abajo).
 
 El detalle de cada ficha está en [plan-misiones.md](plan-misiones.md).
 

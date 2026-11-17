@@ -9,7 +9,16 @@ const repoRoot = path.resolve(packageDir, "../..");
 
 export default tseslint.config(
   {
-    ignores: ["**/node_modules/**", "**/dist/**", "**/build/**", "**/coverage/**", "docs/**"],
+    ignores: [
+      "**/node_modules/**",
+      "**/dist/**",
+      "**/build/**",
+      "**/coverage/**",
+      "**/.next/**",
+      "**/.expo/**",
+      "**/next-env.d.ts",
+      "docs/**",
+    ],
   },
   eslint.configs.recommended,
   {

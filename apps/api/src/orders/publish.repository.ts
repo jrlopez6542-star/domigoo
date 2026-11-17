@@ -176,6 +176,21 @@ export class PublishRepository {
         throw new Error("No se pudo crear la oferta");
       }
       await client.query(
+        `INSERT INTO notification_outbox (
+           id, "userId", template, payload, status, "attemptCount", "availableAt", "createdAt"
+         ) VALUES (
+           gen_random_uuid(), $1, 'direct_offer', $2::jsonb, 'PENDING', 0, now(), now()
+         )`,
+        [
+          courierUserId,
+          JSON.stringify({
+            offerId,
+            orderId: input.orderId,
+            deliveryFeeCop: quote.deliveryFeeCop,
+          }),
+        ],
+      );
+      await client.query(
         `INSERT INTO order_events (
            id, "orderId", "fromStatus", "toStatus", "actorKind", "actorId", "createdAt"
          ) VALUES (

@@ -1,10 +1,11 @@
 import { randomBytes } from "node:crypto";
-import { Inject, Injectable } from "@nestjs/common";
-import { APP_ENV, type AppEnv } from "../config/env.js";
+import { Inject, Injectable, Optional } from "@nestjs/common";
+import { APP_ENV, defaultPinEnv, type AppEnv } from "../config/env.js";
 import { Database } from "../database.js";
-import { openPin, showsPickupPin } from "./pin.js";
+import { decryptPin } from "./pin-crypto.js";
 
 const METHODS = new Set(["CASH", "NEQUI", "DAVIPLATA", "TRANSFER"]);
+const RESTAURANT_PICKUP_PIN_STATUSES = new Set(["ACCEPTED", "ARRIVING_PICKUP", "AT_PICKUP"]);
 
 export type DraftOrder = {
   id: string;
@@ -14,21 +15,64 @@ export type DraftOrder = {
   paymentMethod: string;
 };
 
-export type RestaurantOrder = {
+const TERMINAL_STATUSES = new Set([
+  "DELIVERED",
+  "EXPIRED",
+  "CANCELLED_RESTAURANT",
+  "CANCELLED_COURIER",
+  "CANCELLED_ADMIN",
+  "FAILED",
+]);
+
+export type OrderEventItem = {
   id: string;
+  fromStatus: string;
+  toStatus: string;
+  actorKind: string;
+  createdAt: string;
+};
+
+export type RestaurantOrderView = {
+  id: string;
+  referenceCode: string;
   status: string;
   foodAmountCop: number;
   deliveryFeeCop: number;
-  paymentMethod: string;
+  paymentMethod: string | null;
+  customerName: string | null;
+  customerPhone: string | null;
+  dropoffAddress: string | null;
   pickupPin?: string;
+  events: OrderEventItem[];
 };
+
+export type CourierOrderView = {
+  id: string;
+  referenceCode: string;
+  status: string;
+  deliveryFeeCop: number;
+  paymentMethod: string | null;
+  customerName: string | null;
+  customerPhone?: string;
+  dropoffAddress: string | null;
+  events: OrderEventItem[];
+};
+
+export type OrderViewResult =
+  | { kind: "ok"; order: RestaurantOrderView | CourierOrderView }
+  | { kind: "forbidden" }
+  | { kind: "missing" };
 
 @Injectable()
 export class OrderRepository {
+  private readonly pinEnv: Pick<AppEnv, "pinPepper" | "appEncryptionKey">;
+
   constructor(
     private readonly database: Database,
-    @Inject(APP_ENV) private readonly env: AppEnv,
-  ) {}
+    @Optional() @Inject(APP_ENV) env?: AppEnv,
+  ) {
+    this.pinEnv = env ?? defaultPinEnv();
+  }
 
   async createDraft(input: {
     userId: string;
@@ -87,17 +131,10 @@ export class OrderRepository {
     throw new Error("No se pudo asignar un código de pedido");
   }
 
-  async findForMember(id: string, userId: string): Promise<RestaurantOrder | null> {
-    const result = await this.database.pool.query<{
-      id: string;
-      status: string;
-      foodAmountCop: number;
-      deliveryFeeCop: number;
-      paymentMethod: string | null;
-      pickupPinCiphertext: string | null;
-    }>(
+  async findForMember(id: string, userId: string): Promise<DraftOrder | null> {
+    const result = await this.database.pool.query<DraftOrder>(
       `SELECT o.id, o.status::text AS status, o."foodAmountCop", o."deliveryFeeCop",
-              o."paymentMethod"::text AS "paymentMethod", o."pickupPinCiphertext"
+              o."paymentMethod"::text AS "paymentMethod"
        FROM orders o
        JOIN restaurant_memberships m ON m."restaurantId" = o."restaurantId"
        WHERE o.id = $1 AND m."userId" = $2 AND m.status = 'ACTIVE'`,
@@ -107,26 +144,123 @@ export class OrderRepository {
     if (row === undefined) {
       return null;
     }
-    const order: RestaurantOrder = {
-      id: row.id,
-      status: row.status,
-      foodAmountCop: row.foodAmountCop,
-      deliveryFeeCop: row.deliveryFeeCop,
-      paymentMethod: row.paymentMethod ?? "",
-    };
-    if (!showsPickupPin(row.status) || row.pickupPinCiphertext === null) {
-      return order;
-    }
-    const pickupPin = openPin(
-      this.env.dataEncryptionKey,
-      row.id,
-      "PICKUP",
-      row.pickupPinCiphertext,
+    return { ...row, status: "DRAFT" };
+  }
+
+  async findOrderView(id: string, userId: string): Promise<OrderViewResult> {
+    const orderResult = await this.database.pool.query<{
+      id: string;
+      referenceCode: string;
+      restaurantId: string;
+      status: string;
+      foodAmountCop: number;
+      deliveryFeeCop: number;
+      paymentMethod: string | null;
+      assignedCourierId: string | null;
+      customerName: string | null;
+      customerPhoneE164: string | null;
+      dropoffAddress: string | null;
+      pickupPinCiphertext: string | null;
+    }>(
+      `SELECT id, "referenceCode", "restaurantId", status::text AS status,
+              "foodAmountCop", "deliveryFeeCop", "paymentMethod"::text AS "paymentMethod",
+              "assignedCourierId", "customerName", "customerPhoneE164", "dropoffAddress",
+              "pickupPinCiphertext"
+       FROM orders
+       WHERE id = $1`,
+      [id],
     );
-    if (pickupPin === null) {
-      return order;
+    const order = orderResult.rows[0];
+    if (order === undefined) {
+      return { kind: "missing" };
     }
-    return { ...order, pickupPin };
+
+    const memberResult = await this.database.pool.query<{ id: string }>(
+      `SELECT id FROM restaurant_memberships
+       WHERE "restaurantId" = $1 AND "userId" = $2 AND status = 'ACTIVE'`,
+      [order.restaurantId, userId],
+    );
+    const isRestaurantMember = memberResult.rows[0] !== undefined;
+
+    if (isRestaurantMember) {
+      const events = await this.listEvents(id);
+      const pickupPin =
+        RESTAURANT_PICKUP_PIN_STATUSES.has(order.status) && order.pickupPinCiphertext !== null
+          ? decryptPin(order.pickupPinCiphertext, order.id, "PICKUP", this.pinEnv.appEncryptionKey)
+          : undefined;
+      return {
+        kind: "ok",
+        order: {
+          id: order.id,
+          referenceCode: order.referenceCode,
+          status: order.status,
+          foodAmountCop: order.foodAmountCop,
+          deliveryFeeCop: order.deliveryFeeCop,
+          paymentMethod: order.paymentMethod,
+          customerName: order.customerName,
+          customerPhone: order.customerPhoneE164,
+          dropoffAddress: order.dropoffAddress,
+          ...(pickupPin !== undefined ? { pickupPin } : {}),
+          events,
+        },
+      };
+    }
+
+    const courierResult = await this.database.pool.query<{ id: string }>(
+      `SELECT id FROM couriers WHERE "userId" = $1`,
+      [userId],
+    );
+    const courier = courierResult.rows[0];
+    if (courier !== undefined) {
+      if (order.assignedCourierId !== courier.id) {
+        return { kind: "forbidden" };
+      }
+      const events = await this.listEvents(id);
+      const isNonTerminal =
+        !TERMINAL_STATUSES.has(order.status) &&
+        order.status !== "DRAFT" &&
+        order.status !== "SEEKING_COURIER";
+      const courierView: CourierOrderView = {
+        id: order.id,
+        referenceCode: order.referenceCode,
+        status: order.status,
+        deliveryFeeCop: order.deliveryFeeCop,
+        paymentMethod: order.paymentMethod,
+        customerName: order.customerName,
+        ...(isNonTerminal && order.customerPhoneE164 !== null
+          ? { customerPhone: order.customerPhoneE164 }
+          : {}),
+        dropoffAddress: order.dropoffAddress,
+        events,
+      };
+      return { kind: "ok", order: courierView };
+    }
+
+    return { kind: "missing" };
+  }
+
+  async listEvents(orderId: string): Promise<OrderEventItem[]> {
+    const result = await this.database.pool.query<{
+      id: string;
+      fromStatus: string;
+      toStatus: string;
+      actorKind: string;
+      createdAt: Date | string;
+    }>(
+      `SELECT id, "fromStatus"::text AS "fromStatus", "toStatus"::text AS "toStatus",
+              "actorKind"::text AS "actorKind", "createdAt"
+       FROM order_events
+       WHERE "orderId" = $1
+       ORDER BY "createdAt" ASC, id ASC`,
+      [orderId],
+    );
+    return result.rows.map((row) => ({
+      id: row.id,
+      fromStatus: row.fromStatus,
+      toStatus: row.toStatus,
+      actorKind: row.actorKind,
+      createdAt: row.createdAt instanceof Date ? row.createdAt.toISOString() : row.createdAt,
+    }));
   }
 }
 

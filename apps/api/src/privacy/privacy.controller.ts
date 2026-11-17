@@ -1,7 +1,9 @@
 import {
   Body,
   Controller,
+  ForbiddenException,
   Get,
+  HttpException,
   NotFoundException,
   Param,
   Post,
@@ -17,6 +19,7 @@ import { PrivacyRepository } from "./privacy.repository.js";
 const KINDS = ["PRIVACY_NOTICE", "TERMS", "GEOLOCATION_CONSENT", "DOCUMENT_PROCESSING"] as const;
 const PURPOSES = ["ACCOUNT", "GEOLOCATION", "DOCUMENT_STORAGE", "ORDER_CONTACT"] as const;
 const CHANNELS = ["WEB", "MOBILE", "ADMIN"] as const;
+const DSR_TYPES = new Set(["ACCESS", "CORRECTION", "DELETION", "REVOCATION", "COMPLAINT"]);
 
 @ApiTags("privacidad")
 @Controller("v1")
@@ -79,6 +82,55 @@ export class PrivacyController {
     }
     return { active: await this.privacy.isCurrent(userId, purpose) };
   }
+
+  @Post("data-subject-requests")
+  @UseGuards(SessionGuard)
+  @ApiOperation({
+    summary: "Crea una solicitud de habeas data (acceso, corrección, supresión o revocatoria)",
+  })
+  async createDsr(
+    @Body() body: unknown,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<{ id: string; type: string; status: "OPEN" }> {
+    const userId = request.auth?.userId;
+    if (userId === undefined) {
+      throw new NotFoundException();
+    }
+    const parsed = readDsr(body);
+    if (parsed === null) {
+      throw new HttpException({ message: "Tipo de solicitud de habeas data inválido" }, 422);
+    }
+    return this.privacy.createDataSubjectRequest({ userId, ...parsed });
+  }
+
+  @Post("data-subject-requests/:id/process")
+  @UseGuards(SessionGuard)
+  @ApiOperation({
+    summary:
+      "Procesa una solicitud de habeas data (revoca geolocalización o anonimiza pedidos cerrados)",
+  })
+  async processDsr(
+    @Param("id") id: string,
+    @Body() body: unknown,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<{ id: string; status: string; anonymizedOrders: number }> {
+    const actorUserId = request.auth?.userId;
+    if (actorUserId === undefined) {
+      throw new NotFoundException();
+    }
+    const action = readDsrAction(body);
+    if (action === null) {
+      throw new HttpException({ message: "Acción inválida (COMPLETE o DENY)" }, 422);
+    }
+    const result = await this.privacy.processDataSubjectRequest({ id, actorUserId, action });
+    if (result === "missing") {
+      throw new NotFoundException();
+    }
+    if (result === "forbidden") {
+      throw new ForbiddenException();
+    }
+    return result;
+  }
 }
 
 function readDocument(body: unknown): { kind: string; version: string; content: string } | null {
@@ -125,4 +177,26 @@ function isPurpose(value: unknown): value is (typeof PURPOSES)[number] {
 
 function isChannel(value: unknown): value is (typeof CHANNELS)[number] {
   return CHANNELS.some((item) => item === value);
+}
+
+function readDsr(body: unknown): { type: string; note?: string } | null {
+  if (!isRecord(body) || typeof body["type"] !== "string" || !DSR_TYPES.has(body["type"])) {
+    return null;
+  }
+  const note = typeof body["note"] === "string" ? body["note"].trim() : undefined;
+  return {
+    type: body["type"],
+    ...(note !== undefined && note !== "" ? { note } : {}),
+  };
+}
+
+function readDsrAction(body: unknown): "COMPLETE" | "DENY" | null {
+  if (!isRecord(body)) {
+    return null;
+  }
+  const action = body["action"];
+  if (action === "COMPLETE" || action === "DENY") {
+    return action;
+  }
+  return null;
 }

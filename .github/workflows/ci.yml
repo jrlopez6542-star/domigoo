@@ -35,6 +35,18 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      - name: Pruebas unitarias Web, Admin y Móvil
+        run: |
+          pnpm --filter @domigoo/web test
+          pnpm --filter @domigoo/admin test
+          pnpm --filter @domigoo/movil test
+          pnpm --filter @domigoo/movil config:public
+
+      - name: Build Web y Admin
+        run: |
+          pnpm --filter @domigoo/web build
+          pnpm --filter @domigoo/admin build
+
   postgis:
     name: PostGIS
     runs-on: ubuntu-latest
@@ -143,3 +155,99 @@ jobs:
 
       - name: Migrar y comprobar el contrato
         run: ./scripts/check-contract.sh
+
+  web_admin_e2e:
+    name: Playwright Web y Admin
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgis:
+        image: postgis/postgis:17-3.5
+        env:
+          POSTGRES_USER: domigoo
+          POSTGRES_PASSWORD: domigoo
+          POSTGRES_DB: domigoo
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U domigoo -d domigoo"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.33.4
+
+      - name: Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Instalar
+        run: pnpm install --frozen-lockfile
+
+      - name: Instalar Chromium para Playwright
+        run: pnpm --filter @domigoo/web exec playwright install --with-deps chromium
+
+      - name: Migrar base de pruebas
+        run: pnpm --filter @domigoo/api exec prisma migrate deploy
+        env:
+          DATABASE_URL: postgresql://domigoo:domigoo@127.0.0.1:5432/domigoo
+
+      - name: Build API, Web y Admin
+        run: |
+          pnpm --filter @domigoo/api exec tsc -p tsconfig.build.json
+          pnpm --filter @domigoo/web build
+          pnpm --filter @domigoo/admin build
+
+      - name: Ejecutar Playwright contra API, Web y Admin reales
+        env:
+          DATABASE_URL: postgresql://domigoo:domigoo@127.0.0.1:5432/domigoo
+          APP_NAME: DOMIGOO
+          API_BASE_URL: http://127.0.0.1:3001
+          WEB_BASE_URL: http://127.0.0.1:3000
+          ADMIN_BASE_URL: http://127.0.0.1:3002
+        run: |
+          set -euo pipefail
+          PORT=3001 node apps/api/dist/main.js > /tmp/api-e2e.log 2>&1 &
+          API_PID=$!
+          pnpm --filter @domigoo/web start > /tmp/web-e2e.log 2>&1 &
+          WEB_PID=$!
+          pnpm --filter @domigoo/admin start > /tmp/admin-e2e.log 2>&1 &
+          ADMIN_PID=$!
+          cleanup() {
+            kill "$API_PID" "$WEB_PID" "$ADMIN_PID" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+
+          for url in http://127.0.0.1:3001/health http://127.0.0.1:3000 http://127.0.0.1:3002; do
+            for i in $(seq 1 30); do
+              if curl -fsS "$url" >/dev/null 2>&1; then
+                break
+              fi
+              sleep 1
+            done
+            curl -fsS "$url" >/dev/null
+          done
+
+          pnpm --filter @domigoo/web test:e2e
+          pnpm --filter @domigoo/admin test:e2e
+
+      - name: Subir logs y trazas de diagnóstico en fallo
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-diagnostics
+          path: |
+            /tmp/api-e2e.log
+            /tmp/web-e2e.log
+            /tmp/admin-e2e.log
+            apps/web/test-results/
+            apps/admin/test-results/
+          if-no-files-found: ignore

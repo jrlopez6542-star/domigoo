@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  ForbiddenException,
   Get,
   HttpException,
   NotFoundException,
@@ -11,7 +12,18 @@ import {
 } from "@nestjs/common";
 import { ApiOperation, ApiTags } from "@nestjs/swagger";
 import { SessionGuard, type AuthenticatedRequest } from "../identity/session.guard.js";
-import { OrderRepository, type DraftOrder, type RestaurantOrder } from "./order.repository.js";
+import {
+  JourneyRepository,
+  type JourneyStatus,
+  type JourneyTransitionResult,
+} from "./journey.repository.js";
+import {
+  OrderRepository,
+  type CourierOrderView,
+  type DraftOrder,
+  type OrderEventItem,
+  type RestaurantOrderView,
+} from "./order.repository.js";
 import { PublishRepository, type OpenWave, type PublishedOrder } from "./publish.repository.js";
 
 @ApiTags("pedidos")
@@ -21,6 +33,7 @@ export class OrdersController {
   constructor(
     private readonly orders: OrderRepository,
     private readonly publisher: PublishRepository,
+    private readonly journey: JourneyRepository,
   ) {}
 
   @Post()
@@ -95,21 +108,272 @@ export class OrdersController {
   }
 
   @Get(":id")
-  @ApiOperation({ summary: "Lee el borrador, incluida la comida, para el restaurante" })
+  @ApiOperation({
+    summary: "Lee el pedido con proyección diferenciada para restaurante o domiciliario",
+  })
   async getOne(
     @Param("id") id: string,
     @Req() request: AuthenticatedRequest,
-  ): Promise<RestaurantOrder> {
+  ): Promise<RestaurantOrderView | CourierOrderView> {
     const userId = request.auth?.userId;
     if (userId === undefined) {
       throw new NotFoundException();
     }
-    const order = await this.orders.findForMember(id, userId);
-    if (order === null) {
+    const view = await this.orders.findOrderView(id, userId);
+    if (view.kind === "missing") {
       throw new NotFoundException();
     }
-    return order;
+    if (view.kind === "forbidden") {
+      throw new ForbiddenException();
+    }
+    return view.order;
   }
+
+  @Get(":id/events")
+  @ApiOperation({
+    summary: "Historial de eventos del pedido para restaurante o domiciliario asignado",
+  })
+  async getEvents(
+    @Param("id") id: string,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<{ events: OrderEventItem[] }> {
+    const userId = request.auth?.userId;
+    if (userId === undefined) {
+      throw new NotFoundException();
+    }
+    const view = await this.orders.findOrderView(id, userId);
+    if (view.kind === "missing") {
+      throw new NotFoundException();
+    }
+    if (view.kind === "forbidden") {
+      throw new ForbiddenException();
+    }
+    return { events: view.order.events };
+  }
+
+  @Post(":id/arrive-pickup")
+  @ApiOperation({ summary: "El domiciliario asignado informa que va camino a la sucursal" })
+  async arrivePickup(
+    @Param("id") id: string,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<JourneyTransitionResult> {
+    return this.runJourneyStep(id, request, "ARRIVING_PICKUP");
+  }
+
+  @Post(":id/at-pickup")
+  @ApiOperation({ summary: "El domiciliario asignado informa que llegó a la sucursal" })
+  async atPickup(
+    @Param("id") id: string,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<JourneyTransitionResult> {
+    return this.runJourneyStep(id, request, "AT_PICKUP");
+  }
+
+  @Post(":id/at-dropoff")
+  @ApiOperation({ summary: "El domiciliario asignado informa que llegó al destino" })
+  async atDropoff(
+    @Param("id") id: string,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<JourneyTransitionResult> {
+    return this.runJourneyStep(id, request, "AT_DROPOFF");
+  }
+
+  @Post(":id/pickup-pin")
+  @ApiOperation({ summary: "El domiciliario verifica el PIN de recogida para pasar a PICKED_UP" })
+  async verifyPickupPin(
+    @Param("id") id: string,
+    @Body() body: unknown,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<JourneyTransitionResult> {
+    return this.runPinVerification(id, body, request, "PICKUP");
+  }
+
+  @Post(":id/delivery-pin")
+  @ApiOperation({ summary: "El domiciliario verifica el PIN de entrega para pasar a DELIVERED" })
+  async verifyDeliveryPin(
+    @Param("id") id: string,
+    @Body() body: unknown,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<JourneyTransitionResult> {
+    return this.runPinVerification(id, body, request, "DELIVERY");
+  }
+
+  @Post(":id/cancel")
+  @ApiOperation({
+    summary: "Cancela un pedido según las reglas de la máquina de estados y libera al domiciliario",
+  })
+  async cancel(
+    @Param("id") id: string,
+    @Body() body: unknown,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<JourneyTransitionResult> {
+    const userId = request.auth?.userId;
+    if (userId === undefined) {
+      throw new NotFoundException();
+    }
+    const reason = readCancelReason(body);
+    if (reason === null) {
+      throw new HttpException({ message: "El motivo de cancelación es obligatorio" }, 422);
+    }
+    const result = await this.journey.cancelOrder({ orderId: id, userId, reason });
+    if (result === "missing") {
+      throw new NotFoundException();
+    }
+    if (result === "forbidden") {
+      throw new ForbiddenException();
+    }
+    if (result === "invalid_transition") {
+      throw new HttpException({ message: "No se puede cancelar el pedido en este estado" }, 422);
+    }
+    return result;
+  }
+
+  @Post(":id/fail")
+  @ApiOperation({
+    summary: "Pasa un pedido a FAILED si existe un incidente CRITICAL ligado al pedido",
+  })
+  async fail(
+    @Param("id") id: string,
+    @Body() body: unknown,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<JourneyTransitionResult> {
+    const userId = request.auth?.userId;
+    if (userId === undefined) {
+      throw new NotFoundException();
+    }
+    const reason = readCancelReason(body);
+    if (reason === null) {
+      throw new HttpException({ message: "El motivo es obligatorio" }, 422);
+    }
+    const result = await this.journey.failOrder({ orderId: id, userId, reason });
+    if (result === "missing") {
+      throw new NotFoundException();
+    }
+    if (result === "forbidden") {
+      throw new ForbiddenException();
+    }
+    if (result === "needs_critical") {
+      throw new HttpException(
+        { message: "Se requiere un incidente CRITICAL ligado al pedido" },
+        422,
+      );
+    }
+    if (result === "invalid_transition") {
+      throw new HttpException({ message: "No se puede marcar como fallido en este estado" }, 422);
+    }
+    return result;
+  }
+
+  private async runJourneyStep(
+    orderId: string,
+    request: AuthenticatedRequest,
+    targetStatus: JourneyStatus,
+  ): Promise<JourneyTransitionResult> {
+    const userId = request.auth?.userId;
+    if (userId === undefined) {
+      throw new NotFoundException();
+    }
+    const result = await this.journey.transitionByCourier({
+      orderId,
+      userId,
+      targetStatus,
+    });
+    if (result === "missing") {
+      throw new NotFoundException();
+    }
+    if (result === "forbidden") {
+      throw new ForbiddenException();
+    }
+    if (result === "invalid_transition") {
+      throw new HttpException({ message: "Transición de estado no permitida" }, 422);
+    }
+    return result;
+  }
+
+  private async runPinVerification(
+    orderId: string,
+    body: unknown,
+    request: AuthenticatedRequest,
+    kind: "PICKUP" | "DELIVERY",
+  ): Promise<JourneyTransitionResult> {
+    const userId = request.auth?.userId;
+    if (userId === undefined) {
+      throw new NotFoundException();
+    }
+    const pin = readPin(body);
+    if (pin === null) {
+      throw new HttpException({ message: "El PIN debe ser numérico" }, 422);
+    }
+    const result = await this.journey.verifyPinByCourier({
+      orderId,
+      userId,
+      kind,
+      pin,
+    });
+    if (result.kind === "missing") {
+      throw new NotFoundException();
+    }
+    if (result.kind === "forbidden") {
+      throw new ForbiddenException();
+    }
+    if (result.kind === "invalid_transition") {
+      throw new HttpException({ message: "Transición de estado no permitida" }, 422);
+    }
+    if (result.kind === "locked") {
+      throw new HttpException(
+        {
+          message: "PIN bloqueado por límite de intentos",
+          attempts: result.attempts,
+          maxAttempts: result.maxAttempts,
+          lockedOut: true,
+        },
+        422,
+      );
+    }
+    if (result.kind === "invalid_pin") {
+      throw new HttpException(
+        {
+          message: "PIN incorrecto",
+          attempts: result.attempts,
+          maxAttempts: result.maxAttempts,
+          lockedOut: result.lockedOut,
+        },
+        422,
+      );
+    }
+    return {
+      id: result.id,
+      fromStatus: result.fromStatus,
+      toStatus: result.toStatus,
+      status: result.status,
+    };
+  }
+}
+
+function readPin(body: unknown): string | null {
+  if (typeof body !== "object" || body === null) {
+    return null;
+  }
+  const pin = (body as Record<string, unknown>)["pin"];
+  if (typeof pin !== "string" || !/^\d{4,12}$/.test(pin)) {
+    return null;
+  }
+  return pin;
+}
+
+function readCancelReason(body: unknown): string | null {
+  if (typeof body !== "object" || body === null) {
+    return null;
+  }
+  const raw = (body as Record<string, unknown>)["reason"];
+  if (typeof raw !== "string") {
+    return null;
+  }
+  const trimmed = raw.trim();
+  if (trimmed.length === 0 || trimmed.length > 200) {
+    return null;
+  }
+  return trimmed;
 }
 
 function readDraft(body: unknown): {
