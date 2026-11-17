@@ -12,10 +12,11 @@ export default async function handler(request, response) {
   if (deploymentId !== "") {
     response.setHeader("x-domigoo-deployment-id", deploymentId);
   }
-  response.setHeader(
-    "x-domigoo-vercel-build",
-    `migrate=${vercelBuildMeta.migrateDeploy};seed=${vercelBuildMeta.seedStaging}`,
-  );
+  const buildHeader =
+    vercelBuildMeta.vercelEnv === "production"
+      ? `migrate=${vercelBuildMeta.migrateDeploy};seedAdmin=${vercelBuildMeta.seedAdmin ?? "omitido"}`
+      : `migrate=${vercelBuildMeta.migrateDeploy};seed=${vercelBuildMeta.seedStaging}`;
+  response.setHeader("x-domigoo-vercel-build", buildHeader);
   try {
     if (pending === undefined) {
       pending = createVercelHandler();

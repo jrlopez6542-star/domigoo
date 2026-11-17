@@ -125,12 +125,81 @@ describe("suscripción sin pasarela", () => {
   beforeEach(async () => {
     resetLoginThrottle();
     await resetDatabase(databaseUrl);
-    currentApp = await createApp(testEnv({ DATABASE_URL: databaseUrl, APP_NAME: "DOMIGOO" }));
+    currentApp = await createApp(
+      testEnv({ DATABASE_URL: databaseUrl, APP_NAME: "DOMIGOO", BILLING_ENABLED: "true" }),
+    );
   });
 
   afterEach(async () => {
     await currentApp?.close();
     currentApp = undefined;
+  });
+
+  it("asigna automáticamente prueba gratuita de 15 días (priceCop=0) al registrar restaurante y no bloquea al vencer cuando BILLING_ENABLED=false", async () => {
+    await currentApp?.close();
+    currentApp = await createApp(testEnv({ DATABASE_URL: databaseUrl, APP_NAME: "DOMIGOO" }));
+
+    const owner = await register("dueno-trial15@example.invalid");
+    const ops = await admin("ops-trial15@example.invalid");
+
+    // Rechaza restaurante fuera de la zona de cobertura de Tocancipá (ej. Bogotá)
+    const outside = await request(server())
+      .post("/v1/restaurants")
+      .set("Authorization", `Bearer ${owner}`)
+      .send({
+        legalName: "Fuera de Zona SAS",
+        tradeName: "Local Bogota",
+        nit: "900000399",
+        email: "bogota@example.invalid",
+        phoneE164: "+573000000399",
+        establishmentName: "Establecimiento Bogota",
+        branchName: "Bogota Centro",
+        addressLine: "Carrera 7 # 11-10",
+        longitude: -74.076,
+        latitude: 4.5981,
+      })
+      .expect(422);
+    expect(String(record(outside.body)["message"])).toMatch(/Tocancipá/i);
+
+    const restaurantId = await restaurant(owner, "900000300");
+
+    const pool = new Pool({ connectionString: databaseUrl });
+    const autoSub = await pool.query<{
+      status: string;
+      priceCop: number;
+      code: string;
+      trialDays: number;
+    }>(
+      `SELECT s.status::text AS status, s."priceCop", p.code, p."trialDays"
+       FROM restaurant_subscriptions s
+       JOIN subscription_plans p ON p.id = s."planId"
+       WHERE s."restaurantId" = $1 AND s."isCurrent"`,
+      [restaurantId],
+    );
+    expect(autoSub.rows[0]).toEqual({
+      status: "TRIAL",
+      priceCop: 0,
+      code: "TRIAL_15D",
+      trialDays: 15,
+    });
+
+    // Simular vencimiento de los 15 días de prueba con BILLING_ENABLED=false (por defecto)
+    await pool.query(
+      `UPDATE restaurant_subscriptions SET "periodEndsAt" = now() - interval '2 days' WHERE "restaurantId" = $1`,
+      [restaurantId],
+    );
+    await pool.end();
+
+    const advanced = await request(server())
+      .post("/v1/admin/subscriptions/advance")
+      .set("Authorization", `Bearer ${ops}`)
+      .expect(201);
+    expect(record(advanced.body)["changed"]).toBe(0);
+
+    await request(server())
+      .get(`/v1/restaurants/${restaurantId}/dispatch-gate`)
+      .set("Authorization", `Bearer ${owner}`)
+      .expect(200);
   });
 
   it("copia el precio y suspende una prueba vencida sin duplicar el evento", async () => {

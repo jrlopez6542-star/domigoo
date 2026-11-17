@@ -10,6 +10,9 @@ export type AppEnv = {
   readonly storageDir: string;
   readonly pinPepper: string;
   readonly appEncryptionKey: Buffer;
+  readonly billingEnabled: boolean;
+  readonly subscriptionTrialDays: number;
+  readonly subscriptionPlaceholderPriceCop: number;
 };
 
 export const APP_ENV = Symbol("APP_ENV");
@@ -38,6 +41,17 @@ export function readEnv(env: NodeJS.ProcessEnv): AppEnv {
     appEncryptionKey: readEncryptionKey(
       env["APP_ENCRYPTION_KEY"] ?? env["DATA_ENCRYPTION_KEY"],
       isProd,
+    ),
+    billingEnabled: readBooleanFlag(env["BILLING_ENABLED"], false),
+    subscriptionTrialDays: readPositiveInt(
+      env["SUBSCRIPTION_TRIAL_DAYS"],
+      15,
+      "SUBSCRIPTION_TRIAL_DAYS",
+    ),
+    subscriptionPlaceholderPriceCop: readNonNegativeInt(
+      env["SUBSCRIPTION_PLACEHOLDER_PRICE_COP"],
+      0,
+      "SUBSCRIPTION_PLACEHOLDER_PRICE_COP",
     ),
   };
 }
@@ -101,4 +115,46 @@ function readPort(raw: string | undefined): number {
     throw new Error("PORT debe ser un entero entre 1 y 65535");
   }
   return port;
+}
+
+function readBooleanFlag(raw: string | undefined, fallback: boolean): boolean {
+  if (raw === undefined || raw.trim() === "") {
+    return fallback;
+  }
+  const normalized = raw.trim().toLowerCase();
+  if (normalized === "true" || normalized === "1") {
+    return true;
+  }
+  if (normalized === "false" || normalized === "0") {
+    return false;
+  }
+  throw new Error("BILLING_ENABLED debe ser true, false, 1 o 0");
+}
+
+function readPositiveInt(raw: string | undefined, fallback: number, name: string): number {
+  if (raw === undefined || raw.trim() === "") {
+    return fallback;
+  }
+  if (!/^\d+$/.test(raw.trim())) {
+    throw new Error(`${name} debe ser un entero positivo`);
+  }
+  const value = Number(raw.trim());
+  if (!Number.isSafeInteger(value) || value < 1) {
+    throw new Error(`${name} debe ser un entero positivo`);
+  }
+  return value;
+}
+
+function readNonNegativeInt(raw: string | undefined, fallback: number, name: string): number {
+  if (raw === undefined || raw.trim() === "") {
+    return fallback;
+  }
+  if (!/^\d+$/.test(raw.trim())) {
+    throw new Error(`${name} debe ser un entero mayor o igual a 0`);
+  }
+  const value = Number(raw.trim());
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new Error(`${name} debe ser un entero mayor o igual a 0`);
+  }
+  return value;
 }

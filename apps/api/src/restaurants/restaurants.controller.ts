@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  HttpException,
   NotFoundException,
   Param,
   Patch,
@@ -11,6 +12,7 @@ import {
 } from "@nestjs/common";
 import { ApiOperation, ApiTags } from "@nestjs/swagger";
 import { AuditRecorder } from "../audit/audit.service.js";
+import { validateTocancipaCoverage } from "../geo/tocancipa-coverage.js";
 import { SessionGuard, type AuthenticatedRequest } from "../identity/session.guard.js";
 import { RestaurantMemberGuard, type RestaurantRequest } from "./restaurant.guard.js";
 import { RestaurantRepository } from "./restaurant.repository.js";
@@ -41,6 +43,13 @@ export class RestaurantsController {
     const parsed = readSite(body);
     if (ownerId === undefined || parsed === null) {
       throw new NotFoundException();
+    }
+    const coverage = validateTocancipaCoverage({
+      longitude: parsed.longitude,
+      latitude: parsed.latitude,
+    });
+    if (!coverage.ok) {
+      throw new HttpException({ code: coverage.code, message: coverage.message }, 422);
     }
     const created = await this.restaurants.createSite({ ...parsed, ownerId });
     return { ...created, status: "DRAFT" };

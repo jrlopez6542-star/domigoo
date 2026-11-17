@@ -1,5 +1,11 @@
 import { createHash } from "node:crypto";
 import { Pool } from "pg";
+import {
+  TOCANCIPA_POLYGON_WKT,
+  TOCANCIPA_ZONE_CODE,
+  TOCANCIPA_ZONE_NAME,
+  ensureTocancipaCoverageConfig,
+} from "../geo/tocancipa-coverage.js";
 import { hashPassword } from "../identity/password.js";
 import { validateSeedEnv, type SeedConfig } from "./seed-guard.js";
 
@@ -141,6 +147,35 @@ async function main(): Promise<void> {
       }
     }
 
+    if (tariffVersionId !== undefined) {
+      const zoneRes = await client.query<{ id: string }>(
+        `INSERT INTO tariff_zones (id, "versionId", code, name, area, priority)
+         VALUES (gen_random_uuid(), $1, $2, $3, ST_GeogFromText($4), 100)
+         ON CONFLICT ("versionId", code) DO UPDATE
+           SET name = EXCLUDED.name,
+               area = EXCLUDED.area,
+               priority = EXCLUDED.priority
+         RETURNING id`,
+        [tariffVersionId, TOCANCIPA_ZONE_CODE, TOCANCIPA_ZONE_NAME, TOCANCIPA_POLYGON_WKT],
+      );
+      const stagingZoneId = zoneRes.rows[0]?.id;
+      if (stagingZoneId !== undefined) {
+        const zoneRule = await client.query<{ id: string }>(
+          `SELECT id FROM tariff_rules WHERE "versionId" = $1 AND "zoneId" = $2 LIMIT 1`,
+          [tariffVersionId, stagingZoneId],
+        );
+        if (zoneRule.rows[0]?.id === undefined) {
+          await client.query(
+            `INSERT INTO tariff_rules (
+               id, "versionId", "zoneId", "baseFeeCop", "perKmCop", "minimumFeeCop",
+               "nightMultiplierBps", "nightStartsMinute", "nightEndsMinute"
+             ) VALUES (gen_random_uuid(), $1, $2, 5500, 0, 0, 10000, 0, 0)`,
+            [tariffVersionId, stagingZoneId],
+          );
+        }
+      }
+    }
+
     // 3. Política operativa publicada de staging
     const existingPolicy = await client.query<{ id: string }>(
       `SELECT id FROM operations_policies WHERE name = 'Politica Staging' LIMIT 1`,
@@ -168,6 +203,9 @@ async function main(): Promise<void> {
         );
       }
     }
+
+    // 3b. Asegurar configuración de zona oficial Tocancipá 25817 y plan TRIAL_15D
+    await ensureTocancipaCoverageConfig(client);
 
     // 4. Documentos legales base
     const docLegalId = await ensureLegalDocument(

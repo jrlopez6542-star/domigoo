@@ -52,4 +52,21 @@ describe("readEnv", () => {
     expect(withDataKey.cookieSecure).toBe(true);
     expect(withDataKey.appEncryptionKey.length).toBe(32);
   });
+
+  it("configura BILLING_ENABLED=false, SUBSCRIPTION_TRIAL_DAYS=15 y SUBSCRIPTION_PLACEHOLDER_PRICE_COP=0 por defecto", () => {
+    const defaults = readEnv({ DATABASE_URL: databaseUrl });
+    expect(defaults.billingEnabled).toBe(false);
+    expect(defaults.subscriptionTrialDays).toBe(15);
+    expect(defaults.subscriptionPlaceholderPriceCop).toBe(0);
+
+    const custom = readEnv({
+      DATABASE_URL: databaseUrl,
+      BILLING_ENABLED: "true",
+      SUBSCRIPTION_TRIAL_DAYS: "30",
+      SUBSCRIPTION_PLACEHOLDER_PRICE_COP: "79000",
+    });
+    expect(custom.billingEnabled).toBe(true);
+    expect(custom.subscriptionTrialDays).toBe(30);
+    expect(custom.subscriptionPlaceholderPriceCop).toBe(79000);
+  });
 });
