@@ -263,6 +263,48 @@ async function main(): Promise<void> {
     }
 
     await client.query(
+      `INSERT INTO vehicles (
+         id, "courierId", type, plate, "soatExpiresOn", "techExpiresOn", status, "createdAt", "updatedAt"
+       ) VALUES (
+         gen_random_uuid(), $1, 'MOTORCYCLE', 'STG901', '2028-04-01', '2028-08-01', 'ACTIVE', now(), now()
+       )
+       ON CONFLICT ("courierId") DO UPDATE
+         SET status = 'ACTIVE',
+             "soatExpiresOn" = '2028-04-01',
+             "techExpiresOn" = '2028-08-01',
+             "updatedAt" = now()`,
+      [courierId],
+    );
+
+    const docTypes = [
+      "NATIONAL_ID",
+      "DRIVER_LICENSE",
+      "SOAT",
+      "TECH_INSPECTION",
+      "VEHICLE_PHOTO",
+      "PROFILE_PHOTO",
+    ] as const;
+    const dummySha = createHash("sha256").update("staging-dummy-pdf", "utf8").digest("hex");
+    for (const docType of docTypes) {
+      const existingDoc = await client.query<{ id: string }>(
+        `SELECT id FROM courier_documents
+         WHERE "courierId" = $1 AND type = $2::"CourierDocumentType" AND status = 'ACCEPTED'
+         LIMIT 1`,
+        [courierId, docType],
+      );
+      if (existingDoc.rows[0]?.id === undefined) {
+        await client.query(
+          `INSERT INTO courier_documents (
+             id, "courierId", type, "storageKey", sha256, "mimeType", "byteSize", status, "createdAt", "updatedAt"
+           ) VALUES (
+             gen_random_uuid(), $1, $2::"CourierDocumentType", $3, $4, 'application/pdf', 64, 'ACCEPTED', now(), now()
+           )`,
+          [courierId, docType, `staging/${courierId}/${docType.toLowerCase()}.pdf`, dummySha],
+        );
+      }
+    }
+
+    await client.query(
       `INSERT INTO courier_availabilities (
          "courierId", state, "consentId", location, "accuracyM", "recordedAt", "updatedAt"
        ) VALUES (

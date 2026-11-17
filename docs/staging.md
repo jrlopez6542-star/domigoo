@@ -33,13 +33,14 @@ La plantilla documentada sin secretos reales vive en [`.env.staging.example`](..
 
 ## 3. Cómo desplegar staging
 
-### Opción A: Vercel Preview + Neon (`domigoo-staging`)
+### Opción A: Vercel Preview + Neon (`domigoo-preview` / `domigoo-staging`)
 
-1. En **Neon**, crea un branch/base llamado `domigoo-staging` (con PostGIS habilitado por la primera migración).
-2. En **Vercel** (proyecto `domigoo`, scope Preview):
-   - Carga `DATABASE_URL`, `DATABASE_URL_UNPOOLED`, `PIN_PEPPER`, `APP_ENCRYPTION_KEY` y `APP_NAME=domigoo-staging`.
-   - Si usas `VERCEL_AUTOMATION_BYPASS_SECRET` para CI/smoke tests detrás de Vercel Authentication, guárdalo como secreto de GitHub Actions o en tu shell local.
-3. Abre o actualiza un PR hacia `Contabilidad`: [`scripts/vercel-build.sh`](../scripts/vercel-build.sh) ejecuta `prisma migrate deploy` (usando `DATABASE_URL_UNPOOLED`) y compila la API (`apps/api/dist`).
+1. En **Neon**, utiliza el store existente `domigoo-preview` conectado a Vercel únicamente para los entornos **Preview** y **Development** (con PostGIS habilitado por la primera migración).
+2. En **Vercel** (proyecto `domigoo`, equipo `jrlopez6542-1905`, scope **Preview**):
+   - Verifica que estén configuradas `DATABASE_URL`, `DATABASE_URL_UNPOOLED`, `PIN_PEPPER`, `APP_ENCRYPTION_KEY` (o `DATA_ENCRYPTION_KEY`) y `APP_NAME=domigoo-staging`.
+   - Para que el build de Preview ejecute automáticamente `seed:staging` tras `prisma migrate deploy`, añade `STAGING_SEED_PASSWORD` (12–72 caracteres) únicamente en el entorno **Preview** de Vercel.
+   - Si Vercel Authentication está activo en Preview, habilita **Protection Bypass for Automation** en Vercel (*Settings → Deployment Protection*) y utiliza `VERCEL_AUTOMATION_BYPASS_SECRET` al correr `pnpm smoke:staging`.
+3. Abre o actualiza un PR hacia `Contabilidad`: [`scripts/vercel-build.sh`](../scripts/vercel-build.sh) ejecuta `prisma migrate deploy` (usando `DATABASE_URL_UNPOOLED`), siembra datos ficticios (si `STAGING_SEED_PASSWORD` está presente en Preview) y compila la API (`apps/api/dist`).
 
 ### Opción B: Staging aislado local con Docker
 

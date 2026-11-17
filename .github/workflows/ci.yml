@@ -239,6 +239,29 @@ jobs:
           pnpm --filter @domigoo/web test:e2e
           pnpm --filter @domigoo/admin test:e2e
 
+          STAGING_PASS="stg-$(openssl rand -hex 12)"
+          echo "=== Seed Staging (Ejecución 1) ==="
+          DOMIGOO_ENV=staging \
+          STAGING_SEED_CONFIRM=yes \
+          NODE_ENV=development \
+          STAGING_ALLOWED_DB_HOSTS=127.0.0.1 \
+          STAGING_SEED_PASSWORD="$STAGING_PASS" \
+          pnpm --filter @domigoo/api seed:staging
+
+          echo "=== Seed Staging (Ejecución 2 - Idempotencia) ==="
+          DOMIGOO_ENV=staging \
+          STAGING_SEED_CONFIRM=yes \
+          NODE_ENV=development \
+          STAGING_ALLOWED_DB_HOSTS=127.0.0.1 \
+          STAGING_SEED_PASSWORD="$STAGING_PASS" \
+          pnpm --filter @domigoo/api seed:staging
+
+          echo "=== Smoke Staging (12 pasos HTTP) ==="
+          STAGING_API_URL=http://127.0.0.1:3001 \
+          STAGING_ALLOWED_HOSTS=127.0.0.1 \
+          STAGING_SEED_PASSWORD="$STAGING_PASS" \
+          pnpm smoke:staging
+
       - name: Subir logs y trazas de diagnóstico en fallo
         if: failure()
         uses: actions/upload-artifact@v4
