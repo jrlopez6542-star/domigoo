@@ -1,5 +1,13 @@
-import { Body, Controller, NotFoundException, Post, UseGuards } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  HttpException,
+  NotFoundException,
+  Post,
+  UseGuards,
+} from "@nestjs/common";
 import { ApiOperation, ApiTags } from "@nestjs/swagger";
+import { validateTocancipaCoverage } from "../geo/tocancipa-coverage.js";
 import { AdminGuard } from "../identity/admin.guard.js";
 import { SessionGuard } from "../identity/session.guard.js";
 import { TariffRepository, type TariffQuote } from "./tariff.repository.js";
@@ -16,6 +24,17 @@ export class TariffQuoteController {
     const parsed = readQuote(body);
     if (parsed === null) {
       throw new NotFoundException();
+    }
+    const originCheck = validateTocancipaCoverage(parsed.origin);
+    if (!originCheck.ok) {
+      throw new HttpException({ code: originCheck.code, message: originCheck.message }, 422);
+    }
+    const destinationCheck = validateTocancipaCoverage(parsed.destination);
+    if (!destinationCheck.ok) {
+      throw new HttpException(
+        { code: destinationCheck.code, message: destinationCheck.message },
+        422,
+      );
     }
     const quote = await this.tariffs.quote(parsed);
     if (quote === null) {

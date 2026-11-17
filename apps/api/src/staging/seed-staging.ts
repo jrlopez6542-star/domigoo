@@ -1,5 +1,11 @@
 import { createHash } from "node:crypto";
 import { Pool } from "pg";
+import {
+  TOCANCIPA_POLYGON_WKT,
+  TOCANCIPA_ZONE_CODE,
+  TOCANCIPA_ZONE_NAME,
+  ensureTocancipaCoverageConfig,
+} from "../geo/tocancipa-coverage.js";
 import { hashPassword } from "../identity/password.js";
 import { validateSeedEnv, type SeedConfig } from "./seed-guard.js";
 
@@ -141,6 +147,15 @@ async function main(): Promise<void> {
       }
     }
 
+    if (tariffVersionId !== undefined) {
+      await client.query(
+        `INSERT INTO tariff_zones (id, "versionId", code, name, area, priority)
+         VALUES (gen_random_uuid(), $1, $2, $3, ST_GeogFromText($4), 100)
+         ON CONFLICT ("versionId", code) DO NOTHING`,
+        [tariffVersionId, TOCANCIPA_ZONE_CODE, TOCANCIPA_ZONE_NAME, TOCANCIPA_POLYGON_WKT],
+      );
+    }
+
     // 3. Política operativa publicada de staging
     const existingPolicy = await client.query<{ id: string }>(
       `SELECT id FROM operations_policies WHERE name = 'Politica Staging' LIMIT 1`,
@@ -168,6 +183,9 @@ async function main(): Promise<void> {
         );
       }
     }
+
+    // 3b. Asegurar configuración de zona oficial Tocancipá 25817 y plan TRIAL_15D
+    await ensureTocancipaCoverageConfig(client);
 
     // 4. Documentos legales base
     const docLegalId = await ensureLegalDocument(

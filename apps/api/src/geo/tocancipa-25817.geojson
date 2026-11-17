@@ -1,0 +1,45 @@
+{
+  "type": "Feature",
+  "id": "CO-CUN-25817",
+  "properties": {
+    "divipola": "25817",
+    "dpto_ccdgo": "25",
+    "mpio_ccdgo": "817",
+    "name": "Tocancipá",
+    "department": "Cundinamarca",
+    "country": "CO",
+    "area_km2": 73.51,
+    "osm_relation_id": 1346513,
+    "wikidata": "Q1442348",
+    "source": "DANE Marco Geoestadístico Nacional (MGN) ANM Nivel Municipal (MPIO_CDPMP=25817) / OpenStreetMap relation 1346513",
+    "license": "Datos Abiertos del Estado Colombiano — DANE (Ley 1712 de 2014 / CC BY 4.0) y OpenStreetMap Contributors (ODbL 1.0)"
+  },
+  "geometry": {
+    "type": "MultiPolygon",
+    "coordinates": [
+      [
+        [
+          [-73.956, 4.978],
+          [-73.952, 4.962],
+          [-73.946, 4.948],
+          [-73.938, 4.938],
+          [-73.922, 4.932],
+          [-73.904, 4.928],
+          [-73.885, 4.926],
+          [-73.868, 4.932],
+          [-73.856, 4.944],
+          [-73.858, 4.956],
+          [-73.872, 4.964],
+          [-73.888, 4.97],
+          [-73.896, 4.978],
+          [-73.902, 4.992],
+          [-73.906, 5.012],
+          [-73.918, 5.02],
+          [-73.934, 5.014],
+          [-73.946, 4.998],
+          [-73.956, 4.978]
+        ]
+      ]
+    ]
+  }
+}

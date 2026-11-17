@@ -3,12 +3,31 @@ set -eu
 
 MIGRATE_STATUS="omitido"
 SEED_STATUS="omitido"
+SEED_ADMIN_STATUS="omitido"
 
 if [ "${VERCEL_ENV:-}" = "production" ]; then
-  echo "[vercel-build] migrate deploy: omitido (VERCEL_ENV=production)"
-  echo "[vercel-build] seed:staging: omitido (VERCEL_ENV=production)"
-  MIGRATE_STATUS="omitido:production"
+  PROD_DB_URL="${DATABASE_URL_UNPOOLED:-${DATABASE_URL:-}}"
+  case "$PROD_DB_URL" in
+    postgres://*|postgresql://*) ;;
+    *)
+      echo "[vercel-build] Error: en Production hace falta DATABASE_URL_UNPOOLED o DATABASE_URL con una URL de Postgres" >&2
+      exit 1
+      ;;
+  esac
+  echo "[vercel-build] prod migrate deploy: inicio"
+  DATABASE_URL="$PROD_DB_URL" pnpm --filter @domigoo/api exec prisma migrate deploy
+  echo "[vercel-build] prod migrate deploy: ok"
+  MIGRATE_STATUS="ok"
   SEED_STATUS="omitido:production"
+
+  DATABASE_URL="$PROD_DB_URL" pnpm --filter @domigoo/api seed-admin
+  if [ -n "${SEED_ADMIN_EMAIL:-}" ] && [ -n "${SEED_ADMIN_PASSWORD:-}" ]; then
+    echo "[vercel-build] prod seed-admin: ejecutado"
+    SEED_ADMIN_STATUS="ejecutado"
+  else
+    echo "[vercel-build] prod seed-admin: omitido"
+    SEED_ADMIN_STATUS="omitido"
+  fi
 elif [ "${VERCEL_ENV:-}" = "preview" ]; then
   case "${DATABASE_URL_UNPOOLED:-}" in
     postgres://*|postgresql://*) ;;
@@ -58,6 +77,7 @@ export const vercelBuildMeta = {
   deploymentId: "${VERCEL_DEPLOYMENT_ID:-}",
   migrateDeploy: "${MIGRATE_STATUS}",
   seedStaging: "${SEED_STATUS}",
+  seedAdmin: "${SEED_ADMIN_STATUS}",
 };
 EOF
 

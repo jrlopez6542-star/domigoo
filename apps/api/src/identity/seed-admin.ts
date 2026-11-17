@@ -1,4 +1,5 @@
 import { Pool } from "pg";
+import { ensureTocancipaCoverageConfig } from "../geo/tocancipa-coverage.js";
 import { hashPassword } from "./password.js";
 
 const email = process.env["SEED_ADMIN_EMAIL"]?.trim().toLowerCase() ?? "";
@@ -44,6 +45,7 @@ try {
       [userId],
     );
   }
+  await ensureTocancipaCoverageConfig(pool);
 } finally {
   await pool.end();
 }

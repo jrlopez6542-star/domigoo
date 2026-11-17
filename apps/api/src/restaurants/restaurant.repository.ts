@@ -1,4 +1,5 @@
-import { Injectable } from "@nestjs/common";
+import { Inject, Injectable, Optional } from "@nestjs/common";
+import { APP_ENV, type AppEnv } from "../config/env.js";
 import { Database } from "../database.js";
 
 export type VisibleRestaurant = {
@@ -8,7 +9,10 @@ export type VisibleRestaurant = {
 
 @Injectable()
 export class RestaurantRepository {
-  constructor(private readonly database: Database) {}
+  constructor(
+    private readonly database: Database,
+    @Optional() @Inject(APP_ENV) private readonly env?: AppEnv,
+  ) {}
 
   async createSite(input: {
     ownerId: string;
@@ -29,6 +33,7 @@ export class RestaurantRepository {
     longitude: number;
     latitude: number;
   }> {
+    const trialDays = this.env?.subscriptionTrialDays ?? 15;
     const client = await this.database.pool.connect();
     try {
       await client.query("BEGIN");
@@ -75,6 +80,44 @@ export class RestaurantRepository {
          VALUES (gen_random_uuid(), $1, $2, 'OWNER', 'ACTIVE', now(), now())`,
         [restaurantId, input.ownerId],
       );
+      const trialPlan = await client.query<{ id: string; trialDays: number }>(
+        `INSERT INTO subscription_plans (
+           id, code, name, "priceCop", "periodDays", "trialDays", "maxBranches", "maxConcurrentOrders", active, "createdAt"
+         ) VALUES (
+           gen_random_uuid(), 'TRIAL_15D', 'Prueba gratuita 15 días', 0, 30, $1, 5, 20, true, now()
+         )
+         ON CONFLICT (code) DO UPDATE
+           SET "priceCop" = 0,
+               "trialDays" = EXCLUDED."trialDays",
+               active = true
+         RETURNING id, "trialDays"`,
+        [trialDays],
+      );
+      const trialPlanRow = trialPlan.rows[0];
+      if (trialPlanRow !== undefined) {
+        const sub = await client.query<{ id: string }>(
+          `INSERT INTO restaurant_subscriptions (
+             id, "restaurantId", "planId", "priceCop", status, "isCurrent",
+             "periodStartsAt", "periodEndsAt", "createdAt", "updatedAt"
+           ) VALUES (
+             gen_random_uuid(), $1, $2, 0, 'TRIAL', true,
+             now(), now() + make_interval(days => $3), now(), now()
+           )
+           RETURNING id`,
+          [restaurantId, trialPlanRow.id, trialPlanRow.trialDays],
+        );
+        const subId = sub.rows[0]?.id;
+        if (subId !== undefined) {
+          await client.query(
+            `INSERT INTO subscription_events (
+               id, "subscriptionId", "fromStatus", "toStatus", "actorId", reason, "createdAt"
+             ) VALUES (
+               gen_random_uuid(), $1, NULL, 'TRIAL', $2, 'auto_trial_15d', now()
+             )`,
+            [subId, input.ownerId],
+          );
+        }
+      }
       await client.query("COMMIT");
       return {
         id: restaurantId,

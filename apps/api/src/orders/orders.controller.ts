@@ -11,6 +11,7 @@ import {
   UseGuards,
 } from "@nestjs/common";
 import { ApiOperation, ApiTags } from "@nestjs/swagger";
+import { validateTocancipaCoverage } from "../geo/tocancipa-coverage.js";
 import { SessionGuard, type AuthenticatedRequest } from "../identity/session.guard.js";
 import {
   JourneyRepository,
@@ -65,6 +66,13 @@ export class OrdersController {
     const parsed = readPublish(body);
     if (userId === undefined || parsed === null) {
       throw new NotFoundException();
+    }
+    const coverage = validateTocancipaCoverage({
+      longitude: parsed.longitude,
+      latitude: parsed.latitude,
+    });
+    if (!coverage.ok) {
+      throw new HttpException({ code: coverage.code, message: coverage.message }, 422);
     }
     const published =
       parsed.mode === "OPEN"

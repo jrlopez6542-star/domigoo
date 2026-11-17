@@ -1,4 +1,5 @@
-import { Injectable } from "@nestjs/common";
+import { Inject, Injectable, Optional } from "@nestjs/common";
+import { APP_ENV, type AppEnv } from "../config/env.js";
 import { Database } from "../database.js";
 
 export type PlanInput = {
@@ -21,7 +22,14 @@ const METHODS = new Set(["CASH", "NEQUI", "DAVIPLATA", "TRANSFER"]);
 
 @Injectable()
 export class SubscriptionRepository {
-  constructor(private readonly database: Database) {}
+  constructor(
+    private readonly database: Database,
+    @Optional() @Inject(APP_ENV) private readonly env?: AppEnv,
+  ) {}
+
+  isBillingEnabled(): boolean {
+    return this.env?.billingEnabled ?? false;
+  }
 
   async createPlan(input: PlanInput): Promise<string | null> {
     try {
@@ -219,6 +227,16 @@ export class SubscriptionRepository {
   }
 
   async canDispatch(restaurantId: string, at: Date): Promise<boolean> {
+    if (!this.isBillingEnabled()) {
+      const freeResult = await this.database.pool.query<{ status: string }>(
+        `SELECT status::text AS status
+         FROM restaurant_subscriptions
+         WHERE "restaurantId" = $1 AND "isCurrent"
+           AND status IN ('TRIAL', 'ACTIVE')`,
+        [restaurantId],
+      );
+      return (freeResult.rowCount ?? 0) > 0;
+    }
     const result = await this.database.pool.query<{ status: string }>(
       `SELECT status::text AS status
        FROM restaurant_subscriptions
@@ -230,6 +248,9 @@ export class SubscriptionRepository {
   }
 
   async advance(at: Date): Promise<number> {
+    if (!this.isBillingEnabled()) {
+      return 0;
+    }
     const client = await this.database.pool.connect();
     try {
       await client.query("BEGIN");

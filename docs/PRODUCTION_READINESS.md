@@ -1,26 +1,36 @@
-# Auditoría de Preparación para Producción (M43 — Production Readiness)
+# Auditoría de Preparación para Producción (M43 → M44 Production Bootstrap)
 
 **Fecha:** 2026-11-17  
-**Rama base auditada:** `Contabilidad` (commit base `f5e8d41`, PR #34 integrado)  
-**Rama de auditoría y endurecimiento:** `chore/m43-production-readiness`
+**Rama base auditada:** `Contabilidad` (commits `f5e8d41` PR #34, `d3f082f` PR #35, `55a45ec` PR #36)  
+**Rama de bootstrap de producción (M44):** `feat/m44-production-bootstrap`
 
 > **Convención de estados del checklist:**
-> - **`OK`**: Control implementado, verificado en código y cubierto por pruebas automáticas o contrato SQL.
+> - **`OK`**: Control implementado, verificado en código/infraestructura y cubierto por pruebas automáticas o contrato SQL.
 > - **`FALTA`**: Brecha técnica u operativa pendiente antes de exponer tráfico real de producción a escala.
 > - **`DUEÑO`**: Decisión de negocio, insumo jurídico/comercial o aprovisionamiento externo exclusivo del propietario del proyecto.
 
 ---
 
-## 1. Resumen Ejecutivo de Conteo
+## 1. Resumen Ejecutivo de Conteo (Actualizado tras M44)
 
 | Categoría | `OK` | `FALTA` | `DUEÑO` | Total ítems |
 | --- | :---: | :---: | :---: | :---: |
-| 1. Seguridad | 9 | 3 | 1 | 13 |
-| 2. Datos | 5 | 3 | 1 | 9 |
-| 3. Operación | 4 | 3 | 1 | 8 |
+| 1. Seguridad | 10 | 3 | 0 | 13 |
+| 2. Datos | 7 | 2 | 0 | 9 |
+| 3. Operación | 5 | 3 | 0 | 8 |
 | 4. Legal (sin redactar textos) | 2 | 0 | 5 | 7 |
-| 5. Negocio | 0 | 0 | 5 | 5 |
-| **Total General** | **20** | **9** | **13** | **42** |
+| 5. Negocio | 3 | 0 | 2 | 5 |
+| **Total General** | **27** | **8** | **7** | **42** |
+
+### Ítems `DUEÑO` y `FALTA` Resueltos en M44 (2026-11-17)
+
+1. **`S-13` (`DUEÑO` → `OK`)**: Secretos de Production (`PIN_PEPPER`, `APP_ENCRYPTION_KEY`, `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD`) creados en Vercel Production.
+2. **`D-08` (`FALTA` → `OK`)**: `scripts/vercel-build.sh` ejecuta en `VERCEL_ENV=production` únicamente `prisma migrate deploy` (usando `DATABASE_URL_UNPOOLED` si existe) y `seed-admin` idempotente, sin ejecutar jamás `seed:staging`, y expone el resultado en la cabecera `x-domigoo-vercel-build`.
+3. **`D-09` (`DUEÑO` → `OK`)**: Base de datos de producción nueva y vacía `"domigoo-production"` (Neon Free, región `iad1`) aprovisionada y conectada exclusivamente a Vercel Production (`DATABASE_URL` y `DATABASE_URL_UNPOOLED`).
+4. **`O-08` (`DUEÑO` → `OK`)**: Definida URL oficial de producción sin dominio propio: `https://domigoo.vercel.app`.
+5. **`N-01` (`DUEÑO` → `OK` en bootstrap con trial de 15 días gratis)**: Plan `TRIAL_15D` (`trialDays=15, priceCop=0`) asignado automáticamente al registrar restaurante; al vencer, con `BILLING_ENABLED=false` (por defecto), no se bloquea ni se cobra y el servicio sigue gratis. Precios futuros quedan como placeholders configurables (`PLAN_BASE_PLACEHOLDER`, `SUBSCRIPTION_PLACEHOLDER_PRICE_COP`).
+6. **`N-03` (`DUEÑO` → `OK`)**: Polígono del límite oficial del municipio de Tocancipá (`DIVIPOLA 25817`, DANE MGN / OpenStreetMap relation `1346513`) versionado en `apps/api/src/geo/tocancipa-25817.geojson`, sembrado idempotentemente en la migración `20261117120000_m44_tocancipa_coverage_and_trial_bootstrap` y validado en registro de restaurantes, cotización y publicación de pedidos.
+7. **`N-04` (`DUEÑO` → `OK` en bootstrap inicial)**: Política operativa base `Política Operativa Tocancipá 25817` publicada de forma idempotente en cualquier entorno.
 
 ---
 
@@ -35,14 +45,14 @@
 | S-03 | **Control de acceso basado en roles (RBAC) y pertenencia (IDOR)**: guardas `SessionGuard`, `AdminGuard` (`SUPERADMIN`, `REVIEWER`, `OPERATIONS`, `SECURITY`) y `RestaurantGuard` (`OWNER`, `MANAGER`, `OPERATOR`); objetos ajenos devuelven `403`/`404` sin filtrar existencia. | `OK` | `apps/api/src/identity/session.guard.ts`, `apps/api/src/identity/admin.guard.ts`, `apps/api/src/restaurants/restaurant.guard.ts`, `apps/api/test/authorization.e2e-spec.ts` | **BAJO** — Cubierto por suite E2E de autorización cruzada. |
 | S-04 | **Rate limit en login y bloqueo de PIN**: throttle de login (5 fallos / 15 min) y bloqueo de PIN (`maxPinAttempts`, incidente `PIN_LOCKOUT`). | `OK` | `apps/api/src/identity/login-throttle.ts` (`L1-L32`), `apps/api/src/orders/journey.repository.ts`, `apps/api/test/pins.e2e-spec.ts` | **MEDIO** — Suficiente para 1 réplica; ver S-05 para despliegue multi-réplica/serverless. |
 | S-05 | **Rate limit distribuido (PostgreSQL/Redis) para múltiples instancias o serverless**: el limitador de login actual reside en un `Map` en memoria de proceso y el endpoint público `/v1/tracking/:token` no tiene rate limit distribuido por IP. | `FALTA` | `apps/api/src/identity/login-throttle.ts` (`L9`), `apps/api/src/tracking/tracking.controller.ts` (`L61-L81`), `docs/decisiones/riesgos.md` (`R10`) | **ALTO** — En funciones serverless (Vercel) o >1 réplica, los contadores en memoria no se comparten entre instancias. |
-| S-06 | **CORS por lista blanca (`CORS_ORIGINS`) y aislamiento de `/v1/tracking`**: middleware `applyHttpSecurity` aplica `Access-Control-Allow-Origin` solo a orígenes explícitamente listados en `CORS_ORIGINS` y nunca refleja origen en `/v1/tracking/*`. | `OK` | `apps/api/src/http.ts` (`L17-L66`), `apps/api/src/http.spec.ts` | **BAJO** — Requiere definir `CORS_ORIGINS` en Production si Web/Admin residen en dominios distintos al de la API. |
+| S-06 | **CORS por lista blanca (`CORS_ORIGINS`) y aislamiento de `/v1/tracking`**: middleware `applyHttpSecurity` aplica `Access-Control-Allow-Origin` solo a orígenes explícitamente listados en `CORS_ORIGINS` y nunca refleja origen en `/v1/tracking/*`. | `OK` | `apps/api/src/http.ts` (`L17-L66`), `apps/api/src/http.spec.ts` | **BAJO** — Para `https://domigoo.vercel.app` usar `CORS_ORIGINS=https://domigoo.vercel.app` (ver §3.2). |
 | S-07 | **Cabeceras HTTP de endurecimiento**: eliminación de `X-Powered-By`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, y en tracking público `X-Robots-Tag: noindex, nofollow` + `Cache-Control: no-store`. | `OK` | `apps/api/src/http.ts` (`L30-L43`), `apps/api/src/tracking/tracking.controller.ts` (`L68-L70`), `apps/api/src/http.spec.ts` | **BAJO** — Cumple el estándar de cabeceras de `docs/pruebas-y-seguridad.md`. |
 | S-08 | **Cifrado de PIN y tokens de tracking (`PIN_PEPPER`, `APP_ENCRYPTION_KEY` / `DATA_ENCRYPTION_KEY`)**: CSPRNG con rejection sampling, `HMAC-SHA-256` con pepper y `AES-256-GCM` con AAD (`orderId:kind`) y clave de 32 bytes obligatoria en `NODE_ENV=production`. | `OK` | `apps/api/src/orders/pin-crypto.ts` (`L15-L90`), `apps/api/src/config/env.ts` (`L37-L79`), `apps/api/src/config/env.spec.ts` | **BAJO** — El proceso aborta en arranque si faltan `PIN_PEPPER` o `APP_ENCRYPTION_KEY`/`DATA_ENCRYPTION_KEY` en producción. |
 | S-09 | **Anulación de ciphertexts en estado terminal**: al pasar el pedido a estado terminal (`DELIVERED`, `CANCELLED_*`, `EXPIRED`, `FAILED`), `pickupPinCiphertext` y `deliveryPinCiphertext` se limpian en la base de datos. | `OK` | `apps/api/src/orders/journey.repository.ts`, `apps/api/src/orders/expiration.repository.ts`, `apps/api/test/pins.e2e-spec.ts` | **BAJO** — Minimiza exposición criptográfica post-entrega. |
 | S-10 | **Manejo y redacción de secretos en código, logs y auditoría**: cero secretos reales en el árbol Git; `.gitignore` excluye `.env*`; `redact` y `redactDiff` enmascaran `password`, `passwordHash`, `token`, `tokenHash`, `tokenCiphertext`, `pushToken`, `pin`, `ciphertext`, `pickupPinCiphertext`, `deliveryPinCiphertext`, `documentNumber`, `authorization` y `cookie`. | `OK` | `.gitignore`, `apps/api/src/identity/redact.ts`, `apps/api/src/audit/redact-diff.ts`, `apps/api/src/identity/redact.spec.ts` | **BAJO** — Verificado con pruebas unitarias y E2E (`apps/api/test/audit.e2e-spec.ts`). |
 | S-11 | **Validación de entrada y firma binaria de documentos**: tope de 10 MB (`MAX_DOCUMENT_BYTES`), verificación de magic bytes (`%PDF-`, JPEG, PNG, WebP) además de MIME, claves UUID opacas con validación de path traversal y coordenadas WGS84 acotadas a `[-180, 180]` / `[-90, 90]`. | `OK` | `apps/api/src/storage/object-storage.ts`, `apps/api/src/storage/local-object-storage.ts` (`L28-L38`), `apps/api/src/tariffs/tariffs.controller.ts` (`L193-L213`) | **BAJO** — Impide subida de ejecutables disfrazados, lectura arbitraria de disco y errores SQL por coordenadas inválidas. |
-| S-12 | **Vulnerabilidades en dependencias (`pnpm audit`)**: el escaneo actual reporta **49 hallazgos** (`3 critical`, `22 high`, `22 moderate`, `2 low`), concentrados principalmente en `next@15.5.12` (parcheado en `>=15.5.28`), `sharp` (`<0.35.5`), `postcss` y dependencias de build/test (`@playwright/test`, `expo`, `glob`, `minimatch`). | `FALTA` | Comando: `pnpm audit` / `pnpm audit --prod` (`package.json`, `pnpm-lock.yaml`) | **ALTO** — Antes de abrir tráfico público en `@domigoo/web` y `@domigoo/admin`, se debe actualizar `next` a `>=15.5.28` y regenerar `pnpm-lock.yaml` validando E2E. |
-| S-13 | **Generación y carga de secretos de Production en plataforma destino**: generar valores criptográficos exclusivos de Production (`PIN_PEPPER`, `APP_ENCRYPTION_KEY`) nunca compartidos con Preview/Staging. | `DUEÑO` | `docs/preview-vercel.md` (`L27`), `.env.staging.example` | **CRÍTICO** — Responsabilidad del propietario al aprovisionar el entorno Production. |
+| S-12 | **Vulnerabilidades en dependencias (`pnpm audit`)**: el escaneo actual reporta hallazgos concentrados principalmente en `next@15.5.12` (parcheado en `>=15.5.28`), `sharp` (`<0.35.5`), `postcss` y dependencias de build/test (`@playwright/test`, `expo`, `glob`, `minimatch`). | `FALTA` | Comando: `pnpm audit` / `pnpm audit --prod` (`package.json`, `pnpm-lock.yaml`) | **ALTO** — Antes de abrir tráfico público en `@domigoo/web` y `@domigoo/admin`, actualizar `next` a `>=15.5.28` y regenerar `pnpm-lock.yaml`. |
+| S-13 | **Generación y carga de secretos de Production en plataforma destino**: valores exclusivos de Production (`PIN_PEPPER`, `APP_ENCRYPTION_KEY`, `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD`) aprovisionados en Vercel Production (2026-11-17). | `OK` | Configuración de Vercel Production confirmada por el dueño (2026-11-17), `scripts/vercel-build.sh` | **BAJO** — Secretos aislados por entorno en Vercel Production. |
 
 ---
 
@@ -57,8 +67,8 @@
 | D-05 | **Conducto de Habeas Data y anonimización bajo demanda**: endpoints `POST /v1/data-subject-requests` y `POST /v1/data-subject-requests/:id/process` revocan consentimiento GPS y anonimizan `customerName`, `customerPhoneE164`, `dropoffAddressLine` y `dropoffNotes` en pedidos cerrados conservando montos contables. | `OK` | `apps/api/src/privacy/privacy.repository.ts`, `apps/api/test/habeas-data.e2e-spec.ts` | **BAJO** — Preserva integridad contable mientras suprime PII de contacto. |
 | D-06 | **Almacenamiento privado de objetos (S3/R2/GCS) para documentos de identidad**: actualmente `StorageModule` inyecta `LocalObjectStorage` (sistema de archivos local / `/tmp/domigoo-storage`), el cual es efímero en serverless y no apto para producción. | `FALTA` | `apps/api/src/storage/storage.module.ts`, `apps/api/src/storage/local-object-storage.ts`, `docs/decisiones/riesgos.md` (`R12`) | **CRÍTICO** — En producción debe implementarse un adaptador `ObjectStorage` contra un bucket privado con cifrado en reposo antes de recibir documentos reales. |
 | D-07 | **Job programado de purga y retención automática**: los plazos de retención de `docs/modelo-datos.md` (§7: pings GPS 30 días, `tracking_accesses` 90 días, PII de pedidos 24 meses, documentos 12 meses post-cierre, push tokens 180 días) no tienen aún un cron/worker automático que los ejecute periódicamente. | `FALTA` | `docs/modelo-datos.md` (`L238-L251`), `docs/decisiones/riesgos.md` (`R18`) | **MEDIO** — Requiere tarea programada (pg_cron o job periódico) una vez el área jurídica confirme los plazos definitivos. |
-| D-08 | **Ejecución de migraciones hacia base de Production**: `scripts/vercel-build.sh` solo ejecuta `prisma migrate deploy` cuando `VERCEL_ENV=preview`; no existe pipeline ni paso de migración automática hacia una base de Production. | `FALTA` | `scripts/vercel-build.sh` (`L4-L35`), `docs/preview-vercel.md` (`L11-L12`) | **MEDIO** — Diseño intencional para proteger Production en esta fase; requiere workflow controlado de migración antes del go-live. |
-| D-09 | **Aprovisionamiento de base PostgreSQL 17 + PostGIS 3.5 de Production, backups PITR y rol SQL sin privilegios de superusuario**: configurar instancia separada de `domigoo-preview`, con backups automáticos Point-in-Time Recovery (PITR), prueba de restauración y usuario de aplicación sin permiso `DROP`/`TRUNCATE`. | `DUEÑO` | `docs/preview-vercel.md` (`L5`, `L23-L26`), `docs/modelo-datos.md` (`L236`) | **CRÍTICO** — Acción exclusiva del propietario sobre la infraestructura de base de datos. |
+| D-08 | **Ejecución controlada de migraciones y `seed-admin` hacia base de Production**: cuando `VERCEL_ENV=production`, `scripts/vercel-build.sh` ejecuta únicamente `prisma migrate deploy` (usando `DATABASE_URL_UNPOOLED` si existe) y `seed-admin` idempotente, nunca `seed:staging`, e inyecta la evidencia en `x-domigoo-vercel-build`. | `OK` | `scripts/vercel-build.sh` (`L8-L31`), `api/index.mjs` (`L15-L19`), `apps/api/src/identity/seed-admin.ts` | **BAJO** — Si `prisma migrate deploy` falla, el build de Vercel aborta inmediatamente. |
+| D-09 | **Aprovisionamiento de base PostgreSQL 17 + PostGIS 3.5 de Production (`domigoo-production`)**: base nueva y vacía `"domigoo-production"` en Neon Free (`iad1`, PITR nativo de Neon) conectada exclusivamente a Vercel Production (`DATABASE_URL`, `DATABASE_URL_UNPOOLED`). | `OK` | Infraestructura Neon `domigoo-production` + variables en Vercel Production confirmadas por el dueño (2026-11-17) | **BAJO** — Base de producción separada físicamente de `domigoo-preview`. |
 
 ---
 
@@ -68,24 +78,24 @@
 | --- | --- | --- | --- | --- |
 | O-01 | **Sondas de viveza (`/health`) y disponibilidad (`/ready`)**: `/health` verifica el proceso sin tocar base de datos (`200`); `/ready` abre conexión con timeout de 2000 ms y ejecuta `SELECT PostGIS_Version()`, devolviendo `200` o `503 Service Unavailable`. | `OK` | `apps/api/src/health/health.controller.ts` (`L15-L32`), `apps/api/src/health/readiness.service.ts` (`L9-L27`), `apps/api/test/system.e2e-spec.ts` | **BAJO** — Listo para balanceadores de carga y monitores de uptime. |
 | O-02 | **Protección de fallo de arranque sin filtrar cadena de conexión**: `main.ts` intercepta errores de bootstrap y, si el mensaje contiene `postgres://` o `postgresql://`, escribe únicamente `"No se pudo arrancar la API"` en `stderr`. | `OK` | `apps/api/src/main.ts` (`L16-L24`), `apps/api/src/vercel.ts` (`L9`) | **BAJO** — Previene fuga de credenciales de BD en logs de caída. |
-| O-03 | **CI/CD automatizado y smoke test E2E de 12 pasos**: workflow `.github/workflows/ci.yml` valida `lint`, `typecheck`, pruebas unitarias, `PostGIS`, `API`, `Contrato` (`check-contract.sh`), `Playwright Web y Admin`, idempotencia de `seed:staging` y los 12 pasos de `pnpm smoke:staging`. | `OK` | `.github/workflows/ci.yml` (`L1-L277`), `scripts/smoke-staging.mjs` | **BAJO** — Compuerta completa en verde antes de cualquier merge a `Contabilidad`. |
+| O-03 | **CI/CD automatizado y smoke test E2E de 12 pasos**: workflow `.github/workflows/ci.yml` valida `lint`, `typecheck`, pruebas unitarias, `PostGIS`, `API`, `Contrato` (`check-contract.sh`), `Playwright Web y Admin`, idempotencia de `seed:staging`, `Smoke staging` local y `Smoke Vercel Preview` real. | `OK` | `.github/workflows/ci.yml`, `scripts/smoke-staging.mjs` | **BAJO** — Compuerta completa en verde antes de cualquier merge a `Contabilidad`. |
 | O-04 | **Manejo consistente de errores HTTP y filtros de subida**: `DocumentUploadFilter` convierte excesos de tamaño (`LIMIT_FILE_SIZE`) en `422` limpio y oculta trazas internas en errores `500`. | `OK` | `apps/api/src/couriers/courier-files.controller.ts` (`L48-L65`) | **BAJO** — No expone stacktraces ni rutas internas al cliente. |
 | O-05 | **Trabajador de despacho de `notification_outbox` y adaptador FCM real**: el sistema encola notificaciones minimizadas en `notification_outbox`, pero en V1 utiliza `InMemoryPushSender` y no cuenta con el adaptador real de Firebase Cloud Messaging ni worker de drenaje en background. | `FALTA` | `apps/api/src/notifications/push-sender.port.ts`, `apps/api/src/notifications/outbox.repository.ts`, `docs/decisiones/riesgos.md` (`R05`) | **ALTO** — Sin este adaptador y su credencial FCM, los domiciliarios no reciben notificaciones push reales en segundo plano. |
 | O-06 | **Trabajador programado de expiración de ofertas y pedidos (`SEEKING_COURIER`)**: la lógica de expiración idempotente existe en `ExpirationRepository`, pero requiere un cron/scheduler en producción que invoque periódicamente el barrido de ofertas y pedidos vencidos. | `FALTA` | `apps/api/src/orders/expiration.repository.ts`, `apps/api/test/cancel-expiration.e2e-spec.ts` | **MEDIO** — Sin invocación periódica, las olas vencidas dependen de llamadas explícitas al endpoint de barrido. |
 | O-07 | **Observabilidad centralizada, alertas y procedimiento de rollback**: falta integración con agregador de logs estructurados / APM (ej. Sentry, Datadog, OpenTelemetry) y runbook de rollback de base de datos para migraciones en producción. | `FALTA` | `apps/api/src/main.ts`, `apps/api/src/vercel.ts`, `vercel.json` | **MEDIO** — El rollback de código en Vercel es inmediato, pero las migraciones SQL hacia adelante requieren plan de contingencia y alertas de error 5xx. |
-| O-08 | **Dominios propios, TLS y despliegue de portales `@domigoo/web` y `@domigoo/admin`**: actualmente `vercel.json` enruta únicamente la API (`api/index.mjs`); falta asignar dominios de producción y proyectos/rutas de despliegue para Web y Admin. | `DUEÑO` | `vercel.json`, `docs/preview-vercel.md` (`L21-L25`), `docs/decisiones/riesgos.md` (`R01`) | **ALTO** — Decisión e infraestructura del propietario. |
+| O-08 | **URL oficial de producción en Vercel (`https://domigoo.vercel.app`)**: decisión del dueño (2026-11-17) de operar en `https://domigoo.vercel.app` sin dominio personalizado por ahora. | `OK` | `vercel.json`, `api/index.mjs`, decisión del dueño (2026-11-17) | **BAJO** — HTTPS gestionado automáticamente por Vercel en `https://domigoo.vercel.app`. |
 
 ---
 
 ### 2.4 Legal (Colombia — Ley 1581 de 2012 y Decreto 1074 de 2015)
 
-> **Nota de alcance:** De acuerdo con las instrucciones de M43, esta sección **únicamente lista qué está implementado en ingeniería y qué falta por parte del área jurídica/dueño**, sin redactar textos legales.
+> **Nota de alcance:** Esta sección **únicamente lista qué está implementado en ingeniería y qué falta por parte del área jurídica/dueño**, sin redactar textos legales.
 
 | # | Ítem | Estado | Evidencia (archivo o comando) | Riesgo |
 | --- | --- | --- | --- | --- |
 | L-01 | **Soporte técnico para versionado de textos legales y hash de integridad**: tabla `legal_documents` (`PRIVACY_NOTICE`, `TERMS`, `GEOLOCATION_CONSENT`, `DOCUMENT_PROCESSING`) con `contentHash` SHA-256 y `consent_records` trazables por usuario, canal y fecha. | `OK` | `apps/api/src/privacy/privacy.controller.ts` (`L19-L70`), `apps/api/prisma/schema.prisma` | **BAJO** — Infraestructura técnica lista para cargar los textos definitivos. |
 | L-02 | **Soporte técnico para solicitudes ARCO / Habeas Data**: registro y procesamiento de solicitudes `ACCESS`, `CORRECTION`, `DELETION`, `REVOCATION` y `COMPLAINT` en `data_subject_requests`. | `OK` | `apps/api/src/privacy/privacy.controller.ts` (`L86-L133`), `apps/api/test/habeas-data.e2e-spec.ts` | **BAJO** — Mecanismo técnico operativo y probado. |
-| L-03 | **Textos definitivos de Términos y Condiciones (`TERMS`) y Aviso de Privacidad (`PRIVACY_NOTICE`)**: los textos actuales en pruebas y staging son marcadores sintéticos; falta cargar los documentos jurídicos definitivos redactados y aprobados para Colombia. | `DUEÑO` | `docs/pruebas-y-seguridad.md` (`L85-L109`), `apps/api/src/staging/seed-staging.ts` (`L146-L158`) | **CRÍTICO** — Obligatorio antes de recolectar datos personales reales. |
+| L-03 | **Textos definitivos de Términos y Condiciones (`TERMS`) y Aviso de Privacidad (`PRIVACY_NOTICE`)**: los textos actuales en pruebas y staging son marcadores sintéticos; falta cargar los documentos jurídicos definitivos redactados y aprobados para Colombia. | `DUEÑO` | `docs/pruebas-y-seguridad.md` (`L85-L109`), `apps/api/src/staging/seed-staging.ts` | **CRÍTICO** — Obligatorio antes de recolectar datos personales reales. |
 | L-04 | **Textos definitivos de autorización de tratamiento de documentos (`DOCUMENT_PROCESSING`) y geolocalización (`GEOLOCATION_CONSENT`)**: falta el texto jurídico real que aceptan los domiciliarios al subir cédula/licencia/SOAT/tecnomecánica y al activar el GPS. | `DUEÑO` | `docs/pruebas-y-seguridad.md` (`L93-L98`) | **CRÍTICO** — Exigido por la Ley 1581 de 2012 para datos sensibles/ubicación. |
 | L-05 | **Validación jurídica del reparto Responsable / Encargado frente a datos del destinatario final**: confirmar en el aviso de privacidad y contrato con restaurantes el supuesto de trabajo (restaurante como Responsable del dato del cliente final y DOMIGOO como Encargado para la entrega y enlace de tracking). | `DUEÑO` | `docs/pruebas-y-seguridad.md` (`L100`), `docs/decisiones/riesgos.md` (`R06`) | **ALTO** — Riesgo regulatorio ante la SIC si el contrato con restaurantes no lo estipula. |
 | L-06 | **Cláusula de transmisión internacional de datos (Firebase / proveedores cloud) y validación de plazos de retención**: incluir en la política de tratamiento la transmisión a encargados en el exterior (FCM/cloud) y validar jurídicamente los plazos de retención de `docs/modelo-datos.md` (§7). | `DUEÑO` | `docs/pruebas-y-seguridad.md` (`L102`, `L106`), `docs/decisiones/riesgos.md` (`R16`, `R18`) | **ALTO** — Requisito del Decreto 1074 de 2015. |
@@ -95,51 +105,85 @@
 
 ### 2.5 Negocio
 
-> **Nota de alcance:** De acuerdo con las instrucciones de M43, todos los ítems de negocio se marcan exclusivamente como **`DUEÑO`**.
-
 | # | Ítem | Estado | Evidencia (archivo o comando) | Riesgo |
 | --- | --- | --- | --- | --- |
-| N-01 | **Precios reales de planes de suscripción y días de prueba (`subscription_plans`)**: definir tarifas comerciales reales en COP, duración del periodo, días de `TRIAL`, `maxBranches` y `maxConcurrentOrders`, más tratamiento tributario (IVA, retenciones y facturación electrónica DIAN). | `DUEÑO` | `docs/modelo-datos.md` (`L79-L85`), `docs/decisiones/riesgos.md` (`R07`, Supuesto 4) | **ALTO** — Los planes actuales (`STAGING_PLAN`) usan valores ficticios de prueba. |
-| N-02 | **Tarifario real de domicilios (`tariff_versions` / `tariff_rules`)**: definir tarifa base (`baseFeeCop`), valor por kilómetro (`perKmCop`), tarifa mínima (`minimumFeeCop`), recargo nocturno (`nightMultiplierBps`) y franja horaria nocturna para Tocancipá. | `DUEÑO` | `docs/modelo-datos.md` (`L86-L91`), `apps/api/src/tariffs/tariffs.controller.ts` | **ALTO** — Impacta directamente el cobro de cada domicilio cotizado. |
-| N-03 | **Polígono geográfico oficial de cobertura en Tocancipá (`tariff_zones.area`)**: suministrar el `MultiPolygon` WKT (WGS84 / SRID 4326) oficial de cobertura urbana/rural de Tocancipá para sustituir la envolvente rectangular de desarrollo. | `DUEÑO` | `docs/pruebas-y-seguridad.md` (`L17`), `docs/decisiones/riesgos.md` (`R08`) | **MEDIO** — El motor PostGIS ya soporta publicar una nueva versión de tarifa con el polígono definitivo. |
-| N-04 | **Política operativa de despacho en producción (`operations_policies`)**: definir valores reales de `offerRadiusMeters`, `directOfferTtlSeconds`, `openOfferTtlSeconds`, `seekingTtlSeconds`, `maxOffersPerWave`, `locationFreshnessSeconds` y `trackingHoursAfterTerminal`. | `DUEÑO` | `docs/modelo-datos.md` (`L92`), `apps/api/src/policies/policies.controller.ts` | **MEDIO** — Determina los tiempos de respuesta y radio de búsqueda en calle. |
-| N-05 | **Recaudo de suscripciones, medios de pago y conciliación contable**: en V1 el pago de suscripción opera mediante declaración manual (`subscription_payment_declarations`) reconocida por `OPERATIONS`; definir cuenta recaudadora o integración futura de pasarela y proceso contable. | `DUEÑO` | `docs/modelo-datos.md` (`L84`), `docs/pruebas-y-seguridad.md` (`L56`, `L135`) | **ALTO** — Decisión comercial y financiera del propietario. |
+| N-01 | **Suscripción de prueba gratuita de 15 días (`TRIAL_15D`, `trialDays=15, priceCop=0`) y servicio gratuito al vencer (`BILLING_ENABLED=false`)**: asignada automáticamente al registrarse un restaurante; al vencer no bloquea ni cobra mientras `BILLING_ENABLED=false` (por defecto). Precios comerciales definitivos quedan como placeholders configurables (`PLAN_BASE_PLACEHOLDER`, `SUBSCRIPTION_PLACEHOLDER_PRICE_COP`). | `OK` | `apps/api/src/restaurants/restaurant.repository.ts`, `apps/api/src/subscriptions/subscription.repository.ts`, `apps/api/src/subscriptions/subscription.spec.ts`, `apps/api/test/subscription.e2e-spec.ts` | **BAJO** — Permite operar el lanzamiento gratuito de 15 días sin bloqueos ni cobros; activar `BILLING_ENABLED=true` cuando el dueño fije precios definitivos. |
+| N-02 | **Tarifario comercial definitivo de domicilios (`tariff_versions` / `tariff_rules`)**: la migración M44 carga una tarifa base placeholder (`5500 COP`) para Tocancipá; falta que el dueño defina los valores comerciales definitivos (`baseFeeCop`, `perKmCop`, `minimumFeeCop`, `nightMultiplierBps`). | `DUEÑO` | `apps/api/prisma/migrations/20261117120000_m44_tocancipa_coverage_and_trial_bootstrap/migration.sql`, `apps/api/src/geo/tocancipa-coverage.ts` | **MEDIO** — Configurable en caliente desde el panel/endpoints de admin (`/v1/admin/tariffs/*`). |
+| N-03 | **Polígono geográfico oficial del municipio de Tocancipá (`DIVIPOLA 25817`)**: límite municipal completo simplificado (fuente DANE MGN / OpenStreetMap relation `1346513`, licencias CC BY 4.0 y ODbL 1.0) versionado como GeoJSON, cargado de forma idempotente en PostGIS (`TOCANCIPA_25817`) y validado con mensaje claro en direcciones fuera de zona (`422`). | `OK` | `apps/api/src/geo/tocancipa-25817.geojson`, `apps/api/src/geo/tocancipa-coverage.ts`, `apps/api/src/geo/tocancipa-coverage.spec.ts` | **BAJO** — Cubierto por pruebas unitarias (Parque Principal y veredas dentro; Bogotá, Gachancipá, Sopó, Zipaquirá y Guatavita fuera) y E2E. |
+| N-04 | **Política operativa inicial de despacho en Tocancipá (`Política Operativa Tocancipá 25817`)**: sembrada de forma idempotente con radio de 5000 m, TTL de 120 s y frescura GPS de 120 s. | `OK` | `apps/api/prisma/migrations/20261117120000_m44_tocancipa_coverage_and_trial_bootstrap/migration.sql`, `apps/api/src/geo/tocancipa-coverage.ts` | **BAJO** — Ajustable por el dueño mediante nuevas versiones en `/v1/admin/policies/*`. |
+| N-05 | **Recaudo futuro de suscripciones, precios definitivos y conciliación contable**: mientras `BILLING_ENABLED=false` el servicio es gratuito; antes de activar `BILLING_ENABLED=true`, el dueño debe fijar precios definitivos y cuenta recaudadora. | `DUEÑO` | `apps/api/src/config/env.ts` (`BILLING_ENABLED`), `docs/modelo-datos.md` (`L84`) | **BAJO** — Desacoplado detrás del feature flag `BILLING_ENABLED=false`. |
 
 ---
 
-## 3. Lista Exacta de Variables de Entorno Requeridas en Production (Solo Nombres)
+## 3. Variables de Entorno de Production y Valores para `https://domigoo.vercel.app`
 
-> **Regla de seguridad:** Esta tabla documenta **exclusivamente los nombres** de las variables de entorno requeridas para Production. Nunca se deben almacenar ni imprimir sus valores en el repositorio.
+> **Regla de seguridad:** Nunca se deben almacenar ni imprimir valores de secretos o cadenas de conexión en el repositorio. Solo se documentan valores públicos no sensibles (como la URL pública `https://domigoo.vercel.app` y flags booleanos/numéricos por defecto).
 
-### 3.1 API (`@domigoo/api` — Runtime y Migraciones)
+### 3.1 API (`@domigoo/api` — Runtime y Build en Vercel Production)
 
-| Nombre de Variable | Obligatoria en Production | Propósito | Dónde se lee |
-| --- | :---: | --- | --- |
-| `NODE_ENV` | Sí (`production`) | Activa exigencia de secretos (`PIN_PEPPER`, `APP_ENCRYPTION_KEY`) y flag `Secure` en cookie `domigoo_session`. | `apps/api/src/config/env.ts` (`L29`) |
-| `DATABASE_URL` | Sí | Cadena de conexión PostgreSQL 17 + PostGIS 3.5 para el pool de la API en tiempo de ejecución. | `apps/api/src/config/env.ts` (`L22`) |
-| `DATABASE_URL_UNPOOLED` | Sí (en migraciones) | Cadena de conexión directa (sin pooler PgBouncer) para ejecutar `prisma migrate deploy` de forma segura. | `scripts/vercel-build.sh` (`L5-L13`) |
-| `PIN_PEPPER` | Sí | Secreto criptográfico (32 bytes aleatorios en base64/hex) para `HMAC-SHA-256` de PIN de recogida y entrega. | `apps/api/src/config/env.ts` (`L37`, `L52-L61`) |
-| `APP_ENCRYPTION_KEY` | Sí (o `DATA_ENCRYPTION_KEY`) | Clave simétrica de 32 bytes para cifrado `AES-256-GCM` de PINs activos y tokens de tracking. | `apps/api/src/config/env.ts` (`L38-L41`, `L63-L72`) |
-| `DATA_ENCRYPTION_KEY` | Alternativa a `APP_ENCRYPTION_KEY` | Alias compatible en Vercel para la clave de cifrado `AES-256-GCM` de 32 bytes si no se define `APP_ENCRYPTION_KEY`. | `apps/api/src/config/env.ts` (`L39`) |
-| `APP_NAME` | Recomendada | Nombre público del producto expuesto en OpenAPI y avisos. | `apps/api/src/config/env.ts` (`L27-L28`) |
-| `PORT` | Opcional (default `3000`) | Puerto TCP de escucha cuando la API corre como servidor Node.js dedicado (`main.ts`). | `apps/api/src/config/env.ts` (`L34`, `L92-L104`) |
-| `CORS_ORIGINS` | Recomendada | Lista separada por comas de orígenes permitidos para navegador (portales Web y Admin). | `apps/api/src/http.ts` (`L28`) |
-| `STORAGE_DIR` | Solo si disco dedicado | Ruta de almacenamiento local de archivos (en producción debe sustituirse por adaptador de bucket privado; ver `D-06`). | `apps/api/src/config/env.ts` (`L36`, `L81-L90`) |
-| `SEED_ADMIN_EMAIL` | Solo en bootstrap inicial | Correo del primer `SUPERADMIN` al ejecutar `apps/api/src/identity/seed-admin.ts` por única vez. | `apps/api/src/identity/seed-admin.ts` (`L4`) |
-| `SEED_ADMIN_PASSWORD` | Solo en bootstrap inicial | Contraseña inicial (12–72 caracteres) del primer `SUPERADMIN` al ejecutar `seed-admin.ts` (retirar tras el alta). | `apps/api/src/identity/seed-admin.ts` (`L5`) |
+| Nombre de Variable | Obligatoria en Production | Estado en Vercel Production | Propósito / Valor público recomendado | Dónde se lee |
+| --- | :---: | :---: | --- | --- |
+| `NODE_ENV` | Sí (`production`) | Configurada por Vercel | Activa exigencia de secretos (`PIN_PEPPER`, `APP_ENCRYPTION_KEY`) y flag `Secure` en cookie `domigoo_session`. | `apps/api/src/config/env.ts` |
+| `DATABASE_URL` | Sí | Ya creada (`domigoo-production`) | Cadena de conexión PostgreSQL 17 + PostGIS 3.5 (pooled) en Neon `iad1`. | `apps/api/src/config/env.ts` |
+| `DATABASE_URL_UNPOOLED` | Sí | Ya creada (`domigoo-production`) | Cadena de conexión directa (unpooled) usada por `scripts/vercel-build.sh` para `prisma migrate deploy` y `seed-admin`. | `scripts/vercel-build.sh` |
+| `PIN_PEPPER` | Sí | Ya creada | Secreto criptográfico para `HMAC-SHA-256` de PIN de recogida y entrega. | `apps/api/src/config/env.ts` |
+| `APP_ENCRYPTION_KEY` | Sí (o `DATA_ENCRYPTION_KEY`) | Ya creada | Clave simétrica de 32 bytes para cifrado `AES-256-GCM` de PINs activos y tokens de tracking. | `apps/api/src/config/env.ts` |
+| `SEED_ADMIN_EMAIL` | Bootstrap inicial | Ya creada | Correo del primer `SUPERADMIN` sembrado de forma idempotente por `seed-admin.ts`. | `apps/api/src/identity/seed-admin.ts` |
+| `SEED_ADMIN_PASSWORD` | Bootstrap inicial | Ya creada | Contraseña (12–72 caracteres) del primer `SUPERADMIN` en `seed-admin.ts`. | `apps/api/src/identity/seed-admin.ts` |
+| `CORS_ORIGINS` | Recomendada | Configurar valor público | Valor exacto para producción en `https://domigoo.vercel.app`: `https://domigoo.vercel.app` (si Web/Admin se despliegan en orígenes adicionales, separarlos por comas sin barra final). | `apps/api/src/http.ts` |
+| `BILLING_ENABLED` | Opcional (default `false`) | Default `false` en código | Feature flag de cobro/bloqueo de suscripción al vencer los 15 días de prueba (`false` mantiene el servicio gratis sin bloquear ni cobrar). | `apps/api/src/config/env.ts` |
+| `SUBSCRIPTION_TRIAL_DAYS` | Opcional (default `15`) | Default `15` en código | Días de prueba gratuita asignados automáticamente al registrarse (`15`). | `apps/api/src/config/env.ts` |
+| `SUBSCRIPTION_PLACEHOLDER_PRICE_COP` | Opcional (default `0`) | Default `0` en código | Precio placeholder configurable en COP mientras se definen tarifas definitivas (`0`). | `apps/api/src/config/env.ts` |
+| `APP_NAME` | Opcional (default `DOMIGOO`) | Default `DOMIGOO` | Nombre público del producto expuesto en OpenAPI y avisos. | `apps/api/src/config/env.ts` |
 
-### 3.2 Portales Web (`@domigoo/web`), Admin (`@domigoo/admin`) y App Móvil (`@domigoo/movil`)
+### 3.2 Valores Exactos de `CORS_ORIGINS` y `API_BASE_URL` para `https://domigoo.vercel.app`
 
-| Componente | Nombre de Variable | Obligatoria en Production | Propósito | Dónde se lee |
-| --- | --- | :---: | --- | --- |
-| `@domigoo/web` | `API_BASE_URL` | Sí | URL base HTTPS de la API de producción consumida por los Route Handlers proxy de Next.js. | `apps/web/src/lib/env.ts` (`L3`) |
-| `@domigoo/web` | `APP_NAME` | Recomendada | Nombre del producto renderizado en el portal de restaurantes y tracking. | `apps/web/src/lib/env.ts` (`L2`) |
-| `@domigoo/admin` | `API_BASE_URL` | Sí | URL base HTTPS de la API de producción consumida por el portal de administración. | `apps/admin/src/lib/env.ts` (`L3`) |
-| `@domigoo/admin` | `APP_NAME` | Recomendada | Nombre del producto renderizado en el portal de administración. | `apps/admin/src/lib/env.ts` (`L2`) |
-| `@domigoo/movil` | `EXPO_PUBLIC_API_URL` | Sí | URL base HTTPS de la API de producción inyectada en el bundle de la app móvil Expo/Android. | `apps/movil/src/App.tsx`, `.env.staging.example` |
-| `@domigoo/movil` | `EXPO_PUBLIC_APP_NAME` | Recomendada | Nombre público de la aplicación móvil. | `.env.staging.example` |
+Con la decisión del dueño de operar en **`https://domigoo.vercel.app`** (sin dominio personalizado):
 
-### 3.3 Variables que NUNCA deben existir en Production
+```dotenv
+# En @domigoo/api (Vercel Production)
+CORS_ORIGINS=https://domigoo.vercel.app
+BILLING_ENABLED=false
+SUBSCRIPTION_TRIAL_DAYS=15
+SUBSCRIPTION_PLACEHOLDER_PRICE_COP=0
+
+# En @domigoo/web y @domigoo/admin (Route Handlers proxy de Next.js hacia la API de producción)
+API_BASE_URL=https://domigoo.vercel.app
+APP_NAME=DOMIGOO
+
+# En @domigoo/movil (Expo / React Native apuntando a producción)
+EXPO_PUBLIC_API_URL=https://domigoo.vercel.app
+EXPO_PUBLIC_APP_NAME=DOMIGOO
+```
+
+### 3.3 Verificación de Migraciones y `seed-admin` en Production (`x-domigoo-vercel-build`)
+
+Cuando Vercel construye un deployment con `VERCEL_ENV=production`:
+1. `scripts/vercel-build.sh` ejecuta **únicamente** `prisma migrate deploy` (usando `DATABASE_URL_UNPOOLED` si existe, o `DATABASE_URL` como respaldo) e imprime:
+   - `[vercel-build] prod migrate deploy: inicio`
+   - `[vercel-build] prod migrate deploy: ok`
+2. A continuación ejecuta `pnpm --filter @domigoo/api seed-admin` (idempotente; sale `0` si faltan `SEED_ADMIN_*`) e imprime:
+   - `[vercel-build] prod seed-admin: ejecutado` (cuando `SEED_ADMIN_EMAIL` y `SEED_ADMIN_PASSWORD` están definidas), o
+   - `[vercel-build] prod seed-admin: omitido` (cuando no están definidas).
+3. **Nunca** ejecuta `seed:staging` ni carga datos ficticios en producción.
+4. `api/index.mjs` expone el resultado real del build de producción en la cabecera HTTP `x-domigoo-vercel-build`. Para verificarlo sin inspeccionar secretos:
+
+```bash
+curl -I https://domigoo.vercel.app/health
+```
+
+Cabeceras esperadas tras el despliegue de Production:
+
+```http
+HTTP/2 200
+x-domigoo-commit-sha: <sha-del-commit>
+x-domigoo-deployment-id: <dpl_id>
+x-domigoo-vercel-build: migrate=ok;seedAdmin=ejecutado
+```
+
+*(Si posteriormente el dueño retira `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` de Vercel Production tras el primer alta, el valor pasará a `x-domigoo-vercel-build: migrate=ok;seedAdmin=omitido`).*
+
+### 3.4 Variables que NUNCA deben existir en Production
 
 | Nombre de Variable | Motivo de prohibición en Production |
 | --- | --- |
@@ -147,23 +191,3 @@
 | `STAGING_SEED_CONFIRM` | Habilita la siembra de datos sintéticos (`seed:staging`). |
 | `STAGING_SEED_PASSWORD` | Contraseña de cuentas ficticias de staging. |
 | `STAGING_ALLOWED_DB_HOSTS` | Bypass de validación de host de base de datos de staging. |
-
----
-
-## 4. Defectos Pequeños y Seguros Corregidos en M43
-
-Durante la auditoría se aplicaron y probaron en esta misma rama (`chore/m43-production-readiness`) cuatro mejoras defensivas sin impacto disruptivo:
-
-1. **Endurecimiento de cabeceras HTTP y CORS por allowlist ([`apps/api/src/http.ts`](../apps/api/src/http.ts)):**
-   - Desactiva `x-powered-by` en Express y elimina la cabecera `X-Powered-By`.
-   - Añade `X-Frame-Options: DENY` y `Referrer-Policy: no-referrer` además de `X-Content-Type-Options: nosniff`.
-   - Implementa lista blanca de orígenes mediante `CORS_ORIGINS` sin reflejar orígenes en `/v1/tracking/*`.
-   - Cubierto por pruebas unitarias en [`apps/api/src/http.spec.ts`](../apps/api/src/http.spec.ts).
-2. **Validación de rangos geográficos WGS84 en cotización de tarifas ([`apps/api/src/tariffs/tariffs.controller.ts`](../apps/api/src/tariffs/tariffs.controller.ts)):**
-   - `readPoint` ahora valida que `longitude` (`[-180, 180]`) y `latitude` (`[-90, 90]`) sean números finitos dentro de rango antes de consultar PostGIS.
-   - Cubierto por pruebas unitarias en [`apps/api/src/tariffs/quote.spec.ts`](../apps/api/src/tariffs/quote.spec.ts).
-3. **Ampliación de redacción de secretos y PII sensible en logs y diffs de auditoría ([`apps/api/src/audit/redact-diff.ts`](../apps/api/src/audit/redact-diff.ts), [`apps/api/src/identity/redact.ts`](../apps/api/src/identity/redact.ts)):**
-   - Añade `pickupPinCiphertext`, `deliveryPinCiphertext`, `tokenCiphertext`, `pushToken` y `documentNumber` a las claves y patrones redactados.
-   - Cubierto por pruebas unitarias en [`apps/api/src/identity/redact.spec.ts`](../apps/api/src/identity/redact.spec.ts).
-4. **Pruebas unitarias de guardas de entorno de producción ([`apps/api/src/config/env.spec.ts`](../apps/api/src/config/env.spec.ts)):**
-   - Verifica explícitamente que `NODE_ENV=production` exige `PIN_PEPPER` y `APP_ENCRYPTION_KEY` (o `DATA_ENCRYPTION_KEY`) y activa `cookieSecure: true`.
