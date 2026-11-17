@@ -201,4 +201,48 @@ test.describe("HOME-002 (Futuro Urbano), Legal (M45) y Tracking público (M30)",
       await page.getByRole("button", { name: "Cerrar sesión" }).click();
     }
   });
+
+  test("todas las imágenes de la página de inicio responden 200 y cargan con naturalWidth > 0", async ({
+    page,
+    request,
+  }) => {
+    const imgResponses = new Map<string, number>();
+    page.on("response", (response) => {
+      const reqType = response.request().resourceType();
+      if (reqType === "image" || response.url().includes("/brand/")) {
+        imgResponses.set(response.url(), response.status());
+      }
+    });
+
+    await page.goto("/", { waitUntil: "networkidle" });
+
+    const images = await page.evaluate(() =>
+      Array.from(document.querySelectorAll("img")).map((img) => ({
+        src: img.getAttribute("src") ?? "",
+        currentSrc: img.currentSrc || img.src,
+        complete: img.complete,
+        naturalWidth: img.naturalWidth,
+      })),
+    );
+
+    expect(images.length).toBeGreaterThan(0);
+
+    for (const img of images) {
+      expect(img.src, `<img> sin src`).not.toBe("");
+      expect(img.complete, `<img> no completó carga: ${img.src}`).toBe(true);
+      expect(img.naturalWidth, `<img> con naturalWidth 0: ${img.src}`).toBeGreaterThan(0);
+
+      const recordedStatus = imgResponses.get(img.currentSrc);
+      if (recordedStatus !== undefined) {
+        expect(recordedStatus, `<img> respondió ${String(recordedStatus)}: ${img.currentSrc}`).toBe(
+          200,
+        );
+      } else {
+        const res = await request.get(img.currentSrc);
+        expect(res.status(), `<img> respondió ${String(res.status())}: ${img.currentSrc}`).toBe(
+          200,
+        );
+      }
+    }
+  });
 });

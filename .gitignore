@@ -13,3 +13,5 @@ var/storage/
 .expo/
 next-env.d.ts
 public/
+!apps/web/public/
+!apps/admin/public/
