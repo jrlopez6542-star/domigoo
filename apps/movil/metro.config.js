@@ -11,6 +11,9 @@ config.resolver.nodeModulesPaths = [
   path.resolve(monorepoRoot, "node_modules/.pnpm/node_modules"),
 ];
 config.resolver.unstable_enableSymlinks = true;
+if (config.server) {
+  config.server.unstable_serverRoot = __dirname;
+}
 
 const originalResolveRequest = config.resolver.resolveRequest;
 config.resolver.resolveRequest = (context, moduleName, platform) => {
