@@ -63,10 +63,17 @@ export class AuthController {
   })
   async login(
     @Body() body: unknown,
+    @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
   ): Promise<Record<string, string | null>> {
     const credentials = this.credentials(body);
-    const result = await this.run(() => this.identity.login(credentials));
+    const forwarded = request.headers["x-forwarded-for"];
+    const firstForwarded = Array.isArray(forwarded) ? forwarded[0] : forwarded;
+    const ip =
+      (typeof firstForwarded === "string" ? firstForwarded.split(",")[0]?.trim() : undefined) ||
+      request.ip ||
+      "unknown";
+    const result = await this.run(() => this.identity.login(credentials, ip), response);
     this.presentSession(response, credentials, result.token);
     return this.publicBody(result.user, credentials.client, result.token);
   }
@@ -119,11 +126,14 @@ export class AuthController {
     }
   }
 
-  private async run<T>(action: () => Promise<T>): Promise<T> {
+  private async run<T>(action: () => Promise<T>, response?: Response): Promise<T> {
     try {
       return await action();
     } catch (error) {
       if (error instanceof LoginLimitedError) {
+        if (response !== undefined) {
+          response.setHeader("Retry-After", String(error.retryAfterSeconds));
+        }
         throw httpError(new AuthError(429, error.message));
       }
       if (error instanceof AuthError) {

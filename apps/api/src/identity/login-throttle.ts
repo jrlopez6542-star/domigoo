@@ -9,7 +9,7 @@ type Bucket = {
 const buckets = new Map<string, Bucket>();
 
 export class LoginLimitedError extends Error {
-  constructor() {
+  constructor(readonly retryAfterSeconds = 900) {
     super("Demasiados intentos. Espera antes de volver a intentar.");
     this.name = "LoginLimitedError";
   }

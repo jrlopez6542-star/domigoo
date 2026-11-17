@@ -8,6 +8,7 @@ import {
   Param,
   Post,
   Req,
+  Res,
   StreamableFile,
   UploadedFile,
   UseFilters,
@@ -16,6 +17,7 @@ import {
   type ArgumentsHost,
   type ExceptionFilter,
 } from "@nestjs/common";
+import type { Response } from "express";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { ApiConsumes, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { SessionGuard, type AuthenticatedRequest } from "../identity/session.guard.js";
@@ -149,7 +151,7 @@ export class CourierFilesController {
     if (courierId === null) {
       throw new NotFoundException();
     }
-    const stored = await this.storage.put(bytes);
+    const stored = await this.storage.put(bytes, { mimeType });
     const saved = await this.files.addDocument({
       courierId,
       type,
@@ -177,6 +179,7 @@ export class CourierFilesController {
   async download(
     @Param("id") id: string,
     @Req() request: AuthenticatedRequest,
+    @Res({ passthrough: true }) response: Response,
   ): Promise<StreamableFile> {
     const userId = request.auth?.userId;
     if (userId === undefined) {
@@ -187,6 +190,8 @@ export class CourierFilesController {
       throw new NotFoundException();
     }
     const bytes = await this.storage.read(document.storageKey);
+    response.setHeader("Cache-Control", "private, no-store");
+    response.setHeader("X-Content-Type-Options", "nosniff");
     return new StreamableFile(bytes, { type: document.mimeType, length: bytes.length });
   }
 }

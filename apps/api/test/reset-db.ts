@@ -35,6 +35,8 @@ export async function resetDatabase(databaseUrl: string): Promise<void> {
     await pool.query(`DELETE FROM admin_profiles`);
     await pool.query(`DELETE FROM device_push_tokens`);
     await pool.query(`DELETE FROM sessions`);
+    await pool.query(`DELETE FROM rate_limit_buckets`);
+    await pool.query(`DELETE FROM stored_objects`);
     await pool.query(`DELETE FROM restaurants`);
     await pool.query(`DELETE FROM users`);
   } finally {
