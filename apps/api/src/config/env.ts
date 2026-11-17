@@ -35,7 +35,10 @@ export function readEnv(env: NodeJS.ProcessEnv): AppEnv {
     cookieSecure: isProd,
     storageDir: readStorageDir(env["STORAGE_DIR"]),
     pinPepper: readPinPepper(env["PIN_PEPPER"], isProd),
-    appEncryptionKey: readEncryptionKey(env["APP_ENCRYPTION_KEY"], isProd),
+    appEncryptionKey: readEncryptionKey(
+      env["APP_ENCRYPTION_KEY"] ?? env["DATA_ENCRYPTION_KEY"],
+      isProd,
+    ),
   };
 }
 

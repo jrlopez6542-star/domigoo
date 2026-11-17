@@ -56,7 +56,8 @@ if (seedPassword.length < 12 || seedPassword.length > 72) {
 const bypassSecret = (process.env["VERCEL_AUTOMATION_BYPASS_SECRET"] ?? "").trim();
 const reportPath = (process.env["SMOKE_REPORT_PATH"] ?? "").trim();
 
-const runTag = `${Date.now().toString(36)}-${randomUUID().slice(0, 6)}`;
+const shortTag = randomUUID().replace(/-/g, "").slice(0, 8);
+const runTag = `${Date.now().toString(36)}-${shortTag}`;
 const pdfBytes = Buffer.from("%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n");
 const documentTypes = [
   "NATIONAL_ID",
@@ -83,7 +84,27 @@ async function apiFetch(path, options = {}) {
   const response = await fetch(`${baseUrl}${path}`, {
     ...options,
     headers,
+    redirect: "manual",
   });
+  const location = response.headers.get("location") ?? "";
+  if (
+    (response.status === 302 ||
+      response.status === 307 ||
+      response.status === 401 ||
+      response.status === 403) &&
+    (location.includes("vercel.com/sso-api") ||
+      response.headers.get("server")?.toLowerCase() === "vercel")
+  ) {
+    const text = await response.text();
+    return {
+      response,
+      json: null,
+      text:
+        location !== ""
+          ? `Vercel Authentication bloqueo la peticion (HTTP ${response.status} -> ${location.split("?")[0]})`
+          : text,
+    };
+  }
   const text = await response.text();
   let json;
   try {
@@ -147,9 +168,15 @@ async function main() {
 
   await runStep(0, "Preflight /health y /ready", async () => {
     const health = await apiFetch("/health");
-    assert(health.response.status === 200, `/health respondió ${health.response.status}`);
+    assert(
+      health.response.status === 200,
+      `/health respondió ${health.response.status}: ${health.text}`,
+    );
     const ready = await apiFetch("/ready");
-    assert(ready.response.status === 200, `/ready respondió ${ready.response.status}`);
+    assert(
+      ready.response.status === 200,
+      `/ready respondió ${ready.response.status}: ${ready.text}`,
+    );
     return { health: health.response.status, ready: ready.response.status };
   });
 
@@ -232,7 +259,7 @@ async function main() {
       "POST",
       "/v1/admin/plans",
       {
-        code: `SMK_${runTag.toUpperCase().slice(0, 12)}`,
+        code: `SMK_${shortTag.toUpperCase()}`,
         name: `Plan Smoke ${runTag}`,
         priceCop: 99000,
         periodDays: 30,
@@ -256,7 +283,7 @@ async function main() {
     "/v1/legal-documents",
     {
       kind: "DOCUMENT_PROCESSING",
-      version: `smk-doc-${runTag.slice(0, 10)}`,
+      version: `smk-doc-${shortTag}`,
       content: "Doc smoke staging",
     },
     { cookie: adminCookie, expectedStatus: 201 },
@@ -266,7 +293,7 @@ async function main() {
     "/v1/legal-documents",
     {
       kind: "GEOLOCATION_CONSENT",
-      version: `smk-gps-${runTag.slice(0, 10)}`,
+      version: `smk-gps-${shortTag}`,
       content: "GPS smoke staging",
     },
     { cookie: adminCookie, expectedStatus: 201 },
@@ -319,7 +346,7 @@ async function main() {
       "POST",
       "/v1/couriers/me/vehicle",
       {
-        plate: `SMK${runTag.slice(0, 3).toUpperCase()}`,
+        plate: `S${shortTag.slice(0, 5).toUpperCase()}`,
         soatExpiresOn: "2028-04-01",
         techExpiresOn: "2028-08-01",
       },
@@ -369,12 +396,14 @@ async function main() {
       await jsonRequest(
         "POST",
         "/v1/couriers/me/location",
-        { longitude: -73.918, latitude: 4.968, accuracyM: 10 },
+        { longitude: -73.9135, latitude: 4.9657, accuracyM: 10 },
         { token: courierToken, expectedStatus: 201 },
       );
       return { state: "AVAILABLE" };
     },
   );
+
+  let candidateOffers = [];
 
   await runStep(6, "Restaurante publica pedido en modo OPEN", async () => {
     const draft = await jsonRequest(
@@ -401,28 +430,38 @@ async function main() {
     assert(pub.json.status === "SEEKING_COURIER", "El pedido no quedó en SEEKING_COURIER");
     const offers = pub.json.offers ?? [];
     assert(offers.length >= 1, "No se generaron ofertas al publicar");
+    candidateOffers = offers;
     offerId = String(offers[0].id);
     return { orderId, offersCount: offers.length };
   });
 
   await runStep(7, "Se distribuyen ofertas PENDING", async () => {
     assert(offerId !== "", "offerId vacío");
-    return { offerId, status: "PENDING" };
+    return { offerId, status: "PENDING", waveCount: candidateOffers.length };
   });
 
   await runStep(8, "Domiciliario acepta la oferta", async () => {
-    const accepted = await jsonRequest(
-      "POST",
-      `/v1/offers/${offerId}/accept`,
-      { ack: true },
-      {
-        token: courierToken,
-        headers: { "idempotency-key": `smoke-accept-${runTag}` },
-        expectedStatus: 201,
-      },
-    );
-    assert(accepted.json.orderStatus === "ACCEPTED", "La orden no pasó a ACCEPTED");
-    return { orderStatus: accepted.json.orderStatus };
+    let acceptedRes = null;
+    for (const candidate of candidateOffers) {
+      const candidateId = String(candidate.id);
+      const res = await jsonRequest(
+        "POST",
+        `/v1/offers/${candidateId}/accept`,
+        { ack: true },
+        {
+          token: courierToken,
+          headers: { "idempotency-key": `smoke-accept-${runTag}-${candidateId}` },
+        },
+      );
+      if (res.response.status === 201) {
+        offerId = candidateId;
+        acceptedRes = res;
+        break;
+      }
+    }
+    assert(acceptedRes !== null, "Ninguna oferta de la ola pertenecía al domiciliario de smoke");
+    assert(acceptedRes.json.orderStatus === "ACCEPTED", "La orden no pasó a ACCEPTED");
+    return { offerId, orderStatus: acceptedRes.json.orderStatus };
   });
 
   await runStep(9, "arrive-pickup, at-pickup y validación de PIN de recogida", async () => {
