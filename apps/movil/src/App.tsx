@@ -22,7 +22,9 @@ import {
   type CourierMachineState,
 } from "./state/courier-machine.js";
 
-const API_URL = process.env["EXPO_PUBLIC_API_URL"] ?? "http://127.0.0.1:3001";
+const envApiUrl = (process.env as Record<string, string | undefined>)["EXPO_PUBLIC_API_URL"];
+const API_URL =
+  typeof envApiUrl === "string" && envApiUrl.length > 0 ? envApiUrl : "http://127.0.0.1:3001";
 
 export default function App() {
   const [client] = useState(() => new CourierApiClient(API_URL));
