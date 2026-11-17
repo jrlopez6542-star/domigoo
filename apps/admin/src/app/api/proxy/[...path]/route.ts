@@ -26,12 +26,20 @@ async function forward(
   const hasBody = request.method !== "GET" && request.method !== "HEAD";
   const body = hasBody ? await request.text() : undefined;
 
-  const upstream = await fetch(targetUrl, {
-    method: request.method,
-    headers,
-    ...(body !== undefined ? { body } : {}),
-    cache: "no-store",
-  });
+  let upstream: Response;
+  try {
+    upstream = await fetch(targetUrl, {
+      method: request.method,
+      headers,
+      ...(body !== undefined ? { body } : {}),
+      cache: "no-store",
+    });
+  } catch {
+    return NextResponse.json(
+      { message: "No se pudo conectar con el servicio de API" },
+      { status: 502 },
+    );
+  }
 
   const responseText = await upstream.text();
   const response = new NextResponse(responseText, {
