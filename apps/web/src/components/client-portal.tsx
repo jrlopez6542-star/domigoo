@@ -121,6 +121,7 @@ export function ClientPortalShell({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let active = true;
+    let redirected = false;
     const storedRole = getStoredActiveRole();
     callProxy<SessionUser>("auth/me", "GET")
       .then((user) => {
@@ -128,6 +129,7 @@ export function ClientPortalShell({ children }: { children: ReactNode }) {
           return;
         }
         if (storedRole && storedRole !== "CUSTOMER") {
+          redirected = true;
           router.replace(ROLE_BASE_PATH[storedRole]);
           return;
         }
@@ -140,7 +142,7 @@ export function ClientPortalShell({ children }: { children: ReactNode }) {
         }
       })
       .finally(() => {
-        if (active) {
+        if (active && !redirected) {
           setCheckingSession(false);
         }
       });

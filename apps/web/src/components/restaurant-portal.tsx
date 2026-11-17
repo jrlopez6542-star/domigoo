@@ -218,6 +218,7 @@ export function RestaurantPortalShell({
 
   useEffect(() => {
     let active = true;
+    let redirected = false;
     const storedRole = getStoredActiveRole();
     callProxy<SessionUser>("auth/me", "GET")
       .then((user) => {
@@ -225,6 +226,7 @@ export function RestaurantPortalShell({
           return;
         }
         if (storedRole && storedRole !== "RESTAURANT") {
+          redirected = true;
           router.replace(ROLE_BASE_PATH[storedRole]);
           return;
         }
@@ -237,7 +239,7 @@ export function RestaurantPortalShell({
         }
       })
       .finally(() => {
-        if (active) {
+        if (active && !redirected) {
           setCheckingSession(false);
         }
       });
