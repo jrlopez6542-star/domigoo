@@ -236,14 +236,13 @@ describeDb("Contratos HTTP reales para Web, Admin y Móvil (M39)", () => {
         .send({ status: "AVAILABLE" })
         .expect(404);
 
-      const avail = await request(server())
+      // Sin consentimiento GEOLOCATION -> 422 tanto en availability(AVAILABLE) como en location
+      await request(server())
         .post("/v1/couriers/me/availability")
         .set("Authorization", `Bearer ${mobileToken}`)
         .send({ state: "AVAILABLE" })
-        .expect(201);
-      expect(record(avail.body)["state"]).toBe("AVAILABLE");
+        .expect(422);
 
-      // Sin consentimiento GEOLOCATION -> 422
       await request(server())
         .post("/v1/couriers/me/location")
         .set("Authorization", `Bearer ${mobileToken}`)
@@ -268,6 +267,13 @@ describeDb("Contratos HTTP reales para Web, Admin y Móvil (M39)", () => {
           channel: "MOBILE",
         })
         .expect(201);
+
+      const avail = await request(server())
+        .post("/v1/couriers/me/availability")
+        .set("Authorization", `Bearer ${mobileToken}`)
+        .send({ state: "AVAILABLE" })
+        .expect(201);
+      expect(record(avail.body)["state"]).toBe("AVAILABLE");
 
       const ping = await request(server())
         .post("/v1/couriers/me/location")
