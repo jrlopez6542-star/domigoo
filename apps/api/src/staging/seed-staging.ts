@@ -1,28 +1,17 @@
 import { createHash } from "node:crypto";
 import { Pool } from "pg";
 import { hashPassword } from "../identity/password.js";
+import { validateSeedEnv, type SeedConfig } from "./seed-guard.js";
 
-const databaseUrl = process.env["DATABASE_URL"]?.trim() ?? "";
-if (!databaseUrl.startsWith("postgres")) {
-  process.stderr.write("DATABASE_URL es obligatoria para ejecutar el seed de staging\n");
+let config: SeedConfig;
+try {
+  config = validateSeedEnv(process.env);
+} catch (error) {
+  process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
   process.exit(1);
 }
 
-const seedPassword = process.env["STAGING_SEED_PASSWORD"]?.trim() || "staging-ficticia-no-prod-12";
-if (seedPassword.length < 12 || seedPassword.length > 72) {
-  process.stderr.write("STAGING_SEED_PASSWORD debe tener entre 12 y 72 caracteres\n");
-  process.exit(1);
-}
-
-const adminEmail = (
-  process.env["STAGING_ADMIN_EMAIL"]?.trim() || "reviewer-staging@example.com"
-).toLowerCase();
-const ownerEmail = (
-  process.env["STAGING_RESTAURANT_OWNER_EMAIL"]?.trim() || "restaurante-staging@example.com"
-).toLowerCase();
-const courierEmail = (
-  process.env["STAGING_COURIER_EMAIL"]?.trim() || "domiciliario-staging@example.com"
-).toLowerCase();
+const { databaseUrl, seedPassword, adminEmail, ownerEmail, courierEmail } = config;
 
 async function ensureUser(
   client: import("pg").PoolClient,

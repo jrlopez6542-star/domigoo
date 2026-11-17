@@ -2,16 +2,57 @@
 import { randomUUID } from "node:crypto";
 import { writeFileSync } from "node:fs";
 
-const baseUrl = (process.env["STAGING_API_URL"] ?? "").trim().replace(/\/+$/, "");
-if (baseUrl === "") {
+const rawBaseUrl = (process.env["STAGING_API_URL"] ?? "").trim().replace(/\/+$/, "");
+if (rawBaseUrl === "") {
   process.stderr.write(
-    "Error: STAGING_API_URL es obligatoria (ej. https://domigoo-staging.vercel.app)\n",
+    "Abortado: STAGING_API_URL es obligatoria (ej. https://domigoo-staging.vercel.app)\n",
   );
   process.exit(1);
 }
 
+let parsedBaseUrl;
+try {
+  parsedBaseUrl = new URL(rawBaseUrl);
+} catch {
+  process.stderr.write("Abortado: STAGING_API_URL no es una URL válida\n");
+  process.exit(1);
+}
+
+if (parsedBaseUrl.protocol !== "http:" && parsedBaseUrl.protocol !== "https:") {
+  process.stderr.write("Abortado: STAGING_API_URL debe usar protocolo http o https\n");
+  process.exit(1);
+}
+
+const targetHost = parsedBaseUrl.hostname.toLowerCase();
+const allowedSmokeHosts = (process.env["STAGING_ALLOWED_HOSTS"] ?? "")
+  .split(",")
+  .map((item) => item.trim().toLowerCase())
+  .filter((item) => item !== "");
+const isSafeTarget =
+  targetHost.includes("staging") ||
+  targetHost.includes("preview") ||
+  targetHost === "localhost" ||
+  targetHost === "127.0.0.1" ||
+  process.env["STAGING_SMOKE_ALLOW_HOST"]?.trim() === "yes" ||
+  allowedSmokeHosts.includes(targetHost);
+
+if (!isSafeTarget) {
+  process.stderr.write(
+    `Abortado: STAGING_API_URL (${targetHost}) no parece un entorno staging/preview; usa STAGING_SMOKE_ALLOW_HOST=yes o STAGING_ALLOWED_HOSTS si es intencional\n`,
+  );
+  process.exit(1);
+}
+
+const baseUrl = rawBaseUrl;
 const adminEmail = (process.env["STAGING_ADMIN_EMAIL"] ?? "reviewer-staging@example.com").trim();
-const seedPassword = process.env["STAGING_SEED_PASSWORD"] ?? "staging-ficticia-no-prod-12";
+const seedPassword = process.env["STAGING_SEED_PASSWORD"] ?? "";
+if (seedPassword.length < 12 || seedPassword.length > 72) {
+  process.stderr.write(
+    "Abortado: STAGING_SEED_PASSWORD es obligatoria y debe tener entre 12 y 72 caracteres\n",
+  );
+  process.exit(1);
+}
+
 const bypassSecret = (process.env["VERCEL_AUTOMATION_BYPASS_SECRET"] ?? "").trim();
 const reportPath = (process.env["SMOKE_REPORT_PATH"] ?? "").trim();
 

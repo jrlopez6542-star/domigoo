@@ -51,12 +51,21 @@ pnpm --filter @domigoo/api build
 PORT=3001 node apps/api/dist/main.js
 ```
 
-## 4. Cómo resembrar datos ficticios (idempotente)
+## 4. Cómo resembrar datos ficticios (idempotente y protegido)
 
-El script [`apps/api/src/staging/seed-staging.ts`](../apps/api/src/staging/seed-staging.ts) es idempotente y puede ejecutarse cuantas veces sea necesario sin duplicar registros:
+El script [`apps/api/src/staging/seed-staging.ts`](../apps/api/src/staging/seed-staging.ts) es idempotente y cuenta con guardas estrictas para impedir cualquier ejecución accidental sobre producción:
+
+- Aborta si `NODE_ENV=production`.
+- Exige `DOMIGOO_ENV=staging` y `STAGING_SEED_CONFIRM=yes`.
+- Exige que el host o nombre de BD en `DATABASE_URL` contenga `"staging"` (o que el host esté en `STAGING_ALLOWED_DB_HOSTS`).
+- Exige `STAGING_SEED_PASSWORD` (12–72 caracteres), sin contraseña por defecto en el repositorio.
 
 ```bash
 set -a && source .env.staging && set +a
+DOMIGOO_ENV=staging \
+STAGING_SEED_CONFIRM=yes \
+NODE_ENV=development \
+STAGING_SEED_PASSWORD="<clave-staging-12-72-chars>" \
 pnpm --filter @domigoo/api seed:staging
 ```
 
@@ -70,12 +79,12 @@ Siembra:
 
 ## 5. Cómo correr el smoke test (flujo completo de 12 pasos)
 
-El script [`scripts/smoke-staging.mjs`](../scripts/smoke-staging.mjs) ejecuta por HTTP los 12 pasos de M40 contra cualquier URL base (`STAGING_API_URL`) usando datos ficticios únicos por ejecución y genera un informe JSON:
+El script [`scripts/smoke-staging.mjs`](../scripts/smoke-staging.mjs) ejecuta por HTTP los 12 pasos de M40 contra `STAGING_API_URL` usando datos ficticios únicos por ejecución y genera un informe JSON (sin contraseñas ni tokens). Por seguridad, exige `STAGING_SEED_PASSWORD` y rechaza cualquier URL cuyo host no contenga `"staging"`, `"preview"`, `"localhost"` o `"127.0.0.1"` (salvo `STAGING_SMOKE_ALLOW_HOST=yes` o `STAGING_ALLOWED_HOSTS`).
 
 ```bash
 STAGING_API_URL=https://domigoo-staging.vercel.app \
 STAGING_ADMIN_EMAIL=reviewer-staging@example.com \
-STAGING_SEED_PASSWORD=staging-ficticia-no-prod-12 \
+STAGING_SEED_PASSWORD="<clave-staging-12-72-chars>" \
 SMOKE_REPORT_PATH=/tmp/smoke-staging-report.json \
 pnpm smoke:staging
 ```
