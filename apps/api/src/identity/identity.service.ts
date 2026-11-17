@@ -34,6 +34,23 @@ export class AuthError extends Error {
 const INVALID = "Credenciales inválidas";
 const DUMMY_PASSWORD = hashPassword("marcador-interno-no-es-una-clave");
 
+export type RegistrationRole = "CUSTOMER" | "RESTAURANT" | "COURIER";
+
+export type RegistrationConsentsPayload = {
+  version: string;
+  termsAccepted: boolean;
+  privacyAccepted: boolean;
+  sensitiveDataAccepted: boolean;
+  marketingAccepted: boolean;
+};
+
+export type RegistrationInput = Credentials & {
+  role: RegistrationRole;
+  consents: RegistrationConsentsPayload;
+};
+
+export const CURRENT_LEGAL_VERSION = "0.1-borrador";
+
 @Injectable()
 export class IdentityService {
   constructor(
@@ -41,16 +58,25 @@ export class IdentityService {
     private readonly audit: AuditRecorder,
   ) {}
 
-  async register(input: Credentials): Promise<{ user: PublicUser; token: string }> {
+  async register(
+    input: RegistrationInput,
+    meta?: { ip?: string; userAgent?: string },
+  ): Promise<{ user: PublicUser; token: string; legalVersion: string; consentPurposes: string[] }> {
     const passwordHash = hashPassword(input.password);
     try {
-      const user = await this.repository.insertUser({
+      const { user, consentPurposes, legalVersion } = await this.repository.insertUserWithConsents({
         email: input.email,
         phoneE164: input.phoneE164,
         passwordHash,
+        consents: {
+          ...input.consents,
+          channel: input.client,
+          ...(meta?.ip === undefined ? {} : { ip: meta.ip }),
+          ...(meta?.userAgent === undefined ? {} : { userAgent: meta.userAgent }),
+        },
       });
       const token = await this.openSession(user.id, input.client);
-      return { user, token };
+      return { user, token, legalVersion, consentPurposes };
     } catch (error) {
       if (isUniqueViolation(error)) {
         throw new AuthError(409, "Ya existe una cuenta con esos datos");
@@ -178,6 +204,64 @@ export function parseCredentials(body: unknown): Credentials {
   }
   const parsedEmail = email === null ? null : parseEmail(email);
   return { email: parsedEmail, phoneE164: parsedPhone, password, client };
+}
+
+export function parseRegistrationInput(body: unknown): RegistrationInput {
+  const credentials = parseCredentials(body);
+  if (!isRecord(body)) {
+    throw new AuthError(400, "El cuerpo debe ser un objeto");
+  }
+  const rawRole = optionalString(body["role"]);
+  const role: RegistrationRole =
+    rawRole === "COURIER" || rawRole === "RESTAURANT" || rawRole === "CUSTOMER"
+      ? rawRole
+      : rawRole === null
+        ? "CUSTOMER"
+        : (() => {
+            throw new AuthError(400, "El rol debe ser CUSTOMER, RESTAURANT o COURIER");
+          })();
+
+  const rawConsents = body["consents"];
+  if (!isRecord(rawConsents)) {
+    throw new AuthError(
+      422,
+      "Debes aceptar los Términos y Condiciones y la Autorización de Tratamiento de Datos Personales para registrarte",
+    );
+  }
+  const termsAccepted = rawConsents["termsAccepted"] === true;
+  const privacyAccepted = rawConsents["privacyAccepted"] === true;
+  const sensitiveDataAccepted = rawConsents["sensitiveDataAccepted"] === true;
+  const marketingAccepted = rawConsents["marketingAccepted"] === true;
+  const rawVersion = optionalString(rawConsents["version"]);
+  const version = rawVersion ?? CURRENT_LEGAL_VERSION;
+  if (version.length > 20) {
+    throw new AuthError(400, "La versión legal es inválida");
+  }
+
+  if (!termsAccepted || !privacyAccepted) {
+    throw new AuthError(
+      422,
+      "Debes aceptar los Términos y Condiciones y la Autorización de Tratamiento de Datos Personales para registrarte",
+    );
+  }
+  if (role === "COURIER" && !sensitiveDataAccepted) {
+    throw new AuthError(
+      422,
+      "Los domiciliarios deben autorizar el tratamiento de datos sensibles para verificar su identidad",
+    );
+  }
+
+  return {
+    ...credentials,
+    role,
+    consents: {
+      version,
+      termsAccepted,
+      privacyAccepted,
+      sensitiveDataAccepted,
+      marketingAccepted,
+    },
+  };
 }
 
 export { LoginLimitedError };

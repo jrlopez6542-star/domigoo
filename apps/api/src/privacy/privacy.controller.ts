@@ -17,7 +17,14 @@ import { SessionGuard, type AuthenticatedRequest } from "../identity/session.gua
 import { PrivacyRepository } from "./privacy.repository.js";
 
 const KINDS = ["PRIVACY_NOTICE", "TERMS", "GEOLOCATION_CONSENT", "DOCUMENT_PROCESSING"] as const;
-const PURPOSES = ["ACCOUNT", "GEOLOCATION", "DOCUMENT_STORAGE", "ORDER_CONTACT"] as const;
+const PURPOSES = [
+  "ACCOUNT",
+  "TERMS_ACCEPTANCE",
+  "GEOLOCATION",
+  "DOCUMENT_STORAGE",
+  "ORDER_CONTACT",
+  "MARKETING",
+] as const;
 const CHANNELS = ["WEB", "MOBILE", "ADMIN"] as const;
 const DSR_TYPES = new Set(["ACCESS", "CORRECTION", "DELETION", "REVOCATION", "COMPLAINT"]);
 
@@ -25,6 +32,14 @@ const DSR_TYPES = new Set(["ACCESS", "CORRECTION", "DELETION", "REVOCATION", "CO
 @Controller("v1")
 export class PrivacyController {
   constructor(private readonly privacy: PrivacyRepository) {}
+
+  @Get("legal-documents/current")
+  @ApiOperation({ summary: "Devuelve las versiones vigentes de los documentos legales" })
+  async currentDocuments(): Promise<{
+    documents: Array<{ id: string; kind: string; version: string; contentHash: string }>;
+  }> {
+    return { documents: await this.privacy.listCurrentDocuments() };
+  }
 
   @Post("legal-documents")
   @UseGuards(AdminGuard)
@@ -52,7 +67,15 @@ export class PrivacyController {
     if (parsed === null || userId === undefined) {
       throw new NotFoundException();
     }
-    return this.privacy.insertConsent({ ...parsed, userId });
+    const ip = typeof request.ip === "string" ? request.ip.slice(0, 45) : undefined;
+    const rawUa = request.headers["user-agent"];
+    const userAgent = typeof rawUa === "string" ? rawUa.slice(0, 255) : undefined;
+    return this.privacy.insertConsent({
+      ...parsed,
+      userId,
+      ...(ip === undefined ? {} : { ip }),
+      ...(userAgent === undefined ? {} : { userAgent }),
+    });
   }
 
   @Post("consents/:id/revoke")
@@ -75,12 +98,13 @@ export class PrivacyController {
   async current(
     @Query("purpose") purpose: string,
     @Req() request: AuthenticatedRequest,
-  ): Promise<{ active: boolean }> {
+  ): Promise<{ active: boolean; consentId: string | null }> {
     const userId = request.auth?.userId;
     if (userId === undefined || !isPurpose(purpose)) {
       throw new NotFoundException();
     }
-    return { active: await this.privacy.isCurrent(userId, purpose) };
+    const consentId = await this.privacy.findCurrentConsentId(userId, purpose);
+    return { active: consentId !== null, consentId };
   }
 
   @Post("data-subject-requests")

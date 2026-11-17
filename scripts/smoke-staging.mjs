@@ -209,7 +209,13 @@ async function main() {
     const reg = await jsonRequest(
       "POST",
       "/v1/auth/register",
-      { email: ownerEmail, password: seedPassword, client: "WEB" },
+      {
+        email: ownerEmail,
+        password: seedPassword,
+        client: "WEB",
+        role: "RESTAURANT",
+        consents: { termsAccepted: true, privacyAccepted: true },
+      },
       { expectedStatus: 201 },
     );
     ownerCookie = extractSessionCookie(reg.response);
@@ -309,7 +315,13 @@ async function main() {
     const reg = await jsonRequest(
       "POST",
       "/v1/auth/register",
-      { email: courierEmail, password: seedPassword, client: "MOBILE" },
+      {
+        email: courierEmail,
+        password: seedPassword,
+        client: "MOBILE",
+        role: "COURIER",
+        consents: { termsAccepted: true, privacyAccepted: true, sensitiveDataAccepted: true },
+      },
       { expectedStatus: 201 },
     );
     courierToken = String(reg.json.token);

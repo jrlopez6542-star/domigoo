@@ -46,7 +46,12 @@ async function createApp(env: AppEnv): Promise<INestApplication> {
 async function registerCourier(email: string, _plate: string, docNum: string): Promise<string> {
   const reg = await request(server())
     .post("/v1/auth/register")
-    .send({ email, password, client: "MOBILE" })
+    .send({
+      email,
+      password,
+      client: "MOBILE",
+      consents: { termsAccepted: true, privacyAccepted: true },
+    })
     .expect(201);
   const token = String(record(reg.body)["token"]);
 
@@ -88,7 +93,12 @@ describe("recorrido del pedido (M24)", () => {
   it("avanza el recorrido, registra order_events, oculta foodAmountCop al domiciliario y responde 403 a no asignado", async () => {
     const ownerRes = await request(server())
       .post("/v1/auth/register")
-      .send({ email: "owner-m24@example.invalid", password, client: "MOBILE" })
+      .send({
+        email: "owner-m24@example.invalid",
+        password,
+        client: "MOBILE",
+        consents: { termsAccepted: true, privacyAccepted: true },
+      })
       .expect(201);
     const ownerToken = String(record(ownerRes.body)["token"]);
 

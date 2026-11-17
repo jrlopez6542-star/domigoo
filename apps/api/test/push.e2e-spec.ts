@@ -72,7 +72,12 @@ describe("puerto de push y bandeja de salida (M28)", () => {
 
     const courierRes = await request(server())
       .post("/v1/auth/register")
-      .send({ email: "courier-m28@example.invalid", password, client: "MOBILE" })
+      .send({
+        email: "courier-m28@example.invalid",
+        password,
+        client: "MOBILE",
+        consents: { termsAccepted: true, privacyAccepted: true },
+      })
       .expect(201);
     const courierToken = String(record(courierRes.body)["token"]);
 

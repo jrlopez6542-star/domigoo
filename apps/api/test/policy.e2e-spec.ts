@@ -56,7 +56,12 @@ async function createApp(env: AppEnv): Promise<INestApplication> {
 async function admin(email: string, role: string): Promise<string> {
   const created = await request(server())
     .post("/v1/auth/register")
-    .send({ email, password, client: "MOBILE" })
+    .send({
+      email,
+      password,
+      client: "MOBILE",
+      consents: { termsAccepted: true, privacyAccepted: true },
+    })
     .expect(201);
   const pool = new Pool({ connectionString: databaseUrl });
   const user = await pool.query<{ id: string }>(`SELECT id FROM users WHERE email = $1`, [email]);

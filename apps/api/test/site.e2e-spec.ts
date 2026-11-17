@@ -65,11 +65,21 @@ describe("sede del restaurante", () => {
   it("crea establecimiento y sucursal con un punto que se lee a menos de un metro", async () => {
     const owner = await request(server())
       .post("/v1/auth/register")
-      .send({ email: "sede@example.invalid", password, client: "MOBILE" })
+      .send({
+        email: "sede@example.invalid",
+        password,
+        client: "MOBILE",
+        consents: { termsAccepted: true, privacyAccepted: true },
+      })
       .expect(201);
     const stranger = await request(server())
       .post("/v1/auth/register")
-      .send({ email: "otro-sede@example.invalid", password, client: "MOBILE" })
+      .send({
+        email: "otro-sede@example.invalid",
+        password,
+        client: "MOBILE",
+        consents: { termsAccepted: true, privacyAccepted: true },
+      })
       .expect(201);
     const created = await request(server())
       .post("/v1/restaurants")

@@ -163,5 +163,70 @@ describe("App del domiciliario @domigoo/movil (M32, M33 y M39)", () => {
 
     const appSource = fs.readFileSync(path.resolve(process.cwd(), "src/App.tsx"), "utf8");
     expect(appSource).not.toMatch(/console\.(log|info|debug)\s*\([^)]*pin/i);
+    expect(appSource).toContain("Compartir tu ubicación con DOMIGOO");
+    expect(appSource).toContain("Compartiendo ubicación");
+  });
+
+  it("registra domiciliario con consentimientos legales y permite otorgar y revocar geolocalización (M45)", async () => {
+    const calls: Array<{ input: string; method: string | undefined; body: string | undefined }> =
+      [];
+    const client = new CourierApiClient("http://127.0.0.1:3001", (input, init) => {
+      calls.push({ input, method: init?.method, body: init?.body });
+      if (input.endsWith("/v1/legal-documents/current")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () =>
+            Promise.resolve({
+              documents: [{ id: "doc-geo-1", kind: "GEOLOCATION_CONSENT" }],
+            }),
+        });
+      }
+      if (input.endsWith("/v1/consents")) {
+        return Promise.resolve({
+          ok: true,
+          status: 201,
+          json: () => Promise.resolve({ id: "con-geo-1" }),
+        });
+      }
+      if (input.endsWith("/v1/consents/con-geo-1/revoke")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({ revoked: true }),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 201,
+        json: () => Promise.resolve({ token: "tok-reg-1" }),
+      });
+    });
+
+    await client.registerCourier({
+      identifier: "+573001112233",
+      password: "ClaveSegura123",
+      consents: {
+        termsAccepted: true,
+        privacyAccepted: true,
+        sensitiveDataAccepted: true,
+      },
+    });
+    expect(JSON.parse(calls[0]?.body ?? "{}")).toMatchObject({
+      phoneE164: "+573001112233",
+      role: "COURIER",
+      consents: { termsAccepted: true, privacyAccepted: true, sensitiveDataAccepted: true },
+    });
+
+    const granted = await client.grantGeolocationConsent();
+    expect(granted).toEqual({ consentId: "con-geo-1" });
+    expect(JSON.parse(calls[2]?.body ?? "{}")).toEqual({
+      legalDocumentId: "doc-geo-1",
+      purpose: "GEOLOCATION",
+      channel: "MOBILE",
+    });
+
+    const revoked = await client.revokeGeolocationConsent("con-geo-1");
+    expect(revoked).toEqual({ revoked: true });
   });
 });

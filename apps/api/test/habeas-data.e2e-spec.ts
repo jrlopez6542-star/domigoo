@@ -64,19 +64,34 @@ describe("solicitudes de habeas data (M37)", () => {
   it("revoca geolocalización impidiendo nuevos pings y anonimiza pedidos cerrados sin borrar montos ni auditoría", async () => {
     const secRes = await request(server())
       .post("/v1/auth/register")
-      .send({ email: "sec-m37@example.invalid", password, client: "MOBILE" })
+      .send({
+        email: "sec-m37@example.invalid",
+        password,
+        client: "MOBILE",
+        consents: { termsAccepted: true, privacyAccepted: true },
+      })
       .expect(201);
     const secToken = String(record(secRes.body)["token"]);
 
     const ownerRes = await request(server())
       .post("/v1/auth/register")
-      .send({ email: "owner-m37@example.invalid", password, client: "MOBILE" })
+      .send({
+        email: "owner-m37@example.invalid",
+        password,
+        client: "MOBILE",
+        consents: { termsAccepted: true, privacyAccepted: true },
+      })
       .expect(201);
     const ownerToken = String(record(ownerRes.body)["token"]);
 
     const courierRes = await request(server())
       .post("/v1/auth/register")
-      .send({ email: "courier-m37@example.invalid", password, client: "MOBILE" })
+      .send({
+        email: "courier-m37@example.invalid",
+        password,
+        client: "MOBILE",
+        consents: { termsAccepted: true, privacyAccepted: true },
+      })
       .expect(201);
     const courierToken = String(record(courierRes.body)["token"]);
 

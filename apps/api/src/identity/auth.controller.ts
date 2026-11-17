@@ -17,7 +17,9 @@ import {
   IdentityService,
   LoginLimitedError,
   parseCredentials,
+  parseRegistrationInput,
   type Credentials,
+  type RegistrationInput,
 } from "./identity.service.js";
 import { clearSessionCookie, sessionCookieHeader } from "./session-cookie.js";
 
@@ -33,12 +35,25 @@ export class AuthController {
   @ApiOperation({ summary: "Crea una cuenta con correo o teléfono y abre sesión" })
   async register(
     @Body() body: unknown,
+    @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
-  ): Promise<Record<string, string | null>> {
-    const credentials = this.credentials(body);
-    const result = await this.run(() => this.identity.register(credentials));
-    this.presentSession(response, credentials, result.token);
-    return this.publicBody(result.user, credentials.client, result.token);
+  ): Promise<Record<string, unknown>> {
+    const registration = this.registration(body);
+    const ip = typeof request.ip === "string" ? request.ip.slice(0, 45) : undefined;
+    const rawUa = request.headers["user-agent"];
+    const userAgent = typeof rawUa === "string" ? rawUa.slice(0, 255) : undefined;
+    const result = await this.run(() =>
+      this.identity.register(registration, {
+        ...(ip === undefined ? {} : { ip }),
+        ...(userAgent === undefined ? {} : { userAgent }),
+      }),
+    );
+    this.presentSession(response, registration, result.token);
+    return {
+      ...this.publicBody(result.user, registration.client, result.token),
+      legalVersion: result.legalVersion,
+      consentPurposes: result.consentPurposes,
+    };
   }
 
   @Post("login")
@@ -85,6 +100,17 @@ export class AuthController {
   private credentials(body: unknown): Credentials {
     try {
       return parseCredentials(body);
+    } catch (error) {
+      if (error instanceof AuthError) {
+        throw httpError(error);
+      }
+      throw error;
+    }
+  }
+
+  private registration(body: unknown): RegistrationInput {
+    try {
+      return parseRegistrationInput(body);
     } catch (error) {
       if (error instanceof AuthError) {
         throw httpError(error);

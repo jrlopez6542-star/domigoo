@@ -21,6 +21,23 @@ export type StoredSession = {
   expiresAt: Date;
 };
 
+export type RegistrationConsentInput = {
+  version: string;
+  termsAccepted: boolean;
+  privacyAccepted: boolean;
+  sensitiveDataAccepted: boolean;
+  marketingAccepted: boolean;
+  channel: "WEB" | "MOBILE" | "ADMIN";
+  ip?: string;
+  userAgent?: string;
+};
+
+const DEFAULT_DOCUMENT_HASHES: Record<string, string> = {
+  TERMS: "fdb4df73fe68e0fb046efb0780f820fc259736bfaa63eb8287139eba27db33ae",
+  PRIVACY_NOTICE: "1fbf6783816887d20674fdd01fd70c70ce58bc4ee20d9e21a7b923e611bc6061",
+  DOCUMENT_PROCESSING: "634f193272c15d53a869db7ee8c462da4b70f3f7fb43695f5355202f203f2892",
+};
+
 @Injectable()
 export class IdentityRepository {
   constructor(private readonly database: Database) {}
@@ -45,6 +62,93 @@ export class IdentityRepository {
       throw new Error("No se pudo crear la cuenta");
     }
     return row;
+  }
+
+  async insertUserWithConsents(input: {
+    email: string | null;
+    phoneE164: string | null;
+    passwordHash: string;
+    consents: RegistrationConsentInput;
+  }): Promise<{ user: PublicUser; consentPurposes: string[]; legalVersion: string }> {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const userRes = await client.query<PublicUser>(
+        `INSERT INTO users (id, email, "phoneE164", "passwordHash", status, "createdAt", "updatedAt")
+         VALUES (gen_random_uuid(), $1, $2, $3, 'ACTIVE', now(), now())
+         RETURNING id, email, "phoneE164", status`,
+        [input.email, input.phoneE164, input.passwordHash],
+      );
+      const user = userRes.rows[0];
+      if (user === undefined) {
+        throw new Error("No se pudo crear la cuenta");
+      }
+
+      const entries: Array<{
+        kind: "TERMS" | "PRIVACY_NOTICE" | "DOCUMENT_PROCESSING";
+        purpose: string;
+      }> = [
+        { kind: "TERMS", purpose: "TERMS_ACCEPTANCE" },
+        { kind: "PRIVACY_NOTICE", purpose: "ACCOUNT" },
+      ];
+      if (input.consents.sensitiveDataAccepted) {
+        entries.push({ kind: "DOCUMENT_PROCESSING", purpose: "DOCUMENT_STORAGE" });
+      }
+      if (input.consents.marketingAccepted) {
+        entries.push({ kind: "PRIVACY_NOTICE", purpose: "MARKETING" });
+      }
+
+      const docIds = new Map<string, string>();
+      for (const entry of entries) {
+        if (!docIds.has(entry.kind)) {
+          const defaultHash = DEFAULT_DOCUMENT_HASHES[entry.kind] ?? "0".repeat(64);
+          await client.query(
+            `INSERT INTO legal_documents (id, kind, version, "contentHash", "publishedAt")
+             VALUES (gen_random_uuid(), $1::"LegalDocumentKind", $2, $3, now())
+             ON CONFLICT (kind, version) DO NOTHING`,
+            [entry.kind, input.consents.version, defaultHash],
+          );
+          const docRes = await client.query<{ id: string }>(
+            `SELECT id FROM legal_documents WHERE kind = $1::"LegalDocumentKind" AND version = $2 LIMIT 1`,
+            [entry.kind, input.consents.version],
+          );
+          const docId = docRes.rows[0]?.id;
+          if (docId === undefined) {
+            throw new Error(`No se pudo resolver el documento legal ${entry.kind}`);
+          }
+          docIds.set(entry.kind, docId);
+        }
+
+        const legalDocumentId = docIds.get(entry.kind);
+        await client.query(
+          `INSERT INTO consent_records (
+             id, "userId", "legalDocumentId", purpose, channel, "grantedAt", ip, "userAgent"
+           ) VALUES (
+             gen_random_uuid(), $1, $2, $3::"ConsentPurpose", $4::"ConsentChannel", now(), $5, $6
+           )`,
+          [
+            user.id,
+            legalDocumentId,
+            entry.purpose,
+            input.consents.channel,
+            input.consents.ip ?? null,
+            input.consents.userAgent ?? null,
+          ],
+        );
+      }
+
+      await client.query("COMMIT");
+      return {
+        user,
+        consentPurposes: entries.map((e) => e.purpose),
+        legalVersion: input.consents.version,
+      };
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   async findByEmail(email: string): Promise<StoredUser | null> {
