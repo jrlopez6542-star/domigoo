@@ -190,7 +190,7 @@ function readQuote(body: unknown): {
   return { origin, destination, at };
 }
 
-function readPoint(value: unknown): { longitude: number; latitude: number } | null {
+export function readPoint(value: unknown): { longitude: number; latitude: number } | null {
   if (
     !isRecord(value) ||
     typeof value["longitude"] !== "number" ||
@@ -198,7 +198,19 @@ function readPoint(value: unknown): { longitude: number; latitude: number } | nu
   ) {
     return null;
   }
-  return { longitude: value["longitude"], latitude: value["latitude"] };
+  const longitude = value["longitude"];
+  const latitude = value["latitude"];
+  if (
+    !Number.isFinite(longitude) ||
+    !Number.isFinite(latitude) ||
+    longitude < -180 ||
+    longitude > 180 ||
+    latitude < -90 ||
+    latitude > 90
+  ) {
+    return null;
+  }
+  return { longitude, latitude };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
