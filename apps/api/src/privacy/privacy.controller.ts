@@ -98,13 +98,12 @@ export class PrivacyController {
   async current(
     @Query("purpose") purpose: string,
     @Req() request: AuthenticatedRequest,
-  ): Promise<{ active: boolean; consentId: string | null }> {
+  ): Promise<{ active: boolean }> {
     const userId = request.auth?.userId;
     if (userId === undefined || !isPurpose(purpose)) {
       throw new NotFoundException();
     }
-    const consentId = await this.privacy.findCurrentConsentId(userId, purpose);
-    return { active: consentId !== null, consentId };
+    return { active: await this.privacy.isCurrent(userId, purpose) };
   }
 
   @Post("data-subject-requests")
