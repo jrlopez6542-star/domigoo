@@ -274,3 +274,42 @@ jobs:
             apps/web/test-results/
             apps/admin/test-results/
           if-no-files-found: ignore
+
+  preview_smoke:
+    name: Smoke Vercel Preview
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.33.4
+
+      - name: Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Esperar Vercel Preview del commit actual
+        id: wait_preview
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+          WAIT_TIMEOUT_SECONDS: "240"
+        run: node scripts/wait-vercel-preview.mjs
+
+      - name: Ejecutar smoke:staging contra Vercel Preview
+        env:
+          STAGING_API_URL: ${{ steps.wait_preview.outputs.preview_url }}
+          STAGING_ALLOWED_HOSTS: ${{ steps.wait_preview.outputs.preview_host }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+          STAGING_SEED_PASSWORD: ${{ secrets.STAGING_SEED_PASSWORD }}
+          SMOKE_REPORT_PATH: /tmp/smoke-vercel-preview-report.json
+        run: pnpm smoke:staging

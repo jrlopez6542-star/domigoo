@@ -22,6 +22,12 @@ async function ensureUser(
     email,
   ]);
   if (existing.rows[0]?.id !== undefined) {
+    await client.query(
+      `UPDATE users
+       SET "passwordHash" = $2, status = 'ACTIVE', "updatedAt" = now()
+       WHERE id = $1`,
+      [existing.rows[0].id, passwordHash],
+    );
     return existing.rows[0].id;
   }
   const inserted = await client.query<{ id: string }>(
@@ -123,6 +129,16 @@ async function main(): Promise<void> {
          ) VALUES (gen_random_uuid(), $1, NULL, 5500, 0, 0, 10000, 0, 0)`,
         [tariffVersionId],
       );
+    } else {
+      const anyPublishedTariff = await client.query<{ id: string }>(
+        `SELECT id FROM tariff_versions WHERE status = 'PUBLISHED' LIMIT 1`,
+      );
+      if (anyPublishedTariff.rows[0]?.id === undefined) {
+        await client.query(
+          `UPDATE tariff_versions SET status = 'PUBLISHED', "publishedAt" = now() WHERE id = $1`,
+          [tariffVersionId],
+        );
+      }
     }
 
     // 3. Política operativa publicada de staging
@@ -141,6 +157,16 @@ async function main(): Promise<void> {
            gen_random_uuid(), 'Politica Staging', 'PUBLISHED', 3000, 120, 120, 600, 4, 120, now(), now()
          )`,
       );
+    } else {
+      const anyPublishedPolicy = await client.query<{ id: string }>(
+        `SELECT id FROM operations_policies WHERE status = 'PUBLISHED' LIMIT 1`,
+      );
+      if (anyPublishedPolicy.rows[0]?.id === undefined) {
+        await client.query(
+          `UPDATE operations_policies SET status = 'PUBLISHED', "publishedAt" = now() WHERE id = $1`,
+          [existingPolicy.rows[0].id],
+        );
+      }
     }
 
     // 4. Documentos legales base

@@ -6,6 +6,9 @@
     "node": ">=22.13"
   },
   "scripts": {
+    "build": "sh scripts/vercel-build.sh",
+    "vercel-build": "sh scripts/vercel-build.sh",
+    "prepare": "if [ -n \"${VERCEL:-}\" ] || [ -n \"${VERCEL_ENV:-}\" ]; then sh scripts/vercel-build.sh; fi",
     "lint": "eslint . && prettier --check .",
     "typecheck": "pnpm -r --if-present typecheck",
     "smoke:staging": "node scripts/smoke-staging.mjs"
