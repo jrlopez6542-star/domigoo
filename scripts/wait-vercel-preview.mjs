@@ -32,6 +32,13 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function truncateBody(raw) {
+  const clean = String(raw ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return clean.length > 200 ? `${clean.slice(0, 200)}...` : clean;
+}
+
 async function readVercelBotComment() {
   if (repo === "" || prNumber === "" || githubToken === "") {
     return null;
@@ -147,7 +154,9 @@ async function main() {
     const deployedWithoutShaHeader =
       health.commitSha === "" && commentStatus === "DEPLOYED" && health.status === 200;
 
-    lastSummary = `intento=${attempt} host=${candidateHost} commentStatus=${commentStatus} health=${health.status} previewSha=${health.commitSha ? health.commitSha.slice(0, 7) : "n/a"} targetSha=${headSha.slice(0, 7)}`;
+    const bodyDiag =
+      health.status !== 200 ? ` body=${JSON.stringify(truncateBody(health.text))}` : "";
+    lastSummary = `intento=${attempt} host=${candidateHost} commentStatus=${commentStatus} health=${health.status} previewSha=${health.commitSha ? health.commitSha.slice(0, 7) : "n/a"} targetSha=${headSha.slice(0, 7)} buildHeader=${health.vercelBuild || "n/a"}${bodyDiag}`;
     process.stdout.write(`[vercel-preview] ${lastSummary}\n`);
 
     if (health.status === 200 && (shaMatches || deployedWithoutShaHeader)) {
@@ -177,18 +186,27 @@ async function main() {
         process.stdout.write(`[vercel-preview] Deployment ID: ${deploymentId}\n`);
         process.stdout.write(`[vercel-preview] Inspector URL: ${inspectorUrl}\n`);
         process.stdout.write(`[vercel-preview] Commit SHA verificado: ${verifiedSha}\n`);
-        process.stdout.write(`[vercel-preview] Build Meta: ${buildMeta}\n`);
+        process.stdout.write(`[vercel-preview] x-domigoo-vercel-build: ${buildMeta}\n`);
+
+        if (buildMeta !== "migrate=ok;seed=ejecutado") {
+          process.stderr.write(
+            `Abortado: La cabecera x-domigoo-vercel-build del Preview fue '${buildMeta}', pero se requiere 'migrate=ok;seed=ejecutado'\n`,
+          );
+          process.exit(1);
+        }
 
         if (githubOutput !== "") {
           appendFileSync(
             githubOutput,
-            `preview_url=https://${candidateHost}\npreview_host=${candidateHost}\ndeployment_id=${deploymentId}\n`,
+            `preview_url=https://${candidateHost}\npreview_host=${candidateHost}\ndeployment_id=${deploymentId}\nvercel_build=${buildMeta}\n`,
             "utf8",
           );
         }
         return;
       }
-      process.stdout.write(`[vercel-preview] /ready respondió ${ready.status}, reintentando...\n`);
+      process.stdout.write(
+        `[vercel-preview] /ready respondió ${ready.status} body=${JSON.stringify(truncateBody(ready.text))}, reintentando...\n`,
+      );
     }
 
     await sleep(5000);

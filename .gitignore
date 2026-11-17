@@ -12,3 +12,4 @@ var/storage/
 .next/
 .expo/
 next-env.d.ts
+public/
