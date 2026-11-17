@@ -25,6 +25,28 @@ test.describe("HOME-002 (Futuro Urbano), Legal (M45) y Tracking público (M30)",
     await expect(registerLink).toBeVisible();
     await expect(restaurantLink).toBeVisible();
 
+    // Verificar tipografía Futuro Urbano (Inter y Montserrat realmente cargadas)
+    const fontCheck = await page.evaluate(async () => {
+      await document.fonts.ready;
+      const bodyFont = getComputedStyle(document.body).fontFamily;
+      const h1 = document.querySelector("h1");
+      const h1Font = h1 ? getComputedStyle(h1).fontFamily : "";
+      const btn = document.querySelector('[data-testid="home-btn-login"]');
+      const btnFont = btn ? getComputedStyle(btn).fontFamily : "";
+      return {
+        bodyFont,
+        h1Font,
+        btnFont,
+        interLoaded: document.fonts.check("16px Inter"),
+        montserratLoaded: document.fonts.check("700 16px Montserrat"),
+      };
+    });
+    expect(fontCheck.bodyFont).toMatch(/Inter/i);
+    expect(fontCheck.h1Font).toMatch(/Montserrat/i);
+    expect(fontCheck.btnFont).toMatch(/Inter|Montserrat/i);
+    expect(fontCheck.interLoaded).toBe(true);
+    expect(fontCheck.montserratLoaded).toBe(true);
+
     // Verificar que las 3 tarjetas están en la misma fila en móvil (390px) y sin desborde horizontal
     const [b1, b2, b3, overflow] = await Promise.all([
       pedirCard.boundingBox(),

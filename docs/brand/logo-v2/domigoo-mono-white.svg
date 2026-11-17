@@ -13,24 +13,24 @@
     <path d="M 14 166 C 58 144 106 146 146 130 C 172 119 186 98 188 76 C 194 106 178 138 142 154 C 102 172 52 166 14 166 Z" fill="#FFFFFF"/>
     <path d="M 46 158 C 78 153 108 150 136 140" fill="none" stroke="#29243E" stroke-width="2.6" stroke-linecap="round" stroke-dasharray="7 6" opacity="0.9"/>
 
-    <!-- Motociclista con casco y caja de reparto -->
+    <!-- Motociclista con casco y caja de reparto (silueta clara de motocicleta) -->
     <g fill="#FFFFFF">
       <!-- Caja de reparto trasera -->
-      <rect x="73" y="84" width="18" height="15" rx="2.5"/>
-      <rect x="72" y="83" width="20" height="3.5" rx="1.5"/>
-      <!-- Rueda trasera y delantera -->
-      <circle cx="94" cy="115" r="9.5"/>
-      <circle cx="94" cy="115" r="4.2" fill="#29243E"/>
-      <circle cx="139" cy="115" r="9.5"/>
-      <circle cx="139" cy="115" r="4.2" fill="#29243E"/>
-      <!-- Chasis de moto y horquilla -->
-      <path d="M 88 106 L 106 100 L 124 98 L 134 88 L 138 90 L 130 105 L 140 115 L 135 116 L 126 107 L 100 112 L 88 110 Z"/>
-      <!-- Guardabarros y asiento -->
-      <path d="M 86 102 Q 95 97 104 101 L 121 97 L 118 93 L 94 97 Z"/>
-      <!-- Conductor con casco -->
-      <circle cx="117" cy="72" r="7"/>
-      <path d="M 120 69 L 125 71 L 124 74 L 119 73 Z" fill="#29243E" opacity="0.85"/>
-      <path d="M 111 79 C 104 82 100 90 103 97 L 114 97 L 119 88 L 129 89 L 131 85 L 119 81 Z"/>
+      <rect x="72" y="83" width="19" height="15" rx="2.5"/>
+      <rect x="71" y="81.5" width="21" height="3.5" rx="1.5"/>
+      <!-- Rueda trasera y delantera (neumáticos gruesos de moto) -->
+      <circle cx="93" cy="115" r="10.5"/>
+      <circle cx="93" cy="115" r="3.6" fill="#29243E"/>
+      <circle cx="140" cy="115" r="10.5"/>
+      <circle cx="140" cy="115" r="3.6" fill="#29243E"/>
+      <!-- Cuerpo de moto: motor, tanque curvo, carenado y horquilla gruesa -->
+      <path d="M 86 105 L 101 99 L 116 95 C 122 90 128 90 133 95 L 138 87 L 142 89 L 135 103 L 142 115 L 136 116 L 128 106 L 118 112 L 101 112 L 87 109 Z"/>
+      <!-- Asiento y guardabarros -->
+      <path d="M 85 101 Q 96 95 108 98 L 120 94 L 118 90 L 92 95 Z"/>
+      <!-- Conductor con casco integral -->
+      <circle cx="117" cy="71" r="7.2"/>
+      <path d="M 120 68 L 125.5 70.5 L 124.5 73.5 L 119 72.5 Z" fill="#29243E" opacity="0.88"/>
+      <path d="M 110 78 C 103 81 99 89 102 97 L 114 97 L 119 88 L 130 89 L 132 84.5 L 119 80.5 Z"/>
       <path d="M 112 96 L 120 104 L 118 112 L 113 111 L 114 104 L 106 98 Z"/>
     </g>
 

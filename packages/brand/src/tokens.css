@@ -12,8 +12,8 @@
   --domigoo-surface: #ffffff;
 
   /* Tipografía oficial (OFL) */
-  --domigoo-font-brand: var(--font-montserrat), "Montserrat", Arial, sans-serif;
-  --domigoo-font-ui: var(--font-inter), "Inter", system-ui, -apple-system, sans-serif;
+  --domigoo-font-brand: var(--font-montserrat, "Montserrat"), Arial, sans-serif;
+  --domigoo-font-ui: var(--font-inter, "Inter"), system-ui, -apple-system, sans-serif;
 
   /* Tokens de interfaz */
   --dg-bg: var(--domigoo-white);

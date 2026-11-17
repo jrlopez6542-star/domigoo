@@ -3,8 +3,35 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
-import { Bike, Gift, MapPin, ShoppingBag, Store, Users, UtensilsCrossed } from "lucide-react";
+import { Gift, MapPin, ShoppingBag, Store, Users, UtensilsCrossed } from "lucide-react";
 import { extractTrackingToken } from "@/lib/api-client";
+
+function MotoIcon({ size = 24, strokeWidth = 2 }: { size?: number; strokeWidth?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={strokeWidth}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {/* Ruedas gruesas de motocicleta */}
+      <circle cx="5.5" cy="17" r="3" />
+      <circle cx="18.5" cy="17" r="3" />
+      {/* Caja de domicilio trasera */}
+      <rect x="2.5" y="7" width="5.5" height="4.5" rx="1" />
+      {/* Tanque, asiento y chasis de moto */}
+      <path d="M5.5 14 L8 11.5 L12.5 11.5 C14.2 10 15.6 10.2 16.4 11.8 L18.5 17" />
+      <path d="M8.5 14.5 H14.5 L16 11.5" />
+      {/* Horquilla y manubrio */}
+      <path d="M14.5 7.5 H17 L18.5 14" />
+    </svg>
+  );
+}
 
 export function HomeLanding({ appName }: { appName: string }) {
   const router = useRouter();
@@ -105,7 +132,7 @@ export function HomeLanding({ appName }: { appName: string }) {
             aria-label="Soy domiciliario"
           >
             <span className="dg-home-card-icon" aria-hidden="true">
-              <Bike size={24} strokeWidth={2} />
+              <MotoIcon size={24} strokeWidth={2} />
             </span>
             <span className="dg-home-card-label">Soy domiciliario</span>
           </Link>
@@ -176,7 +203,7 @@ export function HomeLanding({ appName }: { appName: string }) {
               <span>Clientes</span>
             </Link>
             <Link href="/domiciliario" className="dg-ecosystem-item">
-              <Bike size={20} strokeWidth={1.9} aria-hidden="true" />
+              <MotoIcon size={20} strokeWidth={1.9} />
               <span>Domiciliarios</span>
             </Link>
             <Link href="/cliente" className="dg-ecosystem-item">
