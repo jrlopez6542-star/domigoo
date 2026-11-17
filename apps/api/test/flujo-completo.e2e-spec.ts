@@ -62,7 +62,7 @@ async function registerAdmin(pool: Pool, email: string): Promise<string> {
   const token = String(record(res.body)["token"]);
   await pool.query(
     `INSERT INTO admin_profiles ("userId", "displayName", role, "createdAt", "updatedAt")
-     SELECT id, 'Admin M40', 'OPS_ADMIN', now(), now()
+     SELECT id, 'Admin M40', 'SUPERADMIN', now(), now()
      FROM users WHERE email = $1`,
     [email],
   );
