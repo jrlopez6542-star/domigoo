@@ -382,7 +382,8 @@ a {
 
 @media (min-width: 640px) {
   .dg-ecosystem-grid {
-    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(120px, 1fr));
+    gap: 12px;
   }
 }
 
@@ -390,14 +391,14 @@ a {
   background: #29243e;
   border: 1px solid rgba(121, 213, 208, 0.3);
   border-radius: 14px;
-  padding: 12px 8px;
+  padding: 12px 10px;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 6px;
   color: #f5f7fa;
   text-align: center;
-  font-size: 0.76rem;
+  font-size: 0.78rem;
   font-weight: 600;
   text-decoration: none;
 }
