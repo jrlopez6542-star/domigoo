@@ -49,5 +49,11 @@ describe("Configuración y contratos de @domigoo/admin (M31/M39)", () => {
     expect(content).toContain("eligibleCouriers");
     expect(content).not.toContain("DATABASE_URL");
     expect(content).not.toContain("APP_ENCRYPTION_KEY");
+
+    const proxyRoute = path.resolve(process.cwd(), "src/app/api/proxy/[...path]/route.ts");
+    expect(fs.existsSync(proxyRoute)).toBe(true);
+    const proxyContent = fs.readFileSync(proxyRoute, "utf8");
+    expect(proxyContent).toContain("getAdminServerConfig");
+    expect(proxyContent).toContain("set-cookie");
   });
 });

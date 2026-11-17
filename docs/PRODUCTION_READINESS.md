@@ -136,18 +136,22 @@
 | `SUBSCRIPTION_PLACEHOLDER_PRICE_COP` | Opcional (default `0`) | Default `0` en código | Precio placeholder configurable en COP mientras se definen tarifas definitivas (`0`). | `apps/api/src/config/env.ts` |
 | `APP_NAME` | Opcional (default `DOMIGOO`) | Default `DOMIGOO` | Nombre público del producto expuesto en OpenAPI y avisos. | `apps/api/src/config/env.ts` |
 
-### 3.2 Valores Exactos de `CORS_ORIGINS` y `API_BASE_URL` para `https://domigoo.vercel.app`
+### 3.2 Valores Exactos de `CORS_ORIGINS` y `API_BASE_URL` para los 3 Proyectos Vercel
 
-Con la decisión del dueño de operar en **`https://domigoo.vercel.app`** (sin dominio personalizado):
+Con la arquitectura de 3 proyectos Vercel bajo `jrlopez6542-star/domigoo` (rama de producción `Contabilidad`):
 
 ```dotenv
-# En @domigoo/api (Vercel Production)
-CORS_ORIGINS=https://domigoo.vercel.app
+# En @domigoo/api (proyecto Vercel: domigoo, Root Directory: .)
+CORS_ORIGINS=https://domigoo.vercel.app,https://domigoo-web.vercel.app,https://domigoo-admin.vercel.app
 BILLING_ENABLED=false
 SUBSCRIPTION_TRIAL_DAYS=15
 SUBSCRIPTION_PLACEHOLDER_PRICE_COP=0
 
-# En @domigoo/web y @domigoo/admin (Route Handlers proxy de Next.js hacia la API de producción)
+# En @domigoo/web (proyecto Vercel: domigoo-web, Root Directory: apps/web)
+API_BASE_URL=https://domigoo.vercel.app
+APP_NAME=DOMIGOO
+
+# En @domigoo/admin (proyecto Vercel: domigoo-admin, Root Directory: apps/admin)
 API_BASE_URL=https://domigoo.vercel.app
 APP_NAME=DOMIGOO
 
