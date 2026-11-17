@@ -1,45 +1,54 @@
-# DOMIGOO — APK Android (Preview)
+# DOMIGOO — APK Android (Flutter Preview)
 
-Este documento describe cómo instalar, reconstruir y verificar el APK de previsualización de la app móvil de DOMIGOO (`@domigoo/movil`).
+Este documento describe cómo instalar, reconstruir y verificar el APK de previsualización de la app móvil de domiciliarios de DOMIGOO (`apps/movil_flutter/`, paquete `domigoo_movil`).
 
 ## Configuración de la compilación
 
-- **Nombre de la app:** `DOMIGOO`
+- **Tecnología:** Flutter (`3.29.2`, Dart `3.7.2`), solo plataforma Android.
+- **Nombre visible de la app:** `DOMIGOO`
 - **Paquete Android (`applicationId`):** `com.domigoo.movil`
 - **Versión:** `1.0.0` (`versionCode: 1`)
-- **Identidad visual:** `BRAND-001` (Futuro Urbano, fondo `#29243E`, icono, icono adaptativo y splash).
-- **API de producción configurada:** `https://domigoo.vercel.app` (vía `EXPO_PUBLIC_API_URL` en tiempo de empaquetado y `expo.extra.apiUrl` en `apps/movil/app.json`).
+- **Identidad visual:** `BRAND-001` (Futuro Urbano: `#29243E`, `#79D5D0`, `#C0C6D4`, `#F5F7FA`, fuentes locales `Montserrat` e `Inter`, icono, icono adaptativo y splash).
+- **API de producción configurada:** `https://domigoo.vercel.app` (configurable con `--dart-define=API_URL=...`).
 - **Permisos declarados:** `INTERNET`, `ACCESS_FINE_LOCATION` y `ACCESS_COARSE_LOCATION`.
 
 ## Cómo instalar el APK en un teléfono Android
 
-1. Descarga el archivo `domigoo-android-1.0.0-preview.apk` desde el **Release prerelease** (`v1.0.0-android-preview`) o desde los **Artifacts** del workflow `Android APK (Preview)` en GitHub Actions.
+1. Descarga el artifact `domigoo-apk` (`app-release.apk`) desde la ejecución del workflow `Android APK (Preview)` en GitHub Actions.
 2. En tu teléfono Android, abre **Configuración → Seguridad / Aplicaciones** y habilita **Instalar aplicaciones desconocidas** para el navegador o gestor de archivos desde el que abras el `.apk`.
 3. Toca el archivo `.apk` descargado y confirma **Instalar** (si Google Play Protect muestra aviso por firma de depuración, selecciona **Instalar de todas formas**).
-4. Al abrir la app, verás el splash Futuro Urbano (`#29243E`) y la pantalla de bienvenida `HOME-002`.
+4. Al abrir la app, verás el splash Futuro Urbano (`#29243E`) y la pantalla de bienvenida `DOMIGOO`.
 
-## Cómo reconstruir el APK localmente (sin servicios pagos ni Expo EAS)
+## Cómo verificar la integridad del APK (SHA-256)
 
-Requisitos previos: Node.js 24, `pnpm`, JDK 17 y Android SDK (`platform-tools`, `platforms;android-35`, `build-tools;35.0.0`) con `ANDROID_HOME` configurado.
+Antes de instalar, compara el hash SHA-256 del archivo descargado con el publicado en el log del workflow `Android APK (Preview)`:
 
 ```bash
-# 1. Instalar dependencias del monorepo
-pnpm install --frozen-lockfile
+sha256sum app-release.apk
+```
 
-# 2. Generar el proyecto nativo Android (no se sube a git)
-cd apps/movil
-EXPO_PUBLIC_API_URL=https://domigoo.vercel.app npx expo prebuild --platform android --no-install
+## Cómo reconstruir el APK localmente (sin servicios pagos)
 
-# 3. Compilar el APK release firmado con el keystore de debug local
-cd android
-EXPO_PUBLIC_API_URL=https://domigoo.vercel.app ./gradlew assembleRelease --no-daemon
+Requisitos previos: Flutter `3.29.2`, JDK 17 y Android SDK (`platform-tools`, `platforms;android-35`, `build-tools;35.0.0`).
+
+```bash
+cd apps/movil_flutter
+
+# 1. Instalar dependencias
+flutter pub get
+
+# 2. Analizar y ejecutar pruebas unitarias/widget
+flutter analyze
+flutter test
+
+# 3. Compilar el APK release firmado con keystore de debug local
+flutter build apk --release --dart-define=API_URL=https://domigoo.vercel.app
 ```
 
 El APK generado queda en:
-`apps/movil/android/app/build/outputs/apk/release/app-release.apk`
+`apps/movil_flutter/build/app/outputs/flutter-apk/app-release.apk`
 
 ## Limitaciones conocidas (Preview)
 
-- **Firma de depuración (`debug.keystore`):** Este APK está firmado con el keystore de debug generado localmente por Expo/Gradle. **No es apto para publicar en Google Play Store** ni debe usarse como firma definitiva de producción.
-- **Carpeta `apps/movil/android/`:** Se genera de forma reproducible con `expo prebuild` y está excluida en `.gitignore` junto con `*.keystore`, `*.jks` y `*.apk`.
+- **Firma de depuración (`debug.keystore`):** Este APK está firmado con el keystore de debug generado localmente por Gradle. **No es apto para publicar en Google Play Store** ni debe usarse como firma definitiva de producción.
 - **Actualización de la app:** Si se cambia la firma en el futuro (por ejemplo con un keystore de release oficial), será necesario desinstalar la versión preview antes de instalar la nueva.

@@ -5,64 +5,56 @@ on:
     branches:
       - Contabilidad
     paths:
-      - "apps/movil/**"
-      - "packages/brand/**"
+      - "apps/movil_flutter/**"
       - ".github/workflows/android-apk.yml"
   workflow_dispatch:
 
 jobs:
   build-android-apk:
-    name: Build Android Release APK (Debug Signed)
+    name: Build Flutter Android APK (Debug Signed)
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10.33.4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: pnpm
 
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
 
-      - name: Aceptar licencias Android SDK
-        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null 2>&1 || true
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.29.2"
+          channel: stable
+          cache: true
 
-      - name: Instalar dependencias
-        run: pnpm install --frozen-lockfile
+      - name: Instalar dependencias Flutter
+        working-directory: apps/movil_flutter
+        run: flutter pub get
 
-      - name: Generar proyecto Android con Expo Prebuild
-        working-directory: apps/movil
-        env:
-          EXPO_PUBLIC_API_URL: https://domigoo.vercel.app
-          EXPO_NO_GIT_STATUS: "1"
-        run: npx expo prebuild --platform android --no-install
+      - name: Analizar código Dart (flutter analyze)
+        working-directory: apps/movil_flutter
+        run: flutter analyze
+
+      - name: Ejecutar pruebas (flutter test)
+        working-directory: apps/movil_flutter
+        run: flutter test
 
       - name: Compilar APK Release (firmado con keystore debug)
-        working-directory: apps/movil/android
-        env:
-          EXPO_PUBLIC_API_URL: https://domigoo.vercel.app
-          GRADLE_OPTS: -Dorg.gradle.jvmargs="-Xmx4096m -XX:MaxMetaspaceSize=1024m"
-        run: ./gradlew assembleRelease --no-daemon --console=plain
+        working-directory: apps/movil_flutter
+        run: flutter build apk --release --dart-define=API_URL=https://domigoo.vercel.app
 
       - name: Verificar APK con aapt y SHA-256
         run: |
-          APK_PATH="apps/movil/android/app/build/outputs/apk/release/app-release.apk"
+          APK_PATH="apps/movil_flutter/build/app/outputs/flutter-apk/app-release.apk"
           ls -lh "$APK_PATH"
           sha256sum "$APK_PATH"
           AAPT=$(find "${ANDROID_HOME}/build-tools" -name aapt | sort -V | tail -n 1)
-          "$AAPT" dump badging "$APK_PATH" | head -n 15
+          "$AAPT" dump badging "$APK_PATH" | head -n 20
 
       - name: Subir APK como artifact
         uses: actions/upload-artifact@v4
         with:
-          name: domigoo-android-1.0.0-preview
-          path: apps/movil/android/app/build/outputs/apk/release/app-release.apk
+          name: domigoo-apk
+          path: apps/movil_flutter/build/app/outputs/flutter-apk/app-release.apk
           retention-days: 30

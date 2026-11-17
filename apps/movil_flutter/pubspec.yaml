@@ -1,0 +1,53 @@
+name: domigoo_movil
+description: "DOMIGOO — App del domiciliario (Futuro Urbano)"
+publish_to: "none"
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.7.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+  http: ^1.2.2
+  flutter_secure_storage: ^9.2.4
+  geolocator: ^13.0.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+  flutter_launcher_icons: ^0.14.3
+  flutter_native_splash: ^2.4.4
+
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/images/icon.png"
+  adaptive_icon_background: "#29243E"
+  adaptive_icon_foreground: "assets/images/adaptive-icon.png"
+
+flutter_native_splash:
+  color: "#29243E"
+  image: "assets/images/splash-icon.png"
+  android_12:
+    color: "#29243E"
+    image: "assets/images/splash-icon.png"
+  ios: false
+  web: false
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/icon.png
+    - assets/images/adaptive-icon.png
+    - assets/images/splash-icon.png
+  fonts:
+    - family: Montserrat
+      fonts:
+        - asset: assets/fonts/Montserrat.ttf
+        - asset: assets/fonts/Montserrat-Italic.ttf
+          style: italic
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter.ttf
