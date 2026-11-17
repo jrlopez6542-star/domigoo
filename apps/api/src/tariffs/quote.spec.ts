@@ -1,5 +1,6 @@
 import { quoteCop } from "./quote.js";
 import { isNightInBogota } from "./bogota-time.js";
+import { readPoint } from "./tariffs.controller.js";
 
 describe("quoteCop", () => {
   it("calcula en pesos enteros, con mínimo y recargo nocturno", () => {
@@ -40,5 +41,18 @@ describe("isNightInBogota", () => {
   it("usa la hora de América/Bogotá y cruza la medianoche", () => {
     expect(isNightInBogota(new Date("2026-01-15T03:30:00.000Z"), 1320, 360)).toBe(true);
     expect(isNightInBogota(new Date("2026-01-15T18:00:00.000Z"), 1320, 360)).toBe(false);
+  });
+});
+
+describe("readPoint", () => {
+  it("acepta coordenadas WGS84 válidas y rechaza valores fuera de rango o no finitos", () => {
+    expect(readPoint({ longitude: -73.9132, latitude: 4.9655 })).toEqual({
+      longitude: -73.9132,
+      latitude: 4.9655,
+    });
+    expect(readPoint({ longitude: -181, latitude: 4.9655 })).toBeNull();
+    expect(readPoint({ longitude: -73.9132, latitude: 91 })).toBeNull();
+    expect(readPoint({ longitude: Number.NaN, latitude: 4.9655 })).toBeNull();
+    expect(readPoint({ longitude: Number.POSITIVE_INFINITY, latitude: 4.9655 })).toBeNull();
   });
 });

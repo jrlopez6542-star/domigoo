@@ -3,8 +3,13 @@ const SECRET_KEYS = new Set([
   "passwordHash",
   "token",
   "tokenHash",
+  "tokenCiphertext",
+  "pushToken",
   "pin",
   "ciphertext",
+  "pickupPinCiphertext",
+  "deliveryPinCiphertext",
+  "documentNumber",
   "authorization",
   "cookie",
 ]);
