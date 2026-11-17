@@ -194,7 +194,7 @@ describe("suscripción sin pasarela", () => {
       .post("/v1/admin/subscriptions/advance")
       .set("Authorization", `Bearer ${ops}`)
       .expect(201);
-    expect(record(advanced.body)["advanced"]).toBe(0);
+    expect(record(advanced.body)["changed"]).toBe(0);
 
     await request(server())
       .get(`/v1/restaurants/${restaurantId}/dispatch-gate`)
