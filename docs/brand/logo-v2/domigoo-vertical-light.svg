@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 330" role="img" aria-label="DOMIGOO Tu ciudad a tu puerta">
+  
+  <defs>
+    <linearGradient id="vl-silver" x1="15%" y1="0%" x2="85%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="45%" stop-color="#D5DCE6"/>
+      <stop offset="80%" stop-color="#9BA4B8"/>
+      <stop offset="100%" stop-color="#6F788E"/>
+    </linearGradient>
+    <linearGradient id="vl-silver-light" x1="15%" y1="0%" x2="85%" y2="100%">
+      <stop offset="0%" stop-color="#4A436B"/>
+      <stop offset="55%" stop-color="#29243E"/>
+      <stop offset="100%" stop-color="#1A1629"/>
+    </linearGradient>
+    <linearGradient id="vl-turq" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#19C2BC"/>
+      <stop offset="55%" stop-color="#79D5D0"/>
+      <stop offset="100%" stop-color="#A6F5F0"/>
+    </linearGradient>
+    <linearGradient id="vl-trail" x1="0%" y1="50%" x2="100%" y2="50%">
+      <stop offset="0%" stop-color="#79D5D0" stop-opacity="0.25"/>
+      <stop offset="100%" stop-color="#29243E"/>
+    </linearGradient>
+    <linearGradient id="vl-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#352F52"/>
+      <stop offset="55%" stop-color="#29243E"/>
+      <stop offset="100%" stop-color="#181526"/>
+    </linearGradient>
+    <radialGradient id="vl-glow" cx="50%" cy="45%" r="55%">
+      <stop offset="0%" stop-color="#79D5D0" stop-opacity="0.24"/>
+      <stop offset="100%" stop-color="#29243E" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  
+  <g transform="translate(95, 14) scale(1.08)">
+    <!-- Estelas de velocidad -->
+    <polygon points="56,50 18,54 54,59" fill="url(#vl-trail)"/>
+    <polygon points="51,71 6,76 49,81" fill="url(#vl-trail)"/>
+    <polygon points="46,92 20,97 44,102" fill="url(#vl-trail)"/>
+
+    <!-- Letra D itálica -->
+    <path d="M 62 28 L 132 28 C 176 28 198 54 188 94 C 181 120 164 134 136 140 L 146 116 C 160 110 166 96 169 82 C 173 61 159 50 130 50 L 82 50 L 66 122 L 42 128 Z" fill="url(#vl-silver-light)"/>
+
+    <!-- Ruta turquesa -->
+    <path d="M 14 166 C 58 144 106 146 146 130 C 172 119 186 98 188 76 C 194 106 178 138 142 154 C 102 172 52 166 14 166 Z" fill="url(#vl-turq)"/>
+    <path d="M 46 158 C 78 153 108 150 136 140" fill="none" stroke="#F5F7FA" stroke-width="2.6" stroke-linecap="round" stroke-dasharray="7 6" opacity="0.9"/>
+
+    <!-- Motociclista con casco y caja de reparto -->
+    <g fill="#29243E">
+      <!-- Caja de reparto trasera -->
+      <rect x="73" y="84" width="18" height="15" rx="2.5"/>
+      <rect x="72" y="83" width="20" height="3.5" rx="1.5"/>
+      <!-- Rueda trasera y delantera -->
+      <circle cx="94" cy="115" r="9.5"/>
+      <circle cx="94" cy="115" r="4.2" fill="#F5F7FA"/>
+      <circle cx="139" cy="115" r="9.5"/>
+      <circle cx="139" cy="115" r="4.2" fill="#F5F7FA"/>
+      <!-- Chasis de moto y horquilla -->
+      <path d="M 88 106 L 106 100 L 124 98 L 134 88 L 138 90 L 130 105 L 140 115 L 135 116 L 126 107 L 100 112 L 88 110 Z"/>
+      <!-- Guardabarros y asiento -->
+      <path d="M 86 102 Q 95 97 104 101 L 121 97 L 118 93 L 94 97 Z"/>
+      <!-- Conductor con casco -->
+      <circle cx="117" cy="72" r="7"/>
+      <path d="M 120 69 L 125 71 L 124 74 L 119 73 Z" fill="#F5F7FA" opacity="0.85"/>
+      <path d="M 111 79 C 104 82 100 90 103 97 L 114 97 L 119 88 L 129 89 L 131 85 L 119 81 Z"/>
+      <path d="M 112 96 L 120 104 L 118 112 L 113 111 L 114 104 L 106 98 Z"/>
+    </g>
+
+    <!-- Pin de ubicación turquesa -->
+    <path d="M 176 14 C 162 14 152 24 152 37 C 152 52 170 67 174 71 C 175 72 177 72 178 71 C 182 67 200 52 200 37 C 200 24 190 14 176 14 Z" fill="url(#vl-turq)"/>
+    <circle cx="176" cy="36" r="8.5" fill="#F5F7FA"/>
+  </g>
+  
+  <g transform="translate(24, 272) scale(1)">
+    <text x="0" y="0" font-family="Montserrat, 'Arial Black', Arial, sans-serif" font-size="68" font-weight="800" font-style="italic" letter-spacing="-1">
+      <tspan fill="#29243E">DOMI</tspan><tspan fill="#0E9F9A">GOO</tspan>
+    </text>
+    <polygon points="2,18 42,16.5 42,19.5" fill="#79D5D0"/>
+    <text x="182" y="23" text-anchor="middle" font-family="Montserrat, Inter, Arial, sans-serif" font-size="13.5" font-weight="700" letter-spacing="3.2" fill="#29243E">TU CIUDAD A TU PUERTA</text>
+    <polygon points="362,18 322,16.5 322,19.5" fill="#79D5D0"/>
+  </g>
+</svg>
