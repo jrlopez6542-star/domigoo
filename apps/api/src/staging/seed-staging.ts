@@ -151,7 +151,10 @@ async function main(): Promise<void> {
       const zoneRes = await client.query<{ id: string }>(
         `INSERT INTO tariff_zones (id, "versionId", code, name, area, priority)
          VALUES (gen_random_uuid(), $1, $2, $3, ST_GeogFromText($4), 100)
-         ON CONFLICT ("versionId", code) DO UPDATE SET name = EXCLUDED.name
+         ON CONFLICT ("versionId", code) DO UPDATE
+           SET name = EXCLUDED.name,
+               area = EXCLUDED.area,
+               priority = EXCLUDED.priority
          RETURNING id`,
         [tariffVersionId, TOCANCIPA_ZONE_CODE, TOCANCIPA_ZONE_NAME, TOCANCIPA_POLYGON_WKT],
       );
