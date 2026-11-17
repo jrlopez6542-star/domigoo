@@ -1,9 +1,11 @@
+import { timingSafeEqual } from "node:crypto";
 import { type CanActivate, type ExecutionContext, HttpException, Injectable } from "@nestjs/common";
 import type { Request, Response } from "express";
 import { RateLimitService } from "./rate-limit.service.js";
 
 const DEFAULT_WINDOW_SECONDS = 60;
 const DEFAULT_AUTH_MAX = 60;
+const DEFAULT_AUTH_SESSION_MAX = 600;
 const DEFAULT_SENSITIVE_MAX = 30;
 
 @Injectable()
@@ -36,15 +38,40 @@ export class RateLimitGuard implements CanActivate {
 }
 
 export function extractClientIp(request: Request): string {
-  const forwarded = request.headers["x-forwarded-for"];
-  const raw = Array.isArray(forwarded) ? forwarded[0] : forwarded;
-  if (typeof raw === "string" && raw.trim() !== "") {
-    const first = raw.split(",")[0]?.trim();
+  const expectedSecret = process.env["PROXY_SHARED_SECRET"]?.trim();
+  if (expectedSecret) {
+    const providedSecret = firstHeaderValue(request.headers["x-domigoo-proxy-secret"]);
+    if (providedSecret && safeEquals(providedSecret, expectedSecret)) {
+      const proxiedIp = firstHeaderValue(request.headers["x-domigoo-client-ip"]);
+      if (proxiedIp) {
+        return proxiedIp;
+      }
+    }
+  }
+
+  const forwarded = firstHeaderValue(request.headers["x-forwarded-for"]);
+  if (forwarded) {
+    const first = forwarded.split(",")[0]?.trim();
     if (first) {
       return first;
     }
   }
   return request.ip || "unknown";
+}
+
+function firstHeaderValue(value: string | string[] | undefined): string | undefined {
+  const raw = Array.isArray(value) ? value[0] : value;
+  const trimmed = typeof raw === "string" ? raw.trim() : "";
+  return trimmed !== "" ? trimmed : undefined;
+}
+
+function safeEquals(a: string, b: string): boolean {
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) {
+    return false;
+  }
+  return timingSafeEqual(bufA, bufB);
 }
 
 function resolvePolicy(
@@ -57,9 +84,20 @@ function resolvePolicy(
   );
   const windowMs = windowSeconds * 1000;
 
-  if (path.startsWith("/v1/auth/")) {
+  if (method === "POST" && (path === "/v1/auth/login" || path === "/v1/auth/register")) {
     const limit = readPositiveInt(process.env["RATE_LIMIT_AUTH_MAX"], DEFAULT_AUTH_MAX);
     return { bucket: "auth", limit, windowMs };
+  }
+
+  if (
+    (method === "GET" && path === "/v1/auth/me") ||
+    (method === "POST" && path === "/v1/auth/logout")
+  ) {
+    const limit = readPositiveInt(
+      process.env["RATE_LIMIT_AUTH_SESSION_MAX"],
+      DEFAULT_AUTH_SESSION_MAX,
+    );
+    return { bucket: "auth_session", limit, windowMs };
   }
 
   if (

@@ -26,6 +26,14 @@ async function forward(
   if (idempotencyKey) {
     headers.set("idempotency-key", idempotencyKey);
   }
+  const clientIp = extractProxyClientIp(request);
+  if (clientIp) {
+    headers.set("x-domigoo-client-ip", clientIp);
+  }
+  const proxySecret = process.env["PROXY_SHARED_SECRET"]?.trim();
+  if (proxySecret) {
+    headers.set("x-domigoo-proxy-secret", proxySecret);
+  }
 
   const hasBody = request.method !== "GET" && request.method !== "HEAD";
   const body = hasBody ? await request.text() : undefined;
@@ -59,3 +67,15 @@ export const POST = forward;
 export const PATCH = forward;
 export const PUT = forward;
 export const DELETE = forward;
+
+function extractProxyClientIp(request: NextRequest): string | undefined {
+  const forwarded = request.headers.get("x-forwarded-for");
+  if (forwarded) {
+    const first = forwarded.split(",")[0]?.trim();
+    if (first) {
+      return first;
+    }
+  }
+  const realIp = request.headers.get("x-real-ip")?.trim();
+  return realIp || undefined;
+}

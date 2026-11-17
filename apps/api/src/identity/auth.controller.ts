@@ -12,6 +12,7 @@ import {
 import { ApiOkResponse, ApiOperation, ApiTags } from "@nestjs/swagger";
 import type { Request, Response } from "express";
 import { APP_ENV, type AppEnv } from "../config/env.js";
+import { extractClientIp } from "../rate-limit/rate-limit.guard.js";
 import {
   AuthError,
   IdentityService,
@@ -67,12 +68,7 @@ export class AuthController {
     @Res({ passthrough: true }) response: Response,
   ): Promise<Record<string, string | null>> {
     const credentials = this.credentials(body);
-    const forwarded = request.headers["x-forwarded-for"];
-    const firstForwarded = Array.isArray(forwarded) ? forwarded[0] : forwarded;
-    const ip =
-      (typeof firstForwarded === "string" ? firstForwarded.split(",")[0]?.trim() : undefined) ||
-      request.ip ||
-      "unknown";
+    const ip = extractClientIp(request);
     const result = await this.run(() => this.identity.login(credentials, ip), response);
     this.presentSession(response, credentials, result.token);
     return this.publicBody(result.user, credentials.client, result.token);

@@ -3,6 +3,8 @@ DECLARE
   table_count integer;
   gist_count integer;
   accepted_unique boolean;
+  hardening_cols integer;
+  hardening_indexes integer;
   dentro boolean;
   metros double precision;
 BEGIN
@@ -12,8 +14,32 @@ BEGIN
     AND table_type = 'BASE TABLE'
     AND table_name <> 'spatial_ref_sys'
     AND table_name <> '_prisma_migrations';
-  IF table_count <> 42 THEN
-    RAISE EXCEPTION 'Se esperaban 42 tablas y hay %', table_count;
+  IF table_count <> 44 THEN
+    RAISE EXCEPTION 'Se esperaban 44 tablas y hay %', table_count;
+  END IF;
+
+  SELECT count(*) INTO hardening_cols
+  FROM information_schema.columns
+  WHERE table_schema = 'public'
+    AND (
+      (table_name = 'stored_objects' AND column_name IN ('key', 'mimeType', 'byteSize', 'sha256', 'data', 'createdAt'))
+      OR (table_name = 'rate_limit_buckets' AND column_name IN ('key', 'count', 'windowStart', 'blockedUntil'))
+    );
+  IF hardening_cols <> 10 THEN
+    RAISE EXCEPTION 'Faltan columnas esperadas en stored_objects o rate_limit_buckets (halladas=%)', hardening_cols;
+  END IF;
+
+  SELECT count(*) INTO hardening_indexes
+  FROM pg_class index_rel
+  JOIN pg_index index_def ON index_def.indexrelid = index_rel.oid
+  WHERE index_rel.relname IN (
+    'stored_objects_pkey',
+    'rate_limit_buckets_pkey',
+    'rate_limit_buckets_windowStart_idx',
+    'rate_limit_buckets_blockedUntil_idx'
+  );
+  IF hardening_indexes <> 4 THEN
+    RAISE EXCEPTION 'Faltan índices esperados en stored_objects o rate_limit_buckets (hallados=%)', hardening_indexes;
   END IF;
 
   SELECT count(*) INTO gist_count

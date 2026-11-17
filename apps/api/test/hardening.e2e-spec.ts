@@ -66,6 +66,7 @@ describe("endurecimiento M47 (rate limit, login throttling, storage privado, cro
   const originalAuthMax = process.env["RATE_LIMIT_AUTH_MAX"];
   const originalCronSecret = process.env["CRON_SECRET"];
   const originalStorageDriver = process.env["STORAGE_DRIVER"];
+  const originalProxySecret = process.env["PROXY_SHARED_SECRET"];
 
   beforeAll(() => {
     migrateDatabase(databaseUrl);
@@ -76,6 +77,7 @@ describe("endurecimiento M47 (rate limit, login throttling, storage privado, cro
     delete process.env["STORAGE_DRIVER"];
     process.env["RATE_LIMIT_AUTH_MAX"] = "60";
     process.env["CRON_SECRET"] = "test-cron-secret-m47";
+    process.env["PROXY_SHARED_SECRET"] = "test-proxy-secret-m47";
     await resetDatabase(databaseUrl);
     currentApp = await createApp(testEnv({ DATABASE_URL: databaseUrl, APP_NAME: "DOMIGOO" }));
   });
@@ -98,24 +100,76 @@ describe("endurecimiento M47 (rate limit, login throttling, storage privado, cro
     } else {
       process.env["STORAGE_DRIVER"] = originalStorageDriver;
     }
+    if (originalProxySecret === undefined) {
+      delete process.env["PROXY_SHARED_SECRET"];
+    } else {
+      process.env["PROXY_SHARED_SECRET"] = originalProxySecret;
+    }
   });
 
-  it("aplica rate limiting en /v1/auth/* con 429 y Retry-After", async () => {
+  it("aplica rate limiting en POST /v1/auth/login con 429 y excluye GET /v1/auth/me del bucket estricto", async () => {
     process.env["RATE_LIMIT_AUTH_MAX"] = "4";
 
-    for (let i = 0; i < 4; i += 1) {
+    for (let i = 0; i < 6; i += 1) {
       await request(server())
         .get("/v1/auth/me")
         .set("X-Forwarded-For", "198.51.100.10")
         .expect(401);
     }
 
+    for (let i = 0; i < 4; i += 1) {
+      await request(server())
+        .post("/v1/auth/login")
+        .set("X-Forwarded-For", "198.51.100.10")
+        .send({
+          email: `rl-${String(i)}@example.invalid`,
+          password: "clave-incorrecta-1",
+          client: "WEB",
+        })
+        .expect(401);
+    }
+
     const limited = await request(server())
-      .get("/v1/auth/me")
+      .post("/v1/auth/login")
       .set("X-Forwarded-For", "198.51.100.10")
+      .send({ email: "rl-5@example.invalid", password: "clave-incorrecta-1", client: "WEB" })
       .expect(429);
 
     expect(Number(limited.headers["retry-after"])).toBeGreaterThanOrEqual(1);
+  });
+
+  it("separa buckets por x-domigoo-client-ip cuando x-domigoo-proxy-secret es válido", async () => {
+    process.env["RATE_LIMIT_AUTH_MAX"] = "3";
+
+    for (let i = 0; i < 3; i += 1) {
+      await request(server())
+        .post("/v1/auth/login")
+        .set("X-Forwarded-For", "198.51.100.99")
+        .set("x-domigoo-client-ip", "203.0.113.1")
+        .set("x-domigoo-proxy-secret", "test-proxy-secret-m47")
+        .send({
+          email: `p1-${String(i)}@example.invalid`,
+          password: "clave-incorrecta-1",
+          client: "WEB",
+        })
+        .expect(401);
+    }
+
+    await request(server())
+      .post("/v1/auth/login")
+      .set("X-Forwarded-For", "198.51.100.99")
+      .set("x-domigoo-client-ip", "203.0.113.1")
+      .set("x-domigoo-proxy-secret", "test-proxy-secret-m47")
+      .send({ email: "p1-limit@example.invalid", password: "clave-incorrecta-1", client: "WEB" })
+      .expect(429);
+
+    await request(server())
+      .post("/v1/auth/login")
+      .set("X-Forwarded-For", "198.51.100.99")
+      .set("x-domigoo-client-ip", "203.0.113.2")
+      .set("x-domigoo-proxy-secret", "test-proxy-secret-m47")
+      .send({ email: "p2-ok@example.invalid", password: "clave-incorrecta-1", client: "WEB" })
+      .expect(401);
   });
 
   it("bloquea intentos fallidos de login sin revelar si el correo existe", async () => {
