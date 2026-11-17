@@ -351,12 +351,31 @@ describe("flujo completo de punta a punta, casos negativos y concurrencia (M40)"
         latitude: 4.968,
       });
 
-      // Segundo domiciliario autenticado para validar errores de actor no autorizado
+      // Segundo domiciliario registrado (no asignado) para validar errores de actor no autorizado
       const otherReg = await request(server())
         .post("/v1/auth/register")
         .send({ email: "courier2-m40@example.invalid", password, client: "MOBILE" })
         .expect(201);
       const otherCourierToken = String(record(otherReg.body)["token"]);
+      await request(server())
+        .post("/v1/consents")
+        .set("Authorization", `Bearer ${otherCourierToken}`)
+        .send({
+          legalDocumentId: docLegalId,
+          purpose: "DOCUMENT_STORAGE",
+          channel: "MOBILE",
+        })
+        .expect(201);
+      await request(server())
+        .post("/v1/couriers")
+        .set("Authorization", `Bearer ${otherCourierToken}`)
+        .send({
+          documentType: "CC",
+          documentNumber: "9000040099",
+          firstName: "Otro",
+          lastName: "M40",
+        })
+        .expect(201);
 
       // 6. Restaurante crea borrador y publica pedido
       const draft = await request(server())
@@ -761,18 +780,18 @@ describe("flujo completo de punta a punta, casos negativos y concurrencia (M40)"
       const winnerCourierId = resA.status === 201 ? courierA.courierId : courierB.courierId;
       const loserCourierId = resA.status === 201 ? courierB.courierId : courierA.courierId;
 
-      // Consistencia en BD: exactamente 1 oferta ACCEPTED, 1 CANCELLED, pedido asignado solo al ganador
+      // Consistencia en BD: exactamente 1 oferta ACCEPTED, 1 SUPERSEDED, pedido asignado solo al ganador
       const finalOffers = await pool.query<{ status: string; courierId: string }>(
         `SELECT status::text AS status, "courierId" FROM dispatch_offers WHERE "orderId" = $1`,
         [orderId],
       );
       expect(finalOffers.rows.filter((r) => r.status === "ACCEPTED")).toHaveLength(1);
-      expect(finalOffers.rows.filter((r) => r.status === "CANCELLED")).toHaveLength(1);
+      expect(finalOffers.rows.filter((r) => r.status === "SUPERSEDED")).toHaveLength(1);
       expect(finalOffers.rows.find((r) => r.courierId === winnerCourierId)?.status).toBe(
         "ACCEPTED",
       );
       expect(finalOffers.rows.find((r) => r.courierId === loserCourierId)?.status).toBe(
-        "CANCELLED",
+        "SUPERSEDED",
       );
 
       const finalOrder = await pool.query<{ status: string; assignedCourierId: string }>(
@@ -789,7 +808,7 @@ describe("flujo completo de punta a punta, casos negativos y concurrencia (M40)"
         [[winnerCourierId, loserCourierId]],
       );
       expect(availabilities.rows.find((r) => r.courierId === winnerCourierId)?.state).toBe(
-        "ON_ORDER",
+        "ON_SERVICE",
       );
       expect(availabilities.rows.find((r) => r.courierId === loserCourierId)?.state).toBe(
         "AVAILABLE",
