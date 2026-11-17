@@ -31,6 +31,18 @@ type CourierOrderView = {
   customerPhone?: string;
 };
 
+export type AvailableOfferItem = {
+  offerId: string;
+  orderId: string;
+  referenceCode: string;
+  restaurantName: string;
+  branchName: string;
+  pickupAddress: string;
+  dropoffAddress: string;
+  deliveryFeeCop: number;
+  expiresAt: string;
+};
+
 type CourierContextValue = {
   sessionUser: SessionUser | null;
   statusMessage: string;
@@ -57,9 +69,10 @@ type CourierContextValue = {
   handleUseMyLocation: () => void;
   handleAvailability: (nextState: "AVAILABLE" | "OFFLINE") => Promise<void>;
   handleSendLocation: (e: FormEvent) => Promise<void>;
-  // Entrega
-  offerId: string;
-  setOfferId: (v: string) => void;
+  // Ofertas y Entrega
+  availableOffers: AvailableOfferItem[];
+  loadingOffers: boolean;
+  loadAvailableOffers: () => Promise<void>;
   orderId: string;
   setOrderId: (v: string) => void;
   pickupPin: string;
@@ -67,8 +80,8 @@ type CourierContextValue = {
   deliveryPin: string;
   setDeliveryPin: (v: string) => void;
   orderView: CourierOrderView | null;
-  handleAcceptOffer: () => Promise<void>;
-  handleDeclineOffer: () => Promise<void>;
+  handleAcceptOffer: (targetOfferId: string) => Promise<void>;
+  handleDeclineOffer: (targetOfferId: string) => Promise<void>;
   handleLoadOrder: () => Promise<void>;
   handleJourneyStep: (action: "arrive-pickup" | "at-pickup" | "at-dropoff") => Promise<void>;
   handleVerifyPin: (kind: "pickup-pin" | "delivery-pin", pin: string) => Promise<void>;
@@ -140,7 +153,8 @@ export function CourierPortalShell({ children }: { children: ReactNode }) {
   );
 
   // Oferta y pedido
-  const [offerId, setOfferId] = useState("");
+  const [availableOffers, setAvailableOffers] = useState<AvailableOfferItem[]>([]);
+  const [loadingOffers, setLoadingOffers] = useState(false);
   const [orderId, setOrderId] = useState("");
   const [pickupPin, setPickupPin] = useState("");
   const [deliveryPin, setDeliveryPin] = useState("");
@@ -165,6 +179,7 @@ export function CourierPortalShell({ children }: { children: ReactNode }) {
       })
       .catch(() => {
         if (active) {
+          clearStoredActiveRole();
           setSessionUser(null);
         }
       })
@@ -184,6 +199,31 @@ export function CourierPortalShell({ children }: { children: ReactNode }) {
     }
   }, [checkingSession, sessionUser, pathname, router]);
 
+  const loadAvailableOffers = useCallback(async () => {
+    setLoadingOffers(true);
+    try {
+      const data = await callProxy<{ offers?: AvailableOfferItem[] }>("offers/available", "GET");
+      setAvailableOffers(Array.isArray(data.offers) ? data.offers : []);
+    } catch {
+      // En mocks parciales o sin perfil aún, mantenemos la lista actual.
+    } finally {
+      setLoadingOffers(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!sessionUser) {
+      return;
+    }
+    void loadAvailableOffers();
+    const timer = setInterval(() => {
+      void loadAvailableOffers();
+    }, 20000);
+    return () => {
+      clearInterval(timer);
+    };
+  }, [sessionUser, loadAvailableOffers]);
+
   const handleAuthenticated = useCallback((user: SessionUser) => {
     setStoredActiveRole("COURIER");
     setSessionUser(user);
@@ -193,6 +233,7 @@ export function CourierPortalShell({ children }: { children: ReactNode }) {
     clearStoredActiveRole();
     setSessionUser(null);
     setCourierId("");
+    setAvailableOffers([]);
     setOrderView(null);
     setAvailability("OFFLINE");
   }, []);
@@ -294,46 +335,63 @@ export function CourierPortalShell({ children }: { children: ReactNode }) {
     });
   }
 
-  async function handleAcceptOffer() {
-    if (!offerId.trim()) {
-      setErrorMessage("Ingresa el ID de la oferta.");
+  async function handleAcceptOffer(targetOfferId: string) {
+    if (!targetOfferId.trim()) {
       return;
     }
-    await runAction("accept-offer", async () => {
-      const res = await fetch(`/api/proxy/offers/${encodeURIComponent(offerId.trim())}/accept`, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "idempotency-key": `web-${offerId.trim()}-${String(Date.now())}`,
+    await runAction(`accept-${targetOfferId}`, async () => {
+      const res = await fetch(
+        `/api/proxy/offers/${encodeURIComponent(targetOfferId.trim())}/accept`,
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "idempotency-key": `web-${targetOfferId.trim()}-${String(Date.now())}`,
+          },
+          body: JSON.stringify({}),
         },
-        body: JSON.stringify({}),
-      });
+      );
       const data = (await res.json().catch(() => ({}))) as {
         message?: string;
         orderId?: string;
         status?: string;
+        orderStatus?: string;
       };
       if (!res.ok) {
         throw new Error(data.message ?? `Error ${String(res.status)}`);
       }
+      setAvailableOffers((prev) => prev.filter((item) => item.offerId !== targetOfferId));
       if (data.orderId) {
         setOrderId(data.orderId);
+        try {
+          const loaded = await callProxy<CourierOrderView>(
+            `orders/${encodeURIComponent(data.orderId)}`,
+            "GET",
+          );
+          setOrderView(loaded);
+        } catch {
+          setOrderView({
+            id: data.orderId,
+            status: data.orderStatus ?? data.status ?? "ACCEPTED",
+          });
+        }
       }
-      setStatusMessage(`Oferta aceptada (${data.status ?? "ACCEPTED"}).`);
+      setStatusMessage(`Oferta aceptada (${data.orderStatus ?? data.status ?? "ACCEPTED"}).`);
+      router.push("/domiciliario/entrega");
     });
   }
 
-  async function handleDeclineOffer() {
-    if (!offerId.trim()) {
-      setErrorMessage("Ingresa el ID de la oferta.");
+  async function handleDeclineOffer(targetOfferId: string) {
+    if (!targetOfferId.trim()) {
       return;
     }
-    await runAction("decline-offer", async () => {
+    await runAction(`decline-${targetOfferId}`, async () => {
       const data = await callProxy<{ status: string }>(
-        `offers/${encodeURIComponent(offerId.trim())}/decline`,
+        `offers/${encodeURIComponent(targetOfferId.trim())}/decline`,
         "POST",
         {},
       );
+      setAvailableOffers((prev) => prev.filter((item) => item.offerId !== targetOfferId));
       setStatusMessage(`Oferta rechazada (${data.status}).`);
     });
   }
@@ -467,8 +525,9 @@ export function CourierPortalShell({ children }: { children: ReactNode }) {
         handleUseMyLocation,
         handleAvailability,
         handleSendLocation,
-        offerId,
-        setOfferId,
+        availableOffers,
+        loadingOffers,
+        loadAvailableOffers,
         orderId,
         setOrderId,
         pickupPin,
@@ -517,6 +576,129 @@ function useCourierPortal() {
   return ctx;
 }
 
+function CourierAvailableOffersSection() {
+  const {
+    sessionUser,
+    busyAction,
+    availableOffers,
+    loadingOffers,
+    loadAvailableOffers,
+    handleAcceptOffer,
+    handleDeclineOffer,
+  } = useCourierPortal();
+
+  return (
+    <section
+      className="dg-card"
+      aria-labelledby="courier-offers-title"
+      data-testid="courier-offers-section"
+    >
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: "12px",
+          flexWrap: "wrap",
+          marginBottom: "12px",
+        }}
+      >
+        <div>
+          <h2 id="courier-offers-title" style={{ margin: 0 }}>
+            Ofertas disponibles
+          </h2>
+          <p className="dg-muted" style={{ margin: "4px 0 0", fontSize: "0.875rem" }}>
+            Actualización automática cada 20 s.
+          </p>
+        </div>
+        <button
+          type="button"
+          className="dg-btn dg-btn--secondary"
+          data-testid="courier-refresh-offers"
+          disabled={!sessionUser || loadingOffers}
+          onClick={() => {
+            void loadAvailableOffers();
+          }}
+        >
+          {loadingOffers ? "Actualizando..." : "Actualizar"}
+        </button>
+      </div>
+
+      {availableOffers.length === 0 ? (
+        <div
+          className="dg-alert dg-alert--info"
+          data-testid="courier-no-offers"
+          style={{ margin: 0 }}
+        >
+          No hay ofertas por ahora.
+        </div>
+      ) : (
+        <div className="dg-stack" style={{ gap: "12px" }}>
+          {availableOffers.map((offer) => (
+            <article
+              key={offer.offerId}
+              className="dg-card"
+              data-testid={`courier-offer-card-${offer.offerId}`}
+              style={{
+                padding: "16px",
+                borderColor: "rgba(121, 213, 208, 0.35)",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "flex-start",
+                  gap: "12px",
+                  flexWrap: "wrap",
+                }}
+              >
+                <div className="dg-stack" style={{ gap: "4px" }}>
+                  <strong style={{ fontSize: "1.05rem" }}>
+                    {offer.restaurantName}
+                    {offer.branchName ? ` · ${offer.branchName}` : ""}
+                  </strong>
+                  <span className="dg-muted">Recogida: {offer.pickupAddress}</span>
+                  <span className="dg-muted">
+                    Destino: {offer.dropoffAddress || "Por confirmar"}
+                  </span>
+                </div>
+                <span className="dg-pill" style={{ fontWeight: 700 }}>
+                  Tarifa: ${offer.deliveryFeeCop.toLocaleString("es-CO")} COP
+                </span>
+              </div>
+              <div className="dg-btn-row" style={{ marginTop: "12px" }}>
+                <button
+                  type="button"
+                  className="dg-btn"
+                  data-testid={`courier-accept-offer-${offer.offerId}`}
+                  disabled={!sessionUser || busyAction !== null}
+                  onClick={() => {
+                    void handleAcceptOffer(offer.offerId);
+                  }}
+                >
+                  {busyAction === `accept-${offer.offerId}` ? "Aceptando..." : "Aceptar"}
+                </button>
+                <button
+                  type="button"
+                  className="dg-btn dg-btn--secondary"
+                  data-testid={`courier-decline-offer-${offer.offerId}`}
+                  disabled={!sessionUser || busyAction !== null}
+                  onClick={() => {
+                    void handleDeclineOffer(offer.offerId);
+                  }}
+                >
+                  {busyAction === `decline-${offer.offerId}` ? "Rechazando..." : "Rechazar"}
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 export function CourierHomeScreen() {
   const { availability, courierId, orderView } = useCourierPortal();
 
@@ -545,6 +727,8 @@ export function CourierHomeScreen() {
           ) : null}
         </div>
       </div>
+
+      <CourierAvailableOffersSection />
 
       <div className="dg-grid-2">
         <Link href="/domiciliario/perfil" className="dg-card" style={{ textDecoration: "none" }}>
@@ -789,8 +973,6 @@ export function CourierEntregaScreen() {
   const {
     sessionUser,
     busyAction,
-    offerId,
-    setOfferId,
     orderId,
     setOrderId,
     pickupPin,
@@ -798,8 +980,6 @@ export function CourierEntregaScreen() {
     deliveryPin,
     setDeliveryPin,
     orderView,
-    handleAcceptOffer,
-    handleDeclineOffer,
     handleLoadOrder,
     handleJourneyStep,
     handleVerifyPin,
@@ -819,6 +999,8 @@ export function CourierEntregaScreen() {
 
   return (
     <div className="dg-stack" data-testid="domiciliario-entrega-screen">
+      {!orderView ? <CourierAvailableOffersSection /> : null}
+
       <section className="dg-card" aria-labelledby="courier-delivery-title">
         <h1 id="courier-delivery-title" style={{ marginBottom: "8px" }}>
           Entrega en curso
@@ -850,7 +1032,7 @@ export function CourierEntregaScreen() {
             </div>
           ) : (
             <p className="dg-muted" style={{ margin: 0 }}>
-              Cuando aceptes un domicilio verás aquí los datos de recogida y entrega.
+              Acepta una oferta disponible arriba para iniciar tu entrega paso a paso.
             </p>
           )}
 
@@ -942,84 +1124,35 @@ export function CourierEntregaScreen() {
           </div>
 
           <details className="dg-details">
-            <summary>Opciones avanzadas (ID de oferta / pedido)</summary>
-            <div className="dg-stack">
-              <div className="dg-grid-2">
-                <label className="dg-field" htmlFor="courier-offer-id">
-                  <span>ID de oferta</span>
-                  <input
-                    id="courier-offer-id"
-                    className="dg-input"
-                    type="text"
-                    value={offerId}
-                    onChange={(e) => {
-                      setOfferId(e.target.value);
-                    }}
-                    placeholder="UUID de la oferta"
-                  />
-                </label>
-                <div className="dg-btn-row" style={{ alignSelf: "end" }}>
-                  <button
-                    type="button"
-                    className="dg-btn"
-                    disabled={!sessionUser || busyAction !== null}
-                    onClick={() => {
-                      void handleAcceptOffer();
-                    }}
-                  >
-                    Aceptar oferta
-                  </button>
-                  <button
-                    type="button"
-                    className="dg-btn dg-btn--secondary"
-                    disabled={!sessionUser || busyAction !== null}
-                    onClick={() => {
-                      void handleDeclineOffer();
-                    }}
-                  >
-                    Rechazar
-                  </button>
-                </div>
-              </div>
-
-              <div className="dg-grid-2">
-                <label className="dg-field" htmlFor="courier-order-id">
-                  <span>ID de pedido asignado</span>
-                  <input
-                    id="courier-order-id"
-                    className="dg-input"
-                    type="text"
-                    value={orderId}
-                    onChange={(e) => {
-                      setOrderId(e.target.value);
-                    }}
-                    placeholder="UUID del pedido"
-                  />
-                </label>
-                <div className="dg-btn-row" style={{ alignSelf: "end" }}>
-                  <button
-                    type="button"
-                    className="dg-btn dg-btn--secondary"
-                    disabled={!sessionUser || busyAction !== null}
-                    onClick={() => {
-                      void handleLoadOrder();
-                    }}
-                  >
-                    Consultar pedido
-                  </button>
-                </div>
+            <summary>Consultar pedido activo manualmente (soporte)</summary>
+            <div className="dg-grid-2" style={{ marginTop: "10px" }}>
+              <label className="dg-field" htmlFor="courier-order-id">
+                <span>ID de pedido asignado</span>
+                <input
+                  id="courier-order-id"
+                  className="dg-input"
+                  type="text"
+                  value={orderId}
+                  onChange={(e) => {
+                    setOrderId(e.target.value);
+                  }}
+                  placeholder="UUID del pedido"
+                />
+              </label>
+              <div className="dg-btn-row" style={{ alignSelf: "end" }}>
+                <button
+                  type="button"
+                  className="dg-btn dg-btn--secondary"
+                  disabled={!sessionUser || busyAction !== null}
+                  onClick={() => {
+                    void handleLoadOrder();
+                  }}
+                >
+                  Consultar pedido
+                </button>
               </div>
             </div>
           </details>
-        </div>
-      </section>
-
-      <section className="dg-card" aria-labelledby="courier-soon-title">
-        <h2 id="courier-soon-title">Funciones en camino</h2>
-        <div className="dg-alert dg-alert--soon" style={{ marginBottom: 0 }}>
-          <strong>Próximamente:</strong> Bandeja automática de ofertas cercanas en tiempo real
-          (pendiente de endpoint `GET /v1/offers` en la API para listar ofertas pendientes sin
-          ingresar el ID manualmente).
         </div>
       </section>
     </div>

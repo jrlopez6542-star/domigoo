@@ -304,6 +304,26 @@ describe("oferta abierta", () => {
     if (firstOffer === undefined || secondOffer === undefined) {
       throw new Error("No aparecieron las dos ofertas");
     }
+    await request(server()).get("/v1/offers/available").expect(401);
+
+    const ownerAvailable = await request(server())
+      .get("/v1/offers/available")
+      .set("Authorization", `Bearer ${owner}`)
+      .expect(200);
+    expect(record(ownerAvailable.body)["offers"]).toEqual([]);
+
+    const firstAvailable = await request(server())
+      .get("/v1/offers/available")
+      .set("Authorization", `Bearer ${first}`)
+      .expect(200);
+    expect(record(firstAvailable.body)["offers"]).toEqual([
+      expect.objectContaining({
+        offerId: firstOffer,
+        orderId,
+        deliveryFeeCop: 5000,
+      }),
+    ]);
+
     const tokens = new Map([
       [firstOffer, first],
       [secondOffer, second],

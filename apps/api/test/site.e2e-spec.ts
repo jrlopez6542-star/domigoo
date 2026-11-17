@@ -129,5 +129,26 @@ describe("sede del restaurante", () => {
       .get(`/v1/restaurants/${String(body["id"])}/site`)
       .set("Authorization", `Bearer ${String(record(stranger.body)["token"])}`)
       .expect(404);
+
+    await request(server()).get("/v1/branches/mine").expect(401);
+
+    const ownerBranches = await request(server())
+      .get("/v1/branches/mine")
+      .set("Authorization", `Bearer ${String(record(owner.body)["token"])}`)
+      .expect(200);
+    expect(record(ownerBranches.body)["branches"]).toEqual([
+      expect.objectContaining({
+        id: body["branchId"],
+        restaurantId: body["id"],
+        name: "Principal",
+        addressLine: "Calle sintetica",
+      }),
+    ]);
+
+    const strangerBranches = await request(server())
+      .get("/v1/branches/mine")
+      .set("Authorization", `Bearer ${String(record(stranger.body)["token"])}`)
+      .expect(200);
+    expect(record(strangerBranches.body)["branches"]).toEqual([]);
   });
 });

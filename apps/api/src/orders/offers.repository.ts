@@ -13,6 +13,18 @@ export type AcceptResult = {
   orderStatus: "ACCEPTED";
 };
 
+export type AvailableOfferItem = {
+  offerId: string;
+  orderId: string;
+  referenceCode: string;
+  restaurantName: string;
+  branchName: string;
+  pickupAddress: string;
+  dropoffAddress: string;
+  deliveryFeeCop: number;
+  expiresAt: string;
+};
+
 export function computeOfferAcceptHash(offerId: string, body: unknown): string {
   return createHash("sha256")
     .update(
@@ -284,6 +296,33 @@ export class OffersRepository {
     } finally {
       client.release();
     }
+  }
+
+  async listAvailableForUser(userId: string): Promise<AvailableOfferItem[]> {
+    const result = await this.database.pool.query<AvailableOfferItem>(
+      `SELECT
+         d.id AS "offerId",
+         o.id AS "orderId",
+         o."referenceCode",
+         r."tradeName" AS "restaurantName",
+         b.name AS "branchName",
+         b."addressLine" AS "pickupAddress",
+         COALESCE(o."dropoffAddress", '') AS "dropoffAddress",
+         o."deliveryFeeCop",
+         d."expiresAt"::text AS "expiresAt"
+       FROM dispatch_offers d
+       JOIN couriers c ON c.id = d."courierId"
+       JOIN orders o ON o.id = d."orderId"
+       JOIN branches b ON b.id = o."branchId"
+       JOIN restaurants r ON r.id = o."restaurantId"
+       WHERE c."userId" = $1
+         AND d.status = 'PENDING'
+         AND d."expiresAt" > now()
+         AND o.status = 'PUBLISHED'
+       ORDER BY d."createdAt" DESC`,
+      [userId],
+    );
+    return result.rows;
   }
 }
 

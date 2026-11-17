@@ -157,4 +157,61 @@ describe("autorización", () => {
       .set("Authorization", `Bearer ${plainToken}`)
       .expect(404);
   });
+
+  it("aisla cliente, restaurante, domiciliario y admin y revoca token al cerrar sesión o expirar", async () => {
+    const clientToken = await tokenFor("cliente-cruzado@example.invalid");
+    const restaurantToken = await tokenFor("restaurante-cruzado@example.invalid");
+
+    // Cliente no puede acceder a endpoints de admin, restaurante ni domiciliario
+    await request(server())
+      .get("/v1/admin/stats")
+      .set("Authorization", `Bearer ${clientToken}`)
+      .expect(403);
+    await request(server())
+      .get("/v1/admin/verification-cases")
+      .set("Authorization", `Bearer ${clientToken}`)
+      .expect(403);
+    await request(server())
+      .get("/v1/couriers/me")
+      .set("Authorization", `Bearer ${clientToken}`)
+      .expect(404);
+    await request(server())
+      .post("/v1/orders")
+      .set("Authorization", `Bearer ${clientToken}`)
+      .send({
+        branchId: "77777777-7777-4777-8777-777777777777",
+        foodAmountCop: 20000,
+        deliveryFeeCop: 5000,
+        paymentMethod: "CASH",
+      })
+      .expect(404);
+
+    // Logout revoca el token inmediatamente
+    await request(server())
+      .post("/v1/auth/logout")
+      .set("Authorization", `Bearer ${clientToken}`)
+      .expect(204);
+    await request(server())
+      .get("/v1/auth/me")
+      .set("Authorization", `Bearer ${clientToken}`)
+      .expect(401);
+    await request(server())
+      .get("/v1/branches/mine")
+      .set("Authorization", `Bearer ${clientToken}`)
+      .expect(401);
+    await request(server())
+      .get("/v1/offers/available")
+      .set("Authorization", `Bearer ${clientToken}`)
+      .expect(401);
+
+    // Expiración de token en base de datos invalida la sesión
+    await query(
+      `UPDATE sessions SET "expiresAt" = now() - interval '1 minute'
+       WHERE "userId" = (SELECT id FROM users WHERE email = 'restaurante-cruzado@example.invalid')`,
+    );
+    await request(server())
+      .get("/v1/auth/me")
+      .set("Authorization", `Bearer ${restaurantToken}`)
+      .expect(401);
+  });
 });

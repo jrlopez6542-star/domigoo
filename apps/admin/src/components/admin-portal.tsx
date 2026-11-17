@@ -86,10 +86,34 @@ export function AdminPortal({ appName }: { appName: string }) {
         "POST",
         payload,
       );
+      try {
+        const statsData = await callProxy<AdminStats>("admin/stats", "GET");
+        setStats(statsData);
+      } catch {
+        await callProxy<unknown>("auth/logout", "POST").catch(() => undefined);
+        setAdminUserId(null);
+        setErrorMessage("Esta cuenta no tiene permisos administrativos.");
+        return;
+      }
       setAdminUserId(data.id ?? data.user?.id ?? "activo");
       setStatusMessage("Sesión administrativa iniciada.");
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : "No se pudo iniciar sesión.");
+    }
+  }
+
+  async function handleLogout() {
+    setErrorMessage("");
+    setStatusMessage("");
+    try {
+      await callProxy<unknown>("auth/logout", "POST");
+    } catch {
+      // Limpiamos el estado local aunque falle el cierre remoto.
+    } finally {
+      setAdminUserId(null);
+      setCases([]);
+      setStats(null);
+      setStatusMessage("Sesión administrativa cerrada.");
     }
   }
 
@@ -229,9 +253,27 @@ export function AdminPortal({ appName }: { appName: string }) {
               1. Ingreso administrativo
             </h1>
             {adminUserId ? (
-              <p data-testid="admin-session" className="adm-alert adm-alert--success">
-                Sesión activa: {adminUserId}
-              </p>
+              <div
+                data-testid="admin-session"
+                className="adm-alert adm-alert--success"
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: "12px",
+                }}
+              >
+                <span>Sesión activa: {adminUserId}</span>
+                <button
+                  type="button"
+                  className="adm-btn"
+                  onClick={() => {
+                    void handleLogout();
+                  }}
+                >
+                  Cerrar sesión
+                </button>
+              </div>
             ) : null}
             <form
               onSubmit={(e) => {

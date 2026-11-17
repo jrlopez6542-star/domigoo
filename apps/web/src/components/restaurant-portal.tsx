@@ -38,6 +38,16 @@ type OrderEvent = {
   createdAt: string;
 };
 
+export type RestaurantBranchItem = {
+  id: string;
+  restaurantId: string;
+  restaurantName: string;
+  establishmentName: string;
+  name: string;
+  addressLine: string;
+  status: string;
+};
+
 type RestaurantContextValue = {
   appName: string;
   sessionUser: SessionUser | null;
@@ -79,6 +89,9 @@ type RestaurantContextValue = {
   restaurantId: string;
   branchId: string;
   setBranchId: (v: string) => void;
+  branches: RestaurantBranchItem[];
+  loadingBranches: boolean;
+  loadMyBranches: () => Promise<void>;
   handleCreateBranch: (e: FormEvent) => Promise<void>;
   // Order wizard
   foodAmountCop: string;
@@ -194,6 +207,8 @@ export function RestaurantPortalShell({
   const [branchLatitude, setBranchLatitude] = useState("4.9652");
   const [restaurantId, setRestaurantId] = useState("");
   const [branchId, setBranchId] = useState("");
+  const [branches, setBranches] = useState<RestaurantBranchItem[]>([]);
+  const [loadingBranches, setLoadingBranches] = useState(false);
 
   // Borrador y cotización
   const [foodAmountCop, setFoodAmountCop] = useState("25000");
@@ -235,6 +250,7 @@ export function RestaurantPortalShell({
       })
       .catch(() => {
         if (active) {
+          clearStoredActiveRole();
           setSessionUser(null);
         }
       })
@@ -254,6 +270,31 @@ export function RestaurantPortalShell({
     }
   }, [checkingSession, sessionUser, pathname, router]);
 
+  const loadMyBranches = useCallback(async () => {
+    setLoadingBranches(true);
+    try {
+      const data = await callProxy<{ branches?: RestaurantBranchItem[] }>("branches/mine", "GET");
+      const list = Array.isArray(data.branches) ? data.branches : [];
+      setBranches(list);
+      if (list.length === 1 && list[0]) {
+        setBranchId(list[0].id);
+        setRestaurantId(list[0].restaurantId);
+      } else if (list.length > 1) {
+        setBranchId((prev) => (list.some((b) => b.id === prev) ? prev : (list[0]?.id ?? "")));
+      }
+    } catch {
+      // Si el listado no responde en mocks parciales, conservamos el branchId actual.
+    } finally {
+      setLoadingBranches(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (sessionUser) {
+      void loadMyBranches();
+    }
+  }, [sessionUser, loadMyBranches]);
+
   const handleAuthenticated = useCallback((user: SessionUser) => {
     setStoredActiveRole("RESTAURANT");
     setSessionUser(user);
@@ -262,6 +303,9 @@ export function RestaurantPortalShell({
   const handleLoggedOut = useCallback(() => {
     clearStoredActiveRole();
     setSessionUser(null);
+    setBranches([]);
+    setBranchId("");
+    setRestaurantId("");
     setOrderView(null);
     setEvents([]);
     setTrackingUrl("");
@@ -384,7 +428,20 @@ export function RestaurantPortalShell({
       );
       setRestaurantId(data.id);
       setBranchId(data.branchId);
-      setStatusMessage(`Sucursal creada (${data.branchId}).`);
+      setBranches((prev) => [
+        {
+          id: data.branchId,
+          restaurantId: data.id,
+          restaurantName: tradeName || legalName,
+          establishmentName,
+          name: branchName,
+          addressLine,
+          status: "DRAFT",
+        },
+        ...prev.filter((b) => b.id !== data.branchId),
+      ]);
+      void loadMyBranches();
+      setStatusMessage("Sucursal creada y seleccionada.");
     });
   }
 
@@ -414,6 +471,10 @@ export function RestaurantPortalShell({
 
   async function handleCreateDraft(e: FormEvent) {
     e.preventDefault();
+    if (!branchId) {
+      setErrorMessage("Primero crea o selecciona una sucursal en Mi negocio.");
+      return;
+    }
     await runAction("draft", async () => {
       const data = await callProxy<{ id: string; status: string }>("orders", "POST", {
         branchId,
@@ -568,6 +629,9 @@ export function RestaurantPortalShell({
         restaurantId,
         branchId,
         setBranchId,
+        branches,
+        loadingBranches,
+        loadMyBranches,
         handleCreateBranch,
         foodAmountCop,
         setFoodAmountCop,
@@ -910,6 +974,8 @@ export function RestaurantNuevoDomicilioScreen() {
     busyAction,
     branchId,
     setBranchId,
+    branches,
+    loadingBranches,
     foodAmountCop,
     setFoodAmountCop,
     deliveryFeeCop,
@@ -944,10 +1010,65 @@ export function RestaurantNuevoDomicilioScreen() {
     handlePublish,
   } = useRestaurantPortal();
 
+  const selectedBranch = branches.find((b) => b.id === branchId) ?? branches[0];
+  const hasNoBranches = !loadingBranches && branches.length === 0 && !branchId;
+
   return (
     <div className="dg-stack" data-testid="restaurante-nuevo-domicilio-screen">
       <div className="dg-card">
         <h1 style={{ marginBottom: "10px" }}>Nuevo domicilio</h1>
+
+        {hasNoBranches ? (
+          <div
+            className="dg-alert dg-alert--info"
+            data-testid="restaurante-sin-sucursales"
+            style={{ marginBottom: "16px" }}
+          >
+            <div className="dg-stack" style={{ gap: "10px" }}>
+              <div>
+                <strong>Aún no tienes ninguna sucursal registrada.</strong>
+                <p className="dg-muted" style={{ margin: "4px 0 0" }}>
+                  Crea tu negocio y sucursal primero para poder cotizar y publicar domicilios.
+                </p>
+              </div>
+              <div>
+                <Link href="/restaurante/negocio" className="dg-btn">
+                  Ir a Mi negocio
+                </Link>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {branches.length > 1 ? (
+          <div style={{ marginBottom: "16px" }}>
+            <label className="dg-field" htmlFor="rest-branch-select">
+              <span>Sucursal de recogida</span>
+              <select
+                id="rest-branch-select"
+                className="dg-select"
+                data-testid="rest-branch-select"
+                value={branchId}
+                onChange={(e) => {
+                  setBranchId(e.target.value);
+                }}
+              >
+                {branches.map((branch) => (
+                  <option key={branch.id} value={branch.id}>
+                    {branch.name} — {branch.addressLine}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        ) : selectedBranch ? (
+          <div style={{ marginBottom: "12px" }}>
+            <span className="dg-pill" data-testid="rest-branch-auto">
+              Sucursal: {selectedBranch.name} — {selectedBranch.addressLine}
+            </span>
+          </div>
+        ) : null}
+
         <div className="dg-stepper" role="group" aria-label="Pasos para crear un domicilio">
           <button
             type="button"
@@ -988,19 +1109,6 @@ export function RestaurantNuevoDomicilioScreen() {
           <div className="dg-stack" data-testid="wizard-panel-1">
             <h2>Paso 1: Cotizar domicilio</h2>
             <div className="dg-grid-2">
-              <label className="dg-field" htmlFor="rest-branch-id">
-                <span>ID de sucursal</span>
-                <input
-                  id="rest-branch-id"
-                  className="dg-input"
-                  type="text"
-                  value={branchId}
-                  onChange={(e) => {
-                    setBranchId(e.target.value);
-                  }}
-                  required
-                />
-              </label>
               <label className="dg-field" htmlFor="rest-delivery-fee">
                 <span>Valor del domicilio (COP)</span>
                 <input
@@ -1019,7 +1127,7 @@ export function RestaurantNuevoDomicilioScreen() {
               <button
                 type="button"
                 className="dg-btn dg-btn--secondary"
-                disabled={!sessionUser || busyAction === "quote"}
+                disabled={!sessionUser || busyAction === "quote" || hasNoBranches}
                 onClick={() => {
                   void handleQuote();
                 }}
@@ -1050,19 +1158,6 @@ export function RestaurantNuevoDomicilioScreen() {
           >
             <h2>Paso 2: Confirmar y crear borrador</h2>
             <div className="dg-grid-2">
-              <label className="dg-field" htmlFor="rest-branch-id-step2">
-                <span>ID de sucursal</span>
-                <input
-                  id="rest-branch-id-step2"
-                  className="dg-input"
-                  type="text"
-                  value={branchId}
-                  onChange={(e) => {
-                    setBranchId(e.target.value);
-                  }}
-                  required
-                />
-              </label>
               <label className="dg-field" htmlFor="rest-payment-method">
                 <span>Medio de pago</span>
                 <select
@@ -1108,7 +1203,7 @@ export function RestaurantNuevoDomicilioScreen() {
               <button
                 type="submit"
                 className="dg-btn"
-                disabled={!sessionUser || busyAction === "draft"}
+                disabled={!sessionUser || busyAction === "draft" || hasNoBranches}
               >
                 {busyAction === "draft" ? "Creando borrador..." : "Crear borrador"}
               </button>

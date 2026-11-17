@@ -22,6 +22,14 @@ export function getStoredActiveRole(): AccountRole | null {
   if (value === "CUSTOMER" || value === "RESTAURANT" || value === "COURIER") {
     return value;
   }
+  const match = document.cookie
+    .split("; ")
+    .find((entry) => entry.startsWith("domigoo_role="))
+    ?.split("=")[1];
+  if (match === "CUSTOMER" || match === "RESTAURANT" || match === "COURIER") {
+    window.sessionStorage.setItem(ACTIVE_ROLE_STORAGE_KEY, match);
+    return match;
+  }
   return null;
 }
 
@@ -30,6 +38,7 @@ export function setStoredActiveRole(role: AccountRole): void {
     return;
   }
   window.sessionStorage.setItem(ACTIVE_ROLE_STORAGE_KEY, role);
+  document.cookie = `domigoo_role=${role}; Path=/; SameSite=Lax`;
 }
 
 export function clearStoredActiveRole(): void {
@@ -37,4 +46,5 @@ export function clearStoredActiveRole(): void {
     return;
   }
   window.sessionStorage.removeItem(ACTIVE_ROLE_STORAGE_KEY);
+  document.cookie = "domigoo_role=; Path=/; Max-Age=0; SameSite=Lax";
 }

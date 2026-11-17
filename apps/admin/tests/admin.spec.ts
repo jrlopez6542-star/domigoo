@@ -8,6 +8,35 @@ test.describe("Admin de verificación y suscripciones (M31)", () => {
     await expect(page.getByText(/cobrar tarjeta/i)).toHaveCount(0);
   });
 
+  test("rechaza ingreso de usuario sin permisos administrativos", async ({ page }) => {
+    await page.route("**/api/proxy/**", async (route) => {
+      const url = route.request().url();
+      if (url.endsWith("/auth/login")) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ id: "usr-cliente-1" }),
+        });
+        return;
+      }
+      if (url.endsWith("/admin/stats")) {
+        await route.fulfill({ status: 403, contentType: "application/json", body: "{}" });
+        return;
+      }
+      await route.fulfill({ status: 204, body: "" });
+    });
+
+    await page.goto("/");
+    await page.getByLabel(/Correo o teléfono/i).fill("cliente-sin-admin@ejemplo.com");
+    await page.getByLabel(/Contraseña/i).fill("ClavePruebaDomigoo2026");
+    await page.getByRole("button", { name: "Entrar" }).click();
+
+    await expect(page.getByRole("alert")).toContainText(
+      "Esta cuenta no tiene permisos administrativos.",
+    );
+    await expect(page.getByTestId("admin-session")).toHaveCount(0);
+  });
+
   test("todas las imágenes de la pantalla de ingreso responden 200 y cargan con naturalWidth > 0", async ({
     page,
     request,

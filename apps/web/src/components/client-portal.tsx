@@ -138,6 +138,7 @@ export function ClientPortalShell({ children }: { children: ReactNode }) {
       })
       .catch(() => {
         if (active) {
+          clearStoredActiveRole();
           setSessionUser(null);
         }
       })
