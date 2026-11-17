@@ -9,5 +9,5 @@
     "types": ["node", "jest"],
     "noEmit": true
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx"]
+  "include": ["src/**/*.ts", "src/**/*.tsx", "index.ts"]
 }

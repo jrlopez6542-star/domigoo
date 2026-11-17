@@ -13,3 +13,7 @@ var/storage/
 .expo/
 next-env.d.ts
 public/
+apps/movil/android/
+*.keystore
+*.jks
+*.apk

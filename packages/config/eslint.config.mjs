@@ -22,7 +22,7 @@ export default tseslint.config(
   },
   eslint.configs.recommended,
   {
-    files: ["**/*.js", "**/*.mjs"],
+    files: ["**/*.js", "**/*.mjs", "**/*.cjs"],
     languageOptions: {
       sourceType: "module",
       globals: globals.node,
@@ -39,8 +39,11 @@ export default tseslint.config(
     },
   },
   {
-    files: ["**/*.js", "**/*.mjs"],
+    files: ["**/*.js", "**/*.mjs", "**/*.cjs"],
     extends: [tseslint.configs.disableTypeChecked],
+    rules: {
+      "@typescript-eslint/no-require-imports": "off",
+    },
   },
   {
     files: ["apps/**/*.module.ts"],
