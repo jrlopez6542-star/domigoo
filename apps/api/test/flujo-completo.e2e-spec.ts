@@ -42,6 +42,13 @@ function record(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
+function sessionCookie(headers: Record<string, unknown>): string {
+  const raw = headers["set-cookie"];
+  const first = Array.isArray(raw) ? String(raw[0] ?? "") : "";
+  expect(first).toContain("domigoo_session=");
+  return first;
+}
+
 async function createApp(env: AppEnv): Promise<INestApplication> {
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
     .overrideProvider(APP_ENV)
@@ -59,14 +66,14 @@ async function registerAdmin(pool: Pool, email: string): Promise<string> {
     .post("/v1/auth/register")
     .send({ email, password, client: "ADMIN" })
     .expect(201);
-  const token = String(record(res.body)["token"]);
+  const cookie = sessionCookie(res.headers);
   await pool.query(
     `INSERT INTO admin_profiles ("userId", "displayName", role, "createdAt", "updatedAt")
-     SELECT id, 'Admin M40', 'SUPERADMIN', now(), now()
+     SELECT id, 'Admin M40', 'REVIEWER', now(), now()
      FROM users WHERE email = $1`,
     [email],
   );
-  return token;
+  return cookie;
 }
 
 async function seedTariffAndPolicy(pool: Pool): Promise<void> {
@@ -96,19 +103,19 @@ async function seedTariffAndPolicy(pool: Pool): Promise<void> {
 
 async function registerAndVerifyRestaurant(
   pool: Pool,
-  adminToken: string,
+  adminCookie: string,
   ownerEmail: string,
   nit: string,
-): Promise<{ ownerToken: string; restaurantId: string; branchId: string }> {
+): Promise<{ ownerCookie: string; restaurantId: string; branchId: string }> {
   const ownerRes = await request(server())
     .post("/v1/auth/register")
     .send({ email: ownerEmail, password, client: "WEB" })
     .expect(201);
-  const ownerToken = String(record(ownerRes.body)["token"]);
+  const ownerCookie = sessionCookie(ownerRes.headers);
 
   const site = await request(server())
     .post("/v1/restaurants")
-    .set("Authorization", `Bearer ${ownerToken}`)
+    .set("Cookie", ownerCookie)
     .send({
       legalName: `Razon ${nit}`,
       tradeName: `Comercio ${nit}`,
@@ -127,28 +134,28 @@ async function registerAndVerifyRestaurant(
 
   await request(server())
     .put(`/v1/branches/${branchId}/hours`)
-    .set("Authorization", `Bearer ${ownerToken}`)
+    .set("Cookie", ownerCookie)
     .send({ slots: [{ weekday: 1, opensMinute: 480, closesMinute: 1200 }] })
     .expect(200);
   await request(server())
     .post(`/v1/branches/${branchId}/activate`)
-    .set("Authorization", `Bearer ${ownerToken}`)
+    .set("Cookie", ownerCookie)
     .expect(201);
   await request(server())
     .post(`/v1/restaurants/${restaurantId}/submit`)
-    .set("Authorization", `Bearer ${ownerToken}`)
+    .set("Cookie", ownerCookie)
     .expect(201);
 
   // Actor no autorizado (dueño) no puede activar su propio restaurante -> 404 (AdminGuard)
   await request(server())
     .post(`/v1/admin/restaurants/${restaurantId}/activate`)
-    .set("Authorization", `Bearer ${ownerToken}`)
+    .set("Cookie", ownerCookie)
     .expect(404);
 
   // Admin verifica y activa el restaurante
   const activated = await request(server())
     .post(`/v1/admin/restaurants/${restaurantId}/activate`)
-    .set("Authorization", `Bearer ${adminToken}`)
+    .set("Cookie", adminCookie)
     .expect(201);
   expect(record(activated.body)["status"]).toBe("ACTIVE");
 
@@ -170,12 +177,12 @@ async function registerAndVerifyRestaurant(
     [restaurantId, plan.rows[0]?.id],
   );
 
-  return { ownerToken, restaurantId, branchId };
+  return { ownerCookie, restaurantId, branchId };
 }
 
 async function registerAndVerifyCourier(params: {
-  adminToken: string;
-  nonAdminToken: string;
+  adminCookie: string;
+  nonAdminCookie: string;
   email: string;
   documentNumber: string;
   firstName: string;
@@ -234,17 +241,17 @@ async function registerAndVerifyCourier(params: {
     .expect(201);
   const caseId = String(record(vCase.body)["id"]);
 
-  // Actor no autorizado (no admin) intentando decidir verificación -> 404 (AdminGuard)
+  // Actor no autorizado (no admin) intentando decidir verificación -> 403 (VerificationAdminController.assertReviewer)
   await request(server())
     .post(`/v1/admin/verification-cases/${caseId}/decision`)
-    .set("Authorization", `Bearer ${params.nonAdminToken}`)
+    .set("Cookie", params.nonAdminCookie)
     .send({ outcome: "APPROVED", reasonCode: "DOCS_VERIFIED", comment: "Intento no autorizado" })
-    .expect(404);
+    .expect(403);
 
-  // Admin aprueba al domiciliario
+  // Admin (REVIEWER) aprueba al domiciliario
   await request(server())
     .post(`/v1/admin/verification-cases/${caseId}/decision`)
-    .set("Authorization", `Bearer ${params.adminToken}`)
+    .set("Cookie", params.adminCookie)
     .send({ outcome: "APPROVED", reasonCode: "DOCS_VERIFIED", comment: "Aprobado M40" })
     .expect(201);
 
@@ -306,33 +313,33 @@ describe("flujo completo de punta a punta, casos negativos y concurrencia (M40)"
     const pool = new Pool({ connectionString: databaseUrl });
     try {
       await seedTariffAndPolicy(pool);
-      const adminToken = await registerAdmin(pool, "admin-m40@example.invalid");
+      const adminCookie = await registerAdmin(pool, "admin-m40@example.invalid");
 
       const docLegal = await request(server())
         .post("/v1/legal-documents")
-        .set("Authorization", `Bearer ${adminToken}`)
+        .set("Cookie", adminCookie)
         .send({ kind: "DOCUMENT_PROCESSING", version: "2026-m40-doc", content: "Doc M40" })
         .expect(201);
       const gpsLegal = await request(server())
         .post("/v1/legal-documents")
-        .set("Authorization", `Bearer ${adminToken}`)
+        .set("Cookie", adminCookie)
         .send({ kind: "GEOLOCATION_CONSENT", version: "2026-m40-gps", content: "GPS M40" })
         .expect(201);
       const docLegalId = String(record(docLegal.body)["id"]);
       const gpsLegalId = String(record(gpsLegal.body)["id"]);
 
       // 1-2. Restaurante se registra y admin lo verifica
-      const { ownerToken, branchId } = await registerAndVerifyRestaurant(
+      const { ownerCookie, branchId } = await registerAndVerifyRestaurant(
         pool,
-        adminToken,
+        adminCookie,
         "owner-m40@example.invalid",
         "900000401",
       );
 
       // 3-5. Domiciliario 1 se registra, admin lo verifica, da consentimiento GEOLOCATION y pasa a AVAILABLE en zona
       const courier1 = await registerAndVerifyCourier({
-        adminToken,
-        nonAdminToken: ownerToken,
+        adminCookie,
+        nonAdminCookie: ownerCookie,
         email: "courier1-m40@example.invalid",
         documentNumber: "9000040001",
         firstName: "Lucia",
@@ -354,7 +361,7 @@ describe("flujo completo de punta a punta, casos negativos y concurrencia (M40)"
       // 6. Restaurante crea borrador y publica pedido
       const draft = await request(server())
         .post("/v1/orders")
-        .set("Authorization", `Bearer ${ownerToken}`)
+        .set("Cookie", ownerCookie)
         .send({
           branchId,
           foodAmountCop: 48000,
@@ -366,7 +373,7 @@ describe("flujo completo de punta a punta, casos negativos y concurrencia (M40)"
 
       const pub = await request(server())
         .post(`/v1/orders/${orderId}/publish`)
-        .set("Authorization", `Bearer ${ownerToken}`)
+        .set("Cookie", ownerCookie)
         .send({
           mode: "OPEN",
           customerName: "Cliente M40",
@@ -427,7 +434,7 @@ describe("flujo completo de punta a punta, casos negativos y concurrencia (M40)"
 
       const restOrder = await request(server())
         .get(`/v1/orders/${orderId}`)
-        .set("Authorization", `Bearer ${ownerToken}`)
+        .set("Cookie", ownerCookie)
         .expect(200);
       const pickupPin = String(record(restOrder.body)["pickupPin"]);
       expect(pickupPin).toMatch(/^\d{6}$/);
@@ -464,7 +471,7 @@ describe("flujo completo de punta a punta, casos negativos y concurrencia (M40)"
       // 11. Enlace de tracking, PIN de entrega incorrecto (422) y validación correcta -> DELIVERED
       const linkRes = await request(server())
         .post(`/v1/orders/${orderId}/tracking-link`)
-        .set("Authorization", `Bearer ${ownerToken}`)
+        .set("Cookie", ownerCookie)
         .expect(201);
       const trackingToken = String(record(linkRes.body)["token"]);
 
@@ -494,7 +501,7 @@ describe("flujo completo de punta a punta, casos negativos y concurrencia (M40)"
       // 12. GET /v1/orders/:id/events y tracking reflejan todos los estados en orden
       const eventsRes = await request(server())
         .get(`/v1/orders/${orderId}/events`)
-        .set("Authorization", `Bearer ${ownerToken}`)
+        .set("Cookie", ownerCookie)
         .expect(200);
       const events = record(eventsRes.body)["events"] as Array<Record<string, unknown>>;
       expect(events.map((e) => [e["fromStatus"], e["toStatus"]])).toEqual([
@@ -521,28 +528,28 @@ describe("flujo completo de punta a punta, casos negativos y concurrencia (M40)"
     const pool = new Pool({ connectionString: databaseUrl });
     try {
       await seedTariffAndPolicy(pool);
-      const adminToken = await registerAdmin(pool, "admin-lock-m40@example.invalid");
+      const adminCookie = await registerAdmin(pool, "admin-lock-m40@example.invalid");
 
       const docLegal = await request(server())
         .post("/v1/legal-documents")
-        .set("Authorization", `Bearer ${adminToken}`)
+        .set("Cookie", adminCookie)
         .send({ kind: "DOCUMENT_PROCESSING", version: "2026-m40-lock-doc", content: "Doc" })
         .expect(201);
       const gpsLegal = await request(server())
         .post("/v1/legal-documents")
-        .set("Authorization", `Bearer ${adminToken}`)
+        .set("Cookie", adminCookie)
         .send({ kind: "GEOLOCATION_CONSENT", version: "2026-m40-lock-gps", content: "GPS" })
         .expect(201);
 
-      const { ownerToken, branchId } = await registerAndVerifyRestaurant(
+      const { ownerCookie, branchId } = await registerAndVerifyRestaurant(
         pool,
-        adminToken,
+        adminCookie,
         "owner-lock-m40@example.invalid",
         "900000402",
       );
       const courier = await registerAndVerifyCourier({
-        adminToken,
-        nonAdminToken: ownerToken,
+        adminCookie,
+        nonAdminCookie: ownerCookie,
         email: "courier-lock-m40@example.invalid",
         documentNumber: "9000040002",
         firstName: "Andres",
@@ -556,14 +563,14 @@ describe("flujo completo de punta a punta, casos negativos y concurrencia (M40)"
 
       const draft = await request(server())
         .post("/v1/orders")
-        .set("Authorization", `Bearer ${ownerToken}`)
+        .set("Cookie", ownerCookie)
         .send({ branchId, foodAmountCop: 30000, deliveryFeeCop: 5500, paymentMethod: "CASH" })
         .expect(201);
       const orderId = String(record(draft.body)["id"]);
 
       const pub = await request(server())
         .post(`/v1/orders/${orderId}/publish`)
-        .set("Authorization", `Bearer ${ownerToken}`)
+        .set("Cookie", ownerCookie)
         .send({
           mode: "OPEN",
           customerName: "Cliente Lock",
@@ -584,7 +591,7 @@ describe("flujo completo de punta a punta, casos negativos y concurrencia (M40)"
 
       const restOrder = await request(server())
         .get(`/v1/orders/${orderId}`)
-        .set("Authorization", `Bearer ${ownerToken}`)
+        .set("Cookie", ownerCookie)
         .expect(200);
       const pickupPin = String(record(restOrder.body)["pickupPin"]);
 
@@ -608,7 +615,7 @@ describe("flujo completo de punta a punta, casos negativos y concurrencia (M40)"
 
       const linkRes = await request(server())
         .post(`/v1/orders/${orderId}/tracking-link`)
-        .set("Authorization", `Bearer ${ownerToken}`)
+        .set("Cookie", ownerCookie)
         .expect(201);
       const trackRes = await request(server())
         .get(`/v1/tracking/${String(record(linkRes.body)["token"])}`)
@@ -654,31 +661,31 @@ describe("flujo completo de punta a punta, casos negativos y concurrencia (M40)"
     const pool = new Pool({ connectionString: databaseUrl });
     try {
       await seedTariffAndPolicy(pool);
-      const adminToken = await registerAdmin(pool, "admin-race-m40@example.invalid");
+      const adminCookie = await registerAdmin(pool, "admin-race-m40@example.invalid");
 
       const docLegal = await request(server())
         .post("/v1/legal-documents")
-        .set("Authorization", `Bearer ${adminToken}`)
+        .set("Cookie", adminCookie)
         .send({ kind: "DOCUMENT_PROCESSING", version: "2026-m40-race-doc", content: "Doc" })
         .expect(201);
       const gpsLegal = await request(server())
         .post("/v1/legal-documents")
-        .set("Authorization", `Bearer ${adminToken}`)
+        .set("Cookie", adminCookie)
         .send({ kind: "GEOLOCATION_CONSENT", version: "2026-m40-race-gps", content: "GPS" })
         .expect(201);
       const docLegalId = String(record(docLegal.body)["id"]);
       const gpsLegalId = String(record(gpsLegal.body)["id"]);
 
-      const { ownerToken, branchId } = await registerAndVerifyRestaurant(
+      const { ownerCookie, branchId } = await registerAndVerifyRestaurant(
         pool,
-        adminToken,
+        adminCookie,
         "owner-race-m40@example.invalid",
         "900000403",
       );
 
       const courierA = await registerAndVerifyCourier({
-        adminToken,
-        nonAdminToken: ownerToken,
+        adminCookie,
+        nonAdminCookie: ownerCookie,
         email: "courier-a-m40@example.invalid",
         documentNumber: "9000040003",
         firstName: "Sofia",
@@ -690,8 +697,8 @@ describe("flujo completo de punta a punta, casos negativos y concurrencia (M40)"
         latitude: 4.968,
       });
       const courierB = await registerAndVerifyCourier({
-        adminToken,
-        nonAdminToken: ownerToken,
+        adminCookie,
+        nonAdminCookie: ownerCookie,
         email: "courier-b-m40@example.invalid",
         documentNumber: "9000040004",
         firstName: "Diego",
@@ -705,14 +712,14 @@ describe("flujo completo de punta a punta, casos negativos y concurrencia (M40)"
 
       const draft = await request(server())
         .post("/v1/orders")
-        .set("Authorization", `Bearer ${ownerToken}`)
+        .set("Cookie", ownerCookie)
         .send({ branchId, foodAmountCop: 42000, deliveryFeeCop: 5500, paymentMethod: "CASH" })
         .expect(201);
       const orderId = String(record(draft.body)["id"]);
 
       const pub = await request(server())
         .post(`/v1/orders/${orderId}/publish`)
-        .set("Authorization", `Bearer ${ownerToken}`)
+        .set("Cookie", ownerCookie)
         .send({
           mode: "OPEN",
           customerName: "Cliente Race",
