@@ -35,4 +35,48 @@ test.describe("Web de restaurantes (M29) y Tracking público (M30)", () => {
       }
     }
   });
+
+  test("muestra páginas legales en borrador, enlaces en footer, casillas no premarcadas en registro y consentimiento de geolocalización (M45)", async ({
+    page,
+  }) => {
+    await page.goto("/");
+
+    // Enlaces legales en el footer
+    const footer = page.locator("footer");
+    await expect(footer.getByRole("link", { name: "Términos y Condiciones" })).toBeVisible();
+    await expect(footer.getByRole("link", { name: "Política de Privacidad" })).toBeVisible();
+    await expect(footer.getByRole("link", { name: "Términos Domiciliarios" })).toBeVisible();
+    await expect(footer.getByRole("link", { name: "Términos Restaurantes" })).toBeVisible();
+
+    // Casillas de registro separadas y NO premarcadas
+    await page.getByTestId("tab-register").click();
+    const consents = page.getByTestId("register-consents");
+    await expect(consents).toBeVisible();
+    await expect(consents.locator('input[name="termsAccepted"]')).not.toBeChecked();
+    await expect(consents.locator('input[name="privacyAccepted"]')).not.toBeChecked();
+    await expect(consents.locator('input[name="marketingAccepted"]')).not.toBeChecked();
+
+    // Pantalla de consentimiento de geolocalización con alternativa manual
+    await page.getByTestId("open-geo-consent").click();
+    const geoScreen = page.getByTestId("geo-consent-screen");
+    await expect(geoScreen).toBeVisible();
+    await expect(geoScreen.locator('input[name="geoConsentChecked"]')).not.toBeChecked();
+    await expect(geoScreen.getByTestId("geo-consent-allow")).toBeVisible();
+    await expect(geoScreen.getByTestId("geo-consent-manual")).toBeVisible();
+    await geoScreen.getByTestId("geo-consent-manual").click();
+    await expect(geoScreen).toBeHidden();
+
+    // Páginas públicas /legal/* con banner "Borrador en revisión legal"
+    for (const route of [
+      "/legal/terminos",
+      "/legal/privacidad",
+      "/legal/domiciliarios",
+      "/legal/restaurantes",
+    ]) {
+      await page.goto(route);
+      await expect(page.getByTestId("legal-draft-banner")).toContainText(
+        "Borrador en revisión legal",
+      );
+    }
+  });
 });

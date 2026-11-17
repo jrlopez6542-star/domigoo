@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, type FormEvent } from "react";
 import {
   buildLoginPayload,
@@ -56,10 +57,24 @@ export function RestaurantPortal({ appName }: { appName: string }) {
   const [statusMessage, setStatusMessage] = useState<string>("");
   const [errorMessage, setErrorMessage] = useState<string>("");
 
-  // 1. Login (correo o teléfono E.164)
+  // 1. Ingreso y registro (correo o teléfono E.164)
+  const [authMode, setAuthMode] = useState<"login" | "register">("login");
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
+  const [registerRole, setRegisterRole] = useState<"RESTAURANT" | "CUSTOMER" | "COURIER">(
+    "RESTAURANT",
+  );
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [privacyAccepted, setPrivacyAccepted] = useState(false);
+  const [sensitiveDataAccepted, setSensitiveDataAccepted] = useState(false);
+  const [marketingAccepted, setMarketingAccepted] = useState(false);
   const [sessionUserId, setSessionUserId] = useState<string | null>(null);
+
+  // Geolocalización (clientes / dirección de entrega)
+  const [showGeoConsent, setShowGeoConsent] = useState(false);
+  const [geoConsentChecked, setGeoConsentChecked] = useState(false);
+  const [geoConsentId, setGeoConsentId] = useState<string | null>(null);
+  const [geoRevokedMessage, setGeoRevokedMessage] = useState<string>("");
 
   // 2. Restaurante, establecimiento y sucursal
   const [legalName, setLegalName] = useState("");
@@ -111,6 +126,116 @@ export function RestaurantPortal({ appName }: { appName: string }) {
       setStatusMessage("Sesión iniciada correctamente.");
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : "No se pudo iniciar sesión.");
+    }
+  }
+
+  async function handleRegister(e: FormEvent) {
+    e.preventDefault();
+    setErrorMessage("");
+    setStatusMessage("");
+    if (!termsAccepted || !privacyAccepted) {
+      setErrorMessage(
+        "Debes aceptar los Términos y Condiciones y la Autorización de Tratamiento de Datos Personales.",
+      );
+      return;
+    }
+    if (registerRole === "COURIER" && !sensitiveDataAccepted) {
+      setErrorMessage(
+        "Los domiciliarios deben autorizar el tratamiento de datos sensibles para verificar su identidad.",
+      );
+      return;
+    }
+    try {
+      const base = buildLoginPayload(identifier, password, "WEB");
+      const data = await callProxy<{ id?: string; legalVersion?: string }>(
+        "auth/register",
+        "POST",
+        {
+          ...base,
+          role: registerRole,
+          consents: {
+            version: "0.1-borrador",
+            termsAccepted,
+            privacyAccepted,
+            sensitiveDataAccepted,
+            marketingAccepted,
+          },
+        },
+      );
+      setSessionUserId(data.id ?? "activo");
+      setStatusMessage(
+        `Cuenta registrada con consentimiento guardado (versión ${data.legalVersion ?? "0.1-borrador"}).`,
+      );
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : "No se pudo registrar la cuenta.");
+    }
+  }
+
+  async function handlePermitGeolocation() {
+    setErrorMessage("");
+    setGeoRevokedMessage("");
+    if (!geoConsentChecked) {
+      setErrorMessage(
+        "Marca la casilla de autorización de ubicación antes de permitir el acceso al GPS.",
+      );
+      return;
+    }
+    try {
+      if (sessionUserId) {
+        const docs = await callProxy<{
+          documents: Array<{ id: string; kind: string }>;
+        }>("legal-documents/current", "GET");
+        const geoDoc = docs.documents.find((d) => d.kind === "GEOLOCATION_CONSENT");
+        if (geoDoc) {
+          const consent = await callProxy<{ id: string }>("consents", "POST", {
+            legalDocumentId: geoDoc.id,
+            purpose: "GEOLOCATION",
+            channel: "WEB",
+          });
+          setGeoConsentId(consent.id);
+        }
+      }
+      if (typeof navigator !== "undefined" && "geolocation" in navigator) {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            setDropoffLatitude(pos.coords.latitude.toFixed(6));
+            setDropoffLongitude(pos.coords.longitude.toFixed(6));
+            setShowGeoConsent(false);
+            setStatusMessage("Ubicación obtenida y consentimiento de geolocalización registrado.");
+          },
+          () => {
+            setShowGeoConsent(false);
+            setStatusMessage(
+              "No se pudo obtener la ubicación del navegador; puedes escribir tu dirección manualmente.",
+            );
+          },
+        );
+      } else {
+        setShowGeoConsent(false);
+        setStatusMessage("Consentimiento registrado. Puedes escribir tu dirección manualmente.");
+      }
+    } catch (err) {
+      setErrorMessage(
+        err instanceof Error ? err.message : "No se pudo registrar el consentimiento de ubicación.",
+      );
+    }
+  }
+
+  async function handleRevokeGeolocation() {
+    setErrorMessage("");
+    try {
+      if (geoConsentId) {
+        await callProxy("consents/" + geoConsentId + "/revoke", "POST");
+      }
+      setGeoConsentId(null);
+      setGeoConsentChecked(false);
+      setGeoRevokedMessage(
+        "Ubicación desactivada. DOMIGOO dejó de recibir la ubicación de este dispositivo. Los datos ya recogidos se conservarán solo durante los plazos de la Política de Tratamiento de Datos. Puedes volver a activarla cuando quieras.",
+      );
+    } catch (err) {
+      setErrorMessage(
+        err instanceof Error ? err.message : "No se pudo revocar el consentimiento de ubicación.",
+      );
     }
   }
 
@@ -300,14 +425,67 @@ export function RestaurantPortal({ appName }: { appName: string }) {
           marginBottom: "1rem",
         }}
       >
-        <h2 style={{ marginTop: 0 }}>1. Ingreso del restaurante</h2>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            flexWrap: "wrap",
+            gap: "0.75rem",
+            marginBottom: "0.75rem",
+          }}
+        >
+          <h2 style={{ margin: 0 }}>1. Ingreso del restaurante</h2>
+          <div style={{ display: "flex", gap: "0.5rem" }}>
+            <button
+              type="button"
+              onClick={() => {
+                setAuthMode("login");
+              }}
+              style={{ fontWeight: authMode === "login" ? 700 : 400 }}
+            >
+              Iniciar sesión
+            </button>
+            <button
+              type="button"
+              data-testid="tab-register"
+              onClick={() => {
+                setAuthMode("register");
+              }}
+              style={{ fontWeight: authMode === "register" ? 700 : 400 }}
+            >
+              Crear cuenta
+            </button>
+          </div>
+        </div>
         {sessionUserId ? <p data-testid="session-active">Sesión activa: {sessionUserId}</p> : null}
         <form
           onSubmit={(e) => {
-            void handleLogin(e);
+            if (authMode === "register") {
+              void handleRegister(e);
+            } else {
+              void handleLogin(e);
+            }
           }}
           style={{ display: "grid", gap: "0.75rem" }}
         >
+          {authMode === "register" ? (
+            <label>
+              Perfil de cuenta
+              <select
+                name="registerRole"
+                value={registerRole}
+                onChange={(e) => {
+                  setRegisterRole(e.target.value as "RESTAURANT" | "CUSTOMER" | "COURIER");
+                }}
+                style={{ display: "block", width: "100%", padding: "0.5rem" }}
+              >
+                <option value="RESTAURANT">Restaurante</option>
+                <option value="CUSTOMER">Cliente</option>
+                <option value="COURIER">Domiciliario independiente</option>
+              </select>
+            </label>
+          ) : null}
           <label>
             Correo o teléfono (+57...)
             <input
@@ -334,7 +512,106 @@ export function RestaurantPortal({ appName }: { appName: string }) {
               style={{ display: "block", width: "100%", padding: "0.5rem" }}
             />
           </label>
-          <button type="submit">Entrar</button>
+          {authMode === "register" ? (
+            <div
+              data-testid="register-consents"
+              style={{
+                display: "grid",
+                gap: "0.6rem",
+                padding: "0.75rem",
+                backgroundColor: "#f8fafc",
+                border: "1px solid #cbd5e1",
+                borderRadius: "8px",
+                fontSize: "0.9rem",
+              }}
+            >
+              <label style={{ display: "flex", gap: "0.5rem", alignItems: "flex-start" }}>
+                <input
+                  type="checkbox"
+                  name="termsAccepted"
+                  checked={termsAccepted}
+                  onChange={(e) => {
+                    setTermsAccepted(e.target.checked);
+                  }}
+                />
+                <span>
+                  Soy mayor de 18 años y acepto los{" "}
+                  <Link
+                    href="/legal/terminos"
+                    style={{ color: "#1d4ed8", textDecoration: "underline" }}
+                  >
+                    Términos y Condiciones
+                  </Link>{" "}
+                  de DOMIGOO. (Obligatoria)
+                </span>
+              </label>
+
+              <label style={{ display: "flex", gap: "0.5rem", alignItems: "flex-start" }}>
+                <input
+                  type="checkbox"
+                  name="privacyAccepted"
+                  checked={privacyAccepted}
+                  onChange={(e) => {
+                    setPrivacyAccepted(e.target.checked);
+                  }}
+                />
+                <span>
+                  Autorizo a DOMIGOO a tratar mis datos personales para crear mi cuenta, gestionar
+                  pedidos y entregas, atender PQR y cumplir la ley, y a transmitirlos a sus
+                  proveedores de nube en Estados Unidos, según la{" "}
+                  <Link
+                    href="/legal/privacidad"
+                    style={{ color: "#1d4ed8", textDecoration: "underline" }}
+                  >
+                    Política de Tratamiento de Datos
+                  </Link>
+                  .{" "}
+                  <Link
+                    href="/legal/autorizacion"
+                    style={{ color: "#1d4ed8", textDecoration: "underline" }}
+                  >
+                    Ver autorización completa
+                  </Link>{" "}
+                  (Obligatoria)
+                </span>
+              </label>
+
+              {registerRole === "COURIER" ? (
+                <label style={{ display: "flex", gap: "0.5rem", alignItems: "flex-start" }}>
+                  <input
+                    type="checkbox"
+                    name="sensitiveDataAccepted"
+                    checked={sensitiveDataAccepted}
+                    onChange={(e) => {
+                      setSensitiveDataAccepted(e.target.checked);
+                    }}
+                  />
+                  <span>
+                    Autorizo de forma explícita el tratamiento de mis datos sensibles (fotografía e
+                    imagen de mi documento de identidad) para verificar mi identidad y requisitos
+                    como domiciliario. Sé que no estoy obligado a autorizarlo, pero sin esta
+                    verificación no se puede habilitar mi cuenta. (Obligatoria para domiciliarios)
+                  </span>
+                </label>
+              ) : null}
+
+              <label style={{ display: "flex", gap: "0.5rem", alignItems: "flex-start" }}>
+                <input
+                  type="checkbox"
+                  name="marketingAccepted"
+                  checked={marketingAccepted}
+                  onChange={(e) => {
+                    setMarketingAccepted(e.target.checked);
+                  }}
+                />
+                <span>
+                  Quiero recibir promociones y novedades de DOMIGOO por correo, SMS o
+                  notificaciones. Puedo retirarme cuando quiera. (Opcional)
+                </span>
+              </label>
+            </div>
+          ) : null}
+          <button type="submit">{authMode === "register" ? "Registrarme" : "Entrar"}</button>
         </form>
       </section>
 
@@ -670,6 +947,106 @@ export function RestaurantPortal({ appName }: { appName: string }) {
               style={{ display: "block", width: "100%", padding: "0.5rem" }}
             />
           </label>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem", alignItems: "center" }}>
+            <button
+              type="button"
+              data-testid="open-geo-consent"
+              onClick={() => {
+                setShowGeoConsent((prev) => !prev);
+              }}
+            >
+              Usar mi ubicación actual
+            </button>
+            {geoConsentId ? (
+              <button
+                type="button"
+                data-testid="revoke-geo-consent"
+                onClick={() => {
+                  void handleRevokeGeolocation();
+                }}
+              >
+                Revocar permiso de ubicación
+              </button>
+            ) : null}
+          </div>
+          {geoRevokedMessage ? (
+            <p
+              data-testid="geo-revoked-notice"
+              style={{
+                margin: 0,
+                padding: "0.65rem",
+                backgroundColor: "#f8fafc",
+                border: "1px solid #cbd5e1",
+                borderRadius: "6px",
+                fontSize: "0.88rem",
+              }}
+            >
+              {geoRevokedMessage}
+            </p>
+          ) : null}
+          {showGeoConsent ? (
+            <div
+              data-testid="geo-consent-screen"
+              style={{
+                padding: "1rem",
+                backgroundColor: "#f8fafc",
+                border: "1px solid #94a3b8",
+                borderRadius: "8px",
+                display: "grid",
+                gap: "0.65rem",
+                fontSize: "0.9rem",
+              }}
+            >
+              <strong>¿Usar tu ubicación para tu dirección de entrega?</strong>
+              <p style={{ margin: 0 }}>
+                Si lo permites, usaremos la ubicación de tu dispositivo solo cuando estás agregando
+                o confirmando una dirección para ubicarla en el mapa y confirmar cobertura. No
+                seguimos tu ubicación en segundo plano. Si eliges &quot;Escribir dirección
+                manualmente&quot;, puedes continuar normalmente. Más información en la{" "}
+                <Link
+                  href="/legal/privacidad"
+                  style={{ color: "#1d4ed8", textDecoration: "underline" }}
+                >
+                  Política de Tratamiento de Datos
+                </Link>
+                .
+              </p>
+              <label style={{ display: "flex", gap: "0.5rem", alignItems: "flex-start" }}>
+                <input
+                  type="checkbox"
+                  name="geoConsentChecked"
+                  checked={geoConsentChecked}
+                  onChange={(e) => {
+                    setGeoConsentChecked(e.target.checked);
+                  }}
+                />
+                <span>
+                  Autorizo a DOMIGOO a usar la ubicación de mi dispositivo para los fines indicados.
+                </span>
+              </label>
+              <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  data-testid="geo-consent-allow"
+                  onClick={() => {
+                    void handlePermitGeolocation();
+                  }}
+                >
+                  Permitir
+                </button>
+                <button
+                  type="button"
+                  data-testid="geo-consent-manual"
+                  onClick={() => {
+                    setShowGeoConsent(false);
+                    setStatusMessage("Modo de dirección manual activo.");
+                  }}
+                >
+                  Escribir dirección manualmente
+                </button>
+              </div>
+            </div>
+          ) : null}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem" }}>
             <label>
               Longitud entrega

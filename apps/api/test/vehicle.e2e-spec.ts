@@ -57,7 +57,12 @@ async function createApp(env: AppEnv): Promise<INestApplication> {
 async function register(email: string): Promise<string> {
   const created = await request(server())
     .post("/v1/auth/register")
-    .send({ email, password, client: "MOBILE" })
+    .send({
+      email,
+      password,
+      client: "MOBILE",
+      consents: { termsAccepted: true, privacyAccepted: true },
+    })
     .expect(201);
   return String(record(created.body)["token"]);
 }

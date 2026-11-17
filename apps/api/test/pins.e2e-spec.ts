@@ -52,13 +52,23 @@ async function setupAcceptedOrder(env: AppEnv): Promise<{
 }> {
   const ownerRes = await request(server())
     .post("/v1/auth/register")
-    .send({ email: "owner-m25@example.invalid", password, client: "MOBILE" })
+    .send({
+      email: "owner-m25@example.invalid",
+      password,
+      client: "MOBILE",
+      consents: { termsAccepted: true, privacyAccepted: true },
+    })
     .expect(201);
   const ownerToken = String(record(ownerRes.body)["token"]);
 
   const courierRes = await request(server())
     .post("/v1/auth/register")
-    .send({ email: "courier-m25@example.invalid", password, client: "MOBILE" })
+    .send({
+      email: "courier-m25@example.invalid",
+      password,
+      client: "MOBILE",
+      consents: { termsAccepted: true, privacyAccepted: true },
+    })
     .expect(201);
   const courierToken = String(record(courierRes.body)["token"]);
 

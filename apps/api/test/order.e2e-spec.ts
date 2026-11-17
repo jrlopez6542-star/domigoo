@@ -62,11 +62,21 @@ describe("borrador del pedido", () => {
   it("guarda la comida y el domicilio como montos distintos", async () => {
     const owner = await request(server())
       .post("/v1/auth/register")
-      .send({ email: "dueno-pedido@example.invalid", password, client: "MOBILE" })
+      .send({
+        email: "dueno-pedido@example.invalid",
+        password,
+        client: "MOBILE",
+        consents: { termsAccepted: true, privacyAccepted: true },
+      })
       .expect(201);
     const stranger = await request(server())
       .post("/v1/auth/register")
-      .send({ email: "ajeno-pedido@example.invalid", password, client: "MOBILE" })
+      .send({
+        email: "ajeno-pedido@example.invalid",
+        password,
+        client: "MOBILE",
+        consents: { termsAccepted: true, privacyAccepted: true },
+      })
       .expect(201);
     const ownerToken = String(record(owner.body)["token"]);
     const site = await request(server())

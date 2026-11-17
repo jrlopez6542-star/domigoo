@@ -70,7 +70,12 @@ describe("tarifas", () => {
   it("cotiza dentro de la zona y fuera con la regla por defecto, en pesos enteros", async () => {
     const admin = await request(server())
       .post("/v1/auth/register")
-      .send({ email: "tarifa@example.invalid", password, client: "MOBILE" })
+      .send({
+        email: "tarifa@example.invalid",
+        password,
+        client: "MOBILE",
+        consents: { termsAccepted: true, privacyAccepted: true },
+      })
       .expect(201);
     const pool = new Pool({ connectionString: databaseUrl });
     const user = await pool.query<{ id: string }>(

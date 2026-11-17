@@ -32,17 +32,37 @@ export class PrivacyRepository {
     return row;
   }
 
+  async listCurrentDocuments(): Promise<LegalDocument[]> {
+    const result = await this.database.pool.query<LegalDocument>(
+      `SELECT DISTINCT ON (kind) id, kind::text AS kind, version, "contentHash"
+       FROM legal_documents
+       ORDER BY kind, "publishedAt" DESC`,
+    );
+    return result.rows;
+  }
+
   async insertConsent(input: {
     userId: string;
     legalDocumentId: string;
     purpose: string;
     channel: string;
+    ip?: string;
+    userAgent?: string;
   }): Promise<{ id: string; legalDocumentId: string }> {
     const result = await this.database.pool.query<{ id: string; legalDocumentId: string }>(
-      `INSERT INTO consent_records (id, "userId", "legalDocumentId", purpose, channel, "grantedAt")
-       VALUES (gen_random_uuid(), $1, $2, $3::"ConsentPurpose", $4::"ConsentChannel", now())
+      `INSERT INTO consent_records (
+         id, "userId", "legalDocumentId", purpose, channel, "grantedAt", ip, "userAgent"
+       )
+       VALUES (gen_random_uuid(), $1, $2, $3::"ConsentPurpose", $4::"ConsentChannel", now(), $5, $6)
        RETURNING id, "legalDocumentId"`,
-      [input.userId, input.legalDocumentId, input.purpose, input.channel],
+      [
+        input.userId,
+        input.legalDocumentId,
+        input.purpose,
+        input.channel,
+        input.ip ?? null,
+        input.userAgent ?? null,
+      ],
     );
     const row = result.rows[0];
     if (row === undefined) {
@@ -60,14 +80,19 @@ export class PrivacyRepository {
     return (result.rowCount ?? 0) > 0;
   }
 
-  async isCurrent(userId: string, purpose: string): Promise<boolean> {
-    const result = await this.database.pool.query(
-      `SELECT 1 FROM consent_records
+  async findCurrentConsentId(userId: string, purpose: string): Promise<string | null> {
+    const result = await this.database.pool.query<{ id: string }>(
+      `SELECT id FROM consent_records
        WHERE "userId" = $1 AND purpose = $2::"ConsentPurpose" AND "revokedAt" IS NULL
+       ORDER BY "grantedAt" DESC
        LIMIT 1`,
       [userId, purpose],
     );
-    return (result.rowCount ?? 0) > 0;
+    return result.rows[0]?.id ?? null;
+  }
+
+  async isCurrent(userId: string, purpose: string): Promise<boolean> {
+    return (await this.findCurrentConsentId(userId, purpose)) !== null;
   }
 
   async createDataSubjectRequest(input: {

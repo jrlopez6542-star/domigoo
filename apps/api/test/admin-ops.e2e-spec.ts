@@ -64,25 +64,45 @@ describe("suspensión y estadísticas operativas (M35 y M36)", () => {
   it("suspende y rehabilita domiciliario/restaurante con auditoría, y expone stats sin PII ni acceso a REVIEWER", async () => {
     const opsRes = await request(server())
       .post("/v1/auth/register")
-      .send({ email: "ops-m35@example.invalid", password, client: "MOBILE" })
+      .send({
+        email: "ops-m35@example.invalid",
+        password,
+        client: "MOBILE",
+        consents: { termsAccepted: true, privacyAccepted: true },
+      })
       .expect(201);
     const opsToken = String(record(opsRes.body)["token"]);
 
     const revRes = await request(server())
       .post("/v1/auth/register")
-      .send({ email: "rev-m35@example.invalid", password, client: "MOBILE" })
+      .send({
+        email: "rev-m35@example.invalid",
+        password,
+        client: "MOBILE",
+        consents: { termsAccepted: true, privacyAccepted: true },
+      })
       .expect(201);
     const revToken = String(record(revRes.body)["token"]);
 
     const ownerRes = await request(server())
       .post("/v1/auth/register")
-      .send({ email: "owner-m35@example.invalid", password, client: "MOBILE" })
+      .send({
+        email: "owner-m35@example.invalid",
+        password,
+        client: "MOBILE",
+        consents: { termsAccepted: true, privacyAccepted: true },
+      })
       .expect(201);
     const ownerToken = String(record(ownerRes.body)["token"]);
 
     const courierRes = await request(server())
       .post("/v1/auth/register")
-      .send({ email: "courier-m35@example.invalid", password, client: "MOBILE" })
+      .send({
+        email: "courier-m35@example.invalid",
+        password,
+        client: "MOBILE",
+        consents: { termsAccepted: true, privacyAccepted: true },
+      })
       .expect(201);
     expect(record(courierRes.body)["token"]).toBeDefined();
 

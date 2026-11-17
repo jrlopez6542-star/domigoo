@@ -65,13 +65,23 @@ describe("enlace público de tracking (M27)", () => {
   it("emite enlace, oculta PII y pickupPin, expone deliveryPin solo en PICKED_UP/AT_DROPOFF y rechaza alterado/vencido/revocado", async () => {
     const ownerRes = await request(server())
       .post("/v1/auth/register")
-      .send({ email: "owner-m27@example.invalid", password, client: "MOBILE" })
+      .send({
+        email: "owner-m27@example.invalid",
+        password,
+        client: "MOBILE",
+        consents: { termsAccepted: true, privacyAccepted: true },
+      })
       .expect(201);
     const ownerToken = String(record(ownerRes.body)["token"]);
 
     const courierRes = await request(server())
       .post("/v1/auth/register")
-      .send({ email: "courier-m27@example.invalid", password, client: "MOBILE" })
+      .send({
+        email: "courier-m27@example.invalid",
+        password,
+        client: "MOBILE",
+        consents: { termsAccepted: true, privacyAccepted: true },
+      })
       .expect(201);
     expect(record(courierRes.body)["token"]).toBeDefined();
 

@@ -539,9 +539,11 @@ enum LegalDocumentKind {
 
 enum ConsentPurpose {
   ACCOUNT
+  TERMS_ACCEPTANCE
   GEOLOCATION
   DOCUMENT_STORAGE
   ORDER_CONTACT
+  MARKETING
 }
 
 enum ConsentChannel {

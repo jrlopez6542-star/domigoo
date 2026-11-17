@@ -38,11 +38,14 @@ async function createApp(env: AppEnv): Promise<INestApplication> {
 }
 
 async function register(email: string): Promise<string> {
-  const response = await request(server()).post("/v1/auth/register").send({
-    email,
-    password,
-    client: "MOBILE",
-  });
+  const response = await request(server())
+    .post("/v1/auth/register")
+    .send({
+      email,
+      password,
+      client: "MOBILE",
+      consents: { termsAccepted: true, privacyAccepted: true },
+    });
   const token = (response.body as { token?: string }).token;
   if (response.status !== 201 || token === undefined) {
     throw new Error("No se pudo registrar");

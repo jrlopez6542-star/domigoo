@@ -96,6 +96,7 @@ describe("cuenta y sesión", () => {
       email: "cuenta@example.invalid",
       password,
       client: "WEB",
+      consents: { termsAccepted: true, privacyAccepted: true },
     });
     expect(created.status).toBe(201);
     const cookie = String(created.headers["set-cookie"]);
@@ -119,7 +120,12 @@ describe("cuenta y sesión", () => {
   it("entrega el token al móvil y no lo guarda en claro", async () => {
     const created = await request(server())
       .post("/v1/auth/register")
-      .send({ phoneE164: "+573001112233", password, client: "MOBILE" })
+      .send({
+        phoneE164: "+573001112233",
+        password,
+        client: "MOBILE",
+        consents: { termsAccepted: true, privacyAccepted: true },
+      })
       .expect(201);
     expect(created.headers["set-cookie"]).toBeUndefined();
     const token = String(record(created.body)["token"]);
@@ -138,7 +144,12 @@ describe("cuenta y sesión", () => {
   it("no revela si el correo existe y corta tras varios intentos", async () => {
     await request(server())
       .post("/v1/auth/register")
-      .send({ email: "existe@example.invalid", password, client: "WEB" })
+      .send({
+        email: "existe@example.invalid",
+        password,
+        client: "WEB",
+        consents: { termsAccepted: true, privacyAccepted: true },
+      })
       .expect(201);
 
     const known = await request(server()).post("/v1/auth/login").send({
@@ -180,15 +191,126 @@ describe("cuenta y sesión", () => {
   it("no permite dos cuentas con el mismo correo o teléfono", async () => {
     await request(server())
       .post("/v1/auth/register")
-      .send({ email: "unica@example.invalid", phoneE164: "+573009998877", password, client: "WEB" })
+      .send({
+        email: "unica@example.invalid",
+        phoneE164: "+573009998877",
+        password,
+        client: "WEB",
+        consents: { termsAccepted: true, privacyAccepted: true },
+      })
       .expect(201);
     await request(server())
       .post("/v1/auth/register")
-      .send({ email: "unica@example.invalid", password, client: "WEB" })
+      .send({
+        email: "unica@example.invalid",
+        password,
+        client: "WEB",
+        consents: { termsAccepted: true, privacyAccepted: true },
+      })
       .expect(409);
     await request(server())
       .post("/v1/auth/register")
-      .send({ phoneE164: "+573009998877", password, client: "MOBILE" })
+      .send({
+        phoneE164: "+573009998877",
+        password,
+        client: "MOBILE",
+        consents: { termsAccepted: true, privacyAccepted: true },
+      })
       .expect(409);
+  });
+
+  it("exige las casillas obligatorias según el perfil y guarda evidencia de consentimiento en BD (M45)", async () => {
+    // 1. Sin casillas obligatorias rechaza con 422
+    await request(server())
+      .post("/v1/auth/register")
+      .send({ email: "sin-consent@example.invalid", password, client: "WEB" })
+      .expect(422);
+
+    await request(server())
+      .post("/v1/auth/register")
+      .send({
+        email: "solo-terminos@example.invalid",
+        password,
+        client: "WEB",
+        consents: { termsAccepted: true, privacyAccepted: false },
+      })
+      .expect(422);
+
+    // 2. Domiciliario sin autorización de datos sensibles rechaza con 422
+    await request(server())
+      .post("/v1/auth/register")
+      .send({
+        email: "courier-sin-sensible@example.invalid",
+        password,
+        client: "MOBILE",
+        role: "COURIER",
+        consents: { termsAccepted: true, privacyAccepted: true, sensitiveDataAccepted: false },
+      })
+      .expect(422);
+
+    // 3. Domiciliario con las 3 obligatorias + marketing opcional guarda evidencia completa
+    const res = await request(server())
+      .post("/v1/auth/register")
+      .set("User-Agent", "domigoo-e2e-agent/1.0")
+      .send({
+        email: "courier-legal@example.invalid",
+        password,
+        client: "MOBILE",
+        role: "COURIER",
+        consents: {
+          termsAccepted: true,
+          privacyAccepted: true,
+          sensitiveDataAccepted: true,
+          marketingAccepted: true,
+          version: "0.1-borrador",
+        },
+      })
+      .expect(201);
+
+    const userId = String(record(res.body)["id"]);
+    expect(record(res.body)["legalVersion"]).toBe("0.1-borrador");
+    expect(record(res.body)["consentPurposes"]).toEqual([
+      "TERMS_ACCEPTANCE",
+      "ACCOUNT",
+      "DOCUMENT_STORAGE",
+      "MARKETING",
+    ]);
+
+    const pool = new Pool({ connectionString: databaseUrl });
+    try {
+      const rows = await pool.query<{
+        purpose: string;
+        channel: string;
+        version: string;
+        grantedAt: Date;
+        userAgent: string | null;
+      }>(
+        `SELECT cr.purpose::text AS purpose,
+                cr.channel::text AS channel,
+                ld.version,
+                cr."grantedAt",
+                cr."userAgent"
+         FROM consent_records cr
+         JOIN legal_documents ld ON ld.id = cr."legalDocumentId"
+         WHERE cr."userId" = $1
+         ORDER BY cr.purpose::text`,
+        [userId],
+      );
+      expect(rows.rows).toHaveLength(4);
+      for (const row of rows.rows) {
+        expect(row.version).toBe("0.1-borrador");
+        expect(row.channel).toBe("MOBILE");
+        expect(row.grantedAt).toBeInstanceOf(Date);
+        expect(row.userAgent).toBe("domigoo-e2e-agent/1.0");
+      }
+      expect(rows.rows.map((r) => r.purpose)).toEqual([
+        "ACCOUNT",
+        "DOCUMENT_STORAGE",
+        "MARKETING",
+        "TERMS_ACCEPTANCE",
+      ]);
+    } finally {
+      await pool.end();
+    }
   });
 });

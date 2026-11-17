@@ -75,19 +75,34 @@ describe("recorrido de punta a punta (M38)", () => {
   it("completa el flujo de punta a punta: suscripción, domiciliario aprobado, oferta abierta, recorrido, ambos PIN y tracking", async () => {
     const ownerRes = await request(server())
       .post("/v1/auth/register")
-      .send({ email: "owner-m38@example.invalid", password, client: "MOBILE" })
+      .send({
+        email: "owner-m38@example.invalid",
+        password,
+        client: "MOBILE",
+        consents: { termsAccepted: true, privacyAccepted: true },
+      })
       .expect(201);
     const owner = String(record(ownerRes.body)["token"]);
 
     const reviewerRes = await request(server())
       .post("/v1/auth/register")
-      .send({ email: "reviewer-m38@example.invalid", password, client: "MOBILE" })
+      .send({
+        email: "reviewer-m38@example.invalid",
+        password,
+        client: "MOBILE",
+        consents: { termsAccepted: true, privacyAccepted: true },
+      })
       .expect(201);
     const reviewer = String(record(reviewerRes.body)["token"]);
 
     const courierRes = await request(server())
       .post("/v1/auth/register")
-      .send({ email: "courier-m38@example.invalid", password, client: "MOBILE" })
+      .send({
+        email: "courier-m38@example.invalid",
+        password,
+        client: "MOBILE",
+        consents: { termsAccepted: true, privacyAccepted: true },
+      })
       .expect(201);
     const courier = String(record(courierRes.body)["token"]);
 

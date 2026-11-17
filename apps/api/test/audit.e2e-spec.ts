@@ -67,11 +67,14 @@ describe("auditoría de identidad", () => {
   });
 
   it("no guarda la contraseña cuando el ingreso falla y el update de auditoría revienta", async () => {
-    await request(server()).post("/v1/auth/register").send({
-      email: "auditado@example.invalid",
-      password,
-      client: "WEB",
-    });
+    await request(server())
+      .post("/v1/auth/register")
+      .send({
+        email: "auditado@example.invalid",
+        password,
+        client: "WEB",
+        consents: { termsAccepted: true, privacyAccepted: true },
+      });
     await request(server()).post("/v1/auth/login").send({
       email: "auditado@example.invalid",
       password: "clave-incorrecta-12",
@@ -92,10 +95,20 @@ describe("auditoría de identidad", () => {
   it("audita el cambio de papel sin secretos", async () => {
     const owner = await request(server())
       .post("/v1/auth/register")
-      .send({ email: "dueno-audit@example.invalid", password, client: "MOBILE" });
+      .send({
+        email: "dueno-audit@example.invalid",
+        password,
+        client: "MOBILE",
+        consents: { termsAccepted: true, privacyAccepted: true },
+      });
     const operator = await request(server())
       .post("/v1/auth/register")
-      .send({ email: "opera@example.invalid", password, client: "MOBILE" });
+      .send({
+        email: "opera@example.invalid",
+        password,
+        client: "MOBILE",
+        consents: { termsAccepted: true, privacyAccepted: true },
+      });
     const ownerId = (owner.body as { id: string }).id;
     const operatorId = (operator.body as { id: string }).id;
     await rows(

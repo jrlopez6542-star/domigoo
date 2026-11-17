@@ -83,6 +83,50 @@ export class CourierApiClient {
     return res;
   }
 
+  async registerCourier(input: {
+    identifier: string;
+    password: string;
+    consents: {
+      termsAccepted: boolean;
+      privacyAccepted: boolean;
+      sensitiveDataAccepted: boolean;
+      marketingAccepted?: boolean;
+      version?: string;
+    };
+  }): Promise<{ token: string }> {
+    const trimmed = input.identifier.trim();
+    const base = trimmed.includes("@")
+      ? { email: trimmed, password: input.password, client: "MOBILE" }
+      : { phoneE164: trimmed, password: input.password, client: "MOBILE" };
+    const res = await this.request<{ token: string }>("/v1/auth/register", "POST", {
+      ...base,
+      role: "COURIER",
+      consents: input.consents,
+    });
+    this.token = res.token;
+    return res;
+  }
+
+  async grantGeolocationConsent(): Promise<{ consentId: string }> {
+    const docs = await this.request<{
+      documents: Array<{ id: string; kind: string }>;
+    }>("/v1/legal-documents/current", "GET");
+    const geoDoc = docs.documents.find((d) => d.kind === "GEOLOCATION_CONSENT");
+    if (!geoDoc) {
+      throw new Error("No se encontró el documento de consentimiento de geolocalización");
+    }
+    const consent = await this.request<{ id: string }>("/v1/consents", "POST", {
+      legalDocumentId: geoDoc.id,
+      purpose: "GEOLOCATION",
+      channel: "MOBILE",
+    });
+    return { consentId: consent.id };
+  }
+
+  async revokeGeolocationConsent(consentId: string): Promise<{ revoked: true }> {
+    return this.request<{ revoked: true }>(`/v1/consents/${consentId}/revoke`, "POST", {});
+  }
+
   async createProfile(input: {
     firstName: string;
     lastName: string;

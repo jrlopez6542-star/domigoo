@@ -65,7 +65,12 @@ describeDb("Contratos HTTP reales para Web, Admin y Móvil (M39)", () => {
     // 1. Login con email (WEB) y teléfono E.164 (MOBILE) + rechazo 400 si falta identificador
     await request(server())
       .post("/v1/auth/register")
-      .send({ email: "rest-m39@example.invalid", password, client: "WEB" })
+      .send({
+        email: "rest-m39@example.invalid",
+        password,
+        client: "WEB",
+        consents: { termsAccepted: true, privacyAccepted: true },
+      })
       .expect(201);
 
     const webLogin = await request(server())
@@ -77,7 +82,12 @@ describeDb("Contratos HTTP reales para Web, Admin y Móvil (M39)", () => {
 
     await request(server())
       .post("/v1/auth/register")
-      .send({ phoneE164: "+573001119939", password, client: "MOBILE" })
+      .send({
+        phoneE164: "+573001119939",
+        password,
+        client: "MOBILE",
+        consents: { termsAccepted: true, privacyAccepted: true },
+      })
       .expect(201);
 
     const mobileLogin = await request(server())
@@ -128,7 +138,12 @@ describeDb("Contratos HTTP reales para Web, Admin y Móvil (M39)", () => {
     // 3. Admin login (ADMIN), tarifa publicada y cotización desde sesión de restaurante (/v1/tariffs/quote)
     await request(server())
       .post("/v1/auth/register")
-      .send({ email: "admin-m39@example.invalid", password, client: "ADMIN" })
+      .send({
+        email: "admin-m39@example.invalid",
+        password,
+        client: "ADMIN",
+        consents: { termsAccepted: true, privacyAccepted: true },
+      })
       .expect(201);
     const adminLogin = await request(server())
       .post("/v1/auth/login")
