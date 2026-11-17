@@ -1162,3 +1162,28 @@ model AuditLog {
   @@index([action, createdAt])
   @@map("audit_logs")
 }
+
+// --- Endurecimiento (M47): almacenamiento privado y rate limiting -------------
+
+model StoredObjectRecord {
+  key       String   @id @db.Uuid
+  mimeType  String   @db.VarChar(80)
+  byteSize  Int
+  sha256    String   @db.Char(64)
+  data      Bytes
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  @@map("stored_objects")
+}
+
+model RateLimitBucket {
+  key          String    @id @db.VarChar(180)
+  count        Int
+  windowStart  DateTime  @db.Timestamptz(6)
+  blockedUntil DateTime? @db.Timestamptz(6)
+
+  @@index([windowStart])
+  @@index([blockedUntil])
+  @@map("rate_limit_buckets")
+}
+

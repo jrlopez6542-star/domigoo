@@ -18,11 +18,15 @@ import { NotificationsModule } from "./notifications/notifications.module.js";
 import { OrdersModule } from "./orders/orders.module.js";
 import { TrackingModule } from "./tracking/tracking.module.js";
 import { VerificationModule } from "./verification/verification.module.js";
+import { RateLimitModule } from "./rate-limit/rate-limit.module.js";
+import { MaintenanceModule } from "./maintenance/maintenance.module.js";
 
 @Module({
   imports: [
     ConfigModule,
     DatabaseModule,
+    RateLimitModule,
+    MaintenanceModule,
     AuditModule,
     AdminModule,
     IdentityModule,

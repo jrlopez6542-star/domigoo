@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { resolve, sep } from "node:path";
 import { Inject, Injectable } from "@nestjs/common";
 import { APP_ENV, type AppEnv } from "../config/env.js";
@@ -23,6 +23,10 @@ export class LocalObjectStorage extends ObjectStorage {
 
   async read(key: string): Promise<Buffer> {
     return readFile(this.safePath(key));
+  }
+
+  async remove(key: string): Promise<void> {
+    await rm(this.safePath(key), { force: true });
   }
 
   private safePath(key: string): string {

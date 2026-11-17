@@ -12,6 +12,7 @@ import {
 import { ApiOkResponse, ApiOperation, ApiTags } from "@nestjs/swagger";
 import type { Request, Response } from "express";
 import { APP_ENV, type AppEnv } from "../config/env.js";
+import { extractClientIp } from "../rate-limit/rate-limit.guard.js";
 import {
   AuthError,
   IdentityService,
@@ -63,10 +64,12 @@ export class AuthController {
   })
   async login(
     @Body() body: unknown,
+    @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
   ): Promise<Record<string, string | null>> {
     const credentials = this.credentials(body);
-    const result = await this.run(() => this.identity.login(credentials));
+    const ip = extractClientIp(request);
+    const result = await this.run(() => this.identity.login(credentials, ip), response);
     this.presentSession(response, credentials, result.token);
     return this.publicBody(result.user, credentials.client, result.token);
   }
@@ -119,11 +122,14 @@ export class AuthController {
     }
   }
 
-  private async run<T>(action: () => Promise<T>): Promise<T> {
+  private async run<T>(action: () => Promise<T>, response?: Response): Promise<T> {
     try {
       return await action();
     } catch (error) {
       if (error instanceof LoginLimitedError) {
+        if (response !== undefined) {
+          response.setHeader("Retry-After", String(error.retryAfterSeconds));
+        }
         throw httpError(new AuthError(429, error.message));
       }
       if (error instanceof AuthError) {

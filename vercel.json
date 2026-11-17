@@ -4,5 +4,11 @@
   "installCommand": "pnpm install --frozen-lockfile",
   "buildCommand": "sh scripts/vercel-build.sh",
   "outputDirectory": "public",
-  "rewrites": [{ "source": "/((?!api/).*)", "destination": "/api" }]
+  "rewrites": [{ "source": "/((?!api/).*)", "destination": "/api" }],
+  "crons": [
+    {
+      "path": "/v1/internal/cron/maintenance",
+      "schedule": "0 3 * * *"
+    }
+  ]
 }

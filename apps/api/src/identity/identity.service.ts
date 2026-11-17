@@ -1,5 +1,6 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Optional } from "@nestjs/common";
 import { AuditRecorder } from "../audit/audit.service.js";
+import { RateLimitService } from "../rate-limit/rate-limit.service.js";
 import { hashPassword, verifyPassword } from "./password.js";
 import { parseColombianPhone } from "./phone.js";
 import {
@@ -56,6 +57,7 @@ export class IdentityService {
   constructor(
     private readonly repository: IdentityRepository,
     private readonly audit: AuditRecorder,
+    @Optional() private readonly rateLimit?: RateLimitService,
   ) {}
 
   async register(
@@ -85,9 +87,13 @@ export class IdentityService {
     }
   }
 
-  async login(input: Credentials): Promise<{ user: PublicUser; token: string }> {
+  async login(input: Credentials, ip = "unknown"): Promise<{ user: PublicUser; token: string }> {
     const key = loginKey(input);
-    assertLoginAllowed(key);
+    if (this.rateLimit !== undefined) {
+      await this.rateLimit.assertLoginAllowed(key, ip);
+    } else {
+      assertLoginAllowed(key);
+    }
     const stored =
       input.email !== null
         ? await this.repository.findByEmail(input.email)
@@ -95,7 +101,11 @@ export class IdentityService {
     const hash = stored?.passwordHash ?? DUMMY_PASSWORD;
     const matches = verifyPassword(input.password, hash);
     if (stored === null || stored.passwordHash === null || !matches || stored.status !== "ACTIVE") {
-      recordLoginFailure(key);
+      if (this.rateLimit !== undefined) {
+        await this.rateLimit.recordLoginFailure(key, ip);
+      } else {
+        recordLoginFailure(key);
+      }
       await this.audit.record({
         actorId: stored?.id ?? null,
         actorKind: "SYSTEM",
@@ -106,7 +116,11 @@ export class IdentityService {
       });
       throw new AuthError(401, INVALID);
     }
-    clearLoginFailures(key);
+    if (this.rateLimit !== undefined) {
+      await this.rateLimit.clearLoginFailures(key, ip);
+    } else {
+      clearLoginFailures(key);
+    }
     const token = await this.openSession(stored.id, input.client);
     return {
       user: {
