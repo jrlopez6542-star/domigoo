@@ -143,7 +143,10 @@ export class TariffRepository {
            FROM tariff_rules WHERE "versionId" = $1 AND "zoneId" IS NULL LIMIT 1`
         : `SELECT "baseFeeCop", "perKmCop", "minimumFeeCop", "nightMultiplierBps",
                   "nightStartsMinute", "nightEndsMinute"
-           FROM tariff_rules WHERE "zoneId" = $1 LIMIT 1`;
+           FROM tariff_rules
+           WHERE "versionId" = $1 AND ("zoneId" = $2 OR "zoneId" IS NULL)
+           ORDER BY ("zoneId" IS NOT NULL) DESC
+           LIMIT 1`;
     const rule = await this.database.pool.query<{
       baseFeeCop: number;
       perKmCop: number;
@@ -151,7 +154,7 @@ export class TariffRepository {
       nightMultiplierBps: number;
       nightStartsMinute: number;
       nightEndsMinute: number;
-    }>(ruleSql, [zoneRow === undefined ? versionId : zoneRow.id]);
+    }>(ruleSql, zoneRow === undefined ? [versionId] : [versionId, zoneRow.id]);
     const pricing = rule.rows[0];
     if (pricing === undefined) {
       return null;

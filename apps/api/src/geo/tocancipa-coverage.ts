@@ -283,7 +283,7 @@ export async function ensureTocancipaCoverageConfig(
   }
 
   const existingRule = await db.query(
-    `SELECT id FROM tariff_rules WHERE "versionId" = $1 AND ("zoneId" = $2 OR "zoneId" IS NULL) LIMIT 1`,
+    `SELECT id FROM tariff_rules WHERE "versionId" = $1 AND "zoneId" = $2 LIMIT 1`,
     [tariffVersionId, zoneId],
   );
   if (readIdRow(existingRule.rows[0]) === undefined) {

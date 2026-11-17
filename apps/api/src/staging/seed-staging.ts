@@ -148,12 +148,29 @@ async function main(): Promise<void> {
     }
 
     if (tariffVersionId !== undefined) {
-      await client.query(
+      const zoneRes = await client.query<{ id: string }>(
         `INSERT INTO tariff_zones (id, "versionId", code, name, area, priority)
          VALUES (gen_random_uuid(), $1, $2, $3, ST_GeogFromText($4), 100)
-         ON CONFLICT ("versionId", code) DO NOTHING`,
+         ON CONFLICT ("versionId", code) DO UPDATE SET name = EXCLUDED.name
+         RETURNING id`,
         [tariffVersionId, TOCANCIPA_ZONE_CODE, TOCANCIPA_ZONE_NAME, TOCANCIPA_POLYGON_WKT],
       );
+      const stagingZoneId = zoneRes.rows[0]?.id;
+      if (stagingZoneId !== undefined) {
+        const zoneRule = await client.query<{ id: string }>(
+          `SELECT id FROM tariff_rules WHERE "versionId" = $1 AND "zoneId" = $2 LIMIT 1`,
+          [tariffVersionId, stagingZoneId],
+        );
+        if (zoneRule.rows[0]?.id === undefined) {
+          await client.query(
+            `INSERT INTO tariff_rules (
+               id, "versionId", "zoneId", "baseFeeCop", "perKmCop", "minimumFeeCop",
+               "nightMultiplierBps", "nightStartsMinute", "nightEndsMinute"
+             ) VALUES (gen_random_uuid(), $1, $2, 5500, 0, 0, 10000, 0, 0)`,
+            [tariffVersionId, stagingZoneId],
+          );
+        }
+      }
     }
 
     // 3. Política operativa publicada de staging
