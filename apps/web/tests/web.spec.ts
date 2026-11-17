@@ -486,6 +486,7 @@ test.describe("HOME-002 (Futuro Urbano), Legal (M45) y Tracking público (M30)",
       await expect(page.getByTestId("session-badge")).toContainText(item.email);
 
       await page.getByRole("button", { name: "Cerrar sesión" }).click();
+      await expect(page.getByTestId("tab-login")).toBeVisible();
     }
   });
 

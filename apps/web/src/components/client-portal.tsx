@@ -170,6 +170,7 @@ export function ClientPortalShell({ children }: { children: ReactNode }) {
   }, []);
 
   const handleLogout = useCallback(async () => {
+    clearStoredActiveRole();
     setLoggingOut(true);
     try {
       await callProxy<unknown>("auth/logout", "POST");

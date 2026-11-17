@@ -312,6 +312,7 @@ export function RestaurantPortalShell({
   }, []);
 
   const handleLogout = useCallback(async () => {
+    clearStoredActiveRole();
     setLoggingOut(true);
     try {
       await callProxy<unknown>("auth/logout", "POST");
