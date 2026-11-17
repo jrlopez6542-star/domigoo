@@ -7,7 +7,8 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "NODE_OPTIONS=--experimental-vm-modules jest --runInBand",
-    "seed-admin": "tsx src/identity/seed-admin.ts"
+    "seed-admin": "tsx src/identity/seed-admin.ts",
+    "seed:staging": "tsx src/staging/seed-staging.ts"
   },
   "dependencies": {
     "@nestjs/common": "12.4.2",
