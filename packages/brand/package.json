@@ -1,0 +1,17 @@
+{
+  "name": "@domigoo/brand",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./tokens.css": "./src/tokens.css"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@domigoo/config": "workspace:*",
+    "typescript": "6.0.3"
+  }
+}

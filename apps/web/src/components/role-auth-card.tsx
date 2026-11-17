@@ -44,6 +44,14 @@ export function RoleAuthCard({
   const [statusMessage, setStatusMessage] = useState("");
 
   useEffect(() => {
+    if (typeof window !== "undefined") {
+      const modo = new URLSearchParams(window.location.search).get("modo");
+      if (modo === "registro") {
+        setMode("register");
+      } else if (modo === "login") {
+        setMode("login");
+      }
+    }
     let active = true;
     callProxy<SessionUser>("auth/me", "GET")
       .then((user) => {

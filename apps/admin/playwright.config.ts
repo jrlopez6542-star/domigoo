@@ -6,5 +6,13 @@ export default defineConfig({
   use: {
     baseURL: process.env["ADMIN_BASE_URL"] || "http://127.0.0.1:3002",
     headless: true,
+    ...(process.env["PLAYWRIGHT_EXECUTABLE_PATH"]
+      ? {
+          launchOptions: {
+            executablePath: process.env["PLAYWRIGHT_EXECUTABLE_PATH"],
+            args: ["--no-sandbox", "--disable-setuid-sandbox"],
+          },
+        }
+      : {}),
   },
 });

@@ -1,6 +1,16 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
+import "@fontsource/inter/400.css";
+import "@fontsource/inter/500.css";
+import "@fontsource/inter/600.css";
+import "@fontsource/inter/700.css";
+import "@fontsource/montserrat/600.css";
+import "@fontsource/montserrat/700.css";
+import "@fontsource/montserrat/700-italic.css";
+import "@fontsource/montserrat/800.css";
 import { getAdminServerConfig } from "@/lib/env";
+import "@domigoo/brand/tokens.css";
+import "@/styles/admin.css";
 
 export function generateMetadata(): Metadata {
   const { appName } = getAdminServerConfig();
@@ -17,16 +27,7 @@ export function generateMetadata(): Metadata {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="es">
-      <body
-        style={{
-          margin: 0,
-          fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-          backgroundColor: "#f8fafc",
-          color: "#0f172a",
-        }}
-      >
-        {children}
-      </body>
+      <body>{children}</body>
     </html>
   );
 }

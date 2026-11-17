@@ -2,22 +2,75 @@ import { expect, test } from "@playwright/test";
 
 const API_BASE_URL = process.env["API_BASE_URL"] || "http://127.0.0.1:3001";
 
-test.describe("Interfaz única por rol (M46), Legal (M45) y Tracking público (M30)", () => {
-  test("la entrada única muestra los tres roles, enlaces legales en footer, navega a cada ruta y el tracking público funciona", async ({
+test.describe("HOME-002 (Futuro Urbano), Legal (M45) y Tracking público (M30)", () => {
+  test("la entrada única HOME-002 muestra las 3 tarjetas en fila, botones, enlaces legales en footer, navega a cada ruta y el tracking público funciona", async ({
     page,
     request,
   }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/");
     await expect(page).toHaveTitle(/DOMIGOO/i);
 
-    const clienteCard = page.getByTestId("role-card-cliente");
-    const restauranteCard = page.getByTestId("role-card-restaurante");
-    const domiciliarioCard = page.getByTestId("role-card-domiciliario");
+    const pedirCard = page.getByTestId("home-card-pedir");
+    const seguirCard = page.getByTestId("home-card-seguir");
+    const domiciliarioCard = page.getByTestId("home-card-domiciliario");
+    const loginBtn = page.getByTestId("home-btn-login");
+    const registerLink = page.getByTestId("home-link-register");
+    const restaurantLink = page.getByTestId("home-link-restaurante");
 
-    await expect(clienteCard).toBeVisible();
-    await expect(restauranteCard).toBeVisible();
+    await expect(pedirCard).toBeVisible();
+    await expect(seguirCard).toBeVisible();
     await expect(domiciliarioCard).toBeVisible();
+    await expect(loginBtn).toBeVisible();
+    await expect(registerLink).toBeVisible();
+    await expect(restaurantLink).toBeVisible();
 
+    // Verificar tipografía Futuro Urbano (Inter y Montserrat realmente cargadas)
+    const fontCheck = await page.evaluate(async () => {
+      await document.fonts.ready;
+      const bodyFont = getComputedStyle(document.body).fontFamily;
+      const h1 = document.querySelector("h1");
+      const h1Font = h1 ? getComputedStyle(h1).fontFamily : "";
+      const btn = document.querySelector('[data-testid="home-btn-login"]');
+      const btnFont = btn ? getComputedStyle(btn).fontFamily : "";
+      return {
+        bodyFont,
+        h1Font,
+        btnFont,
+        interLoaded: document.fonts.check("16px Inter"),
+        montserratLoaded: document.fonts.check("700 16px Montserrat"),
+      };
+    });
+    expect(fontCheck.bodyFont).toMatch(/Inter/i);
+    expect(fontCheck.h1Font).toMatch(/Montserrat/i);
+    expect(fontCheck.btnFont).toMatch(/Inter|Montserrat/i);
+    expect(fontCheck.interLoaded).toBe(true);
+    expect(fontCheck.montserratLoaded).toBe(true);
+
+    // Verificar que las 3 tarjetas están en la misma fila en móvil (390px) y sin desborde horizontal
+    const [b1, b2, b3, overflow] = await Promise.all([
+      pedirCard.boundingBox(),
+      seguirCard.boundingBox(),
+      domiciliarioCard.boundingBox(),
+      page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth),
+    ]);
+    expect(overflow).toBe(false);
+    expect(b1).not.toBeNull();
+    expect(b2).not.toBeNull();
+    expect(b3).not.toBeNull();
+    if (b1 && b2 && b3) {
+      expect(Math.abs(b1.y - b2.y)).toBeLessThan(8);
+      expect(Math.abs(b2.y - b3.y)).toBeLessThan(8);
+    }
+
+    // Drawer de seguimiento en línea
+    await seguirCard.click();
+    await expect(page.getByTestId("home-tracking-form")).toBeVisible();
+    await page.getByLabel("Código o enlace de seguimiento").fill("trk_demo_123");
+    await page.getByRole("button", { name: "Consultar estado" }).click();
+    await expect(page).toHaveURL(/\/tracking\/trk_demo_123$/);
+
+    await page.goto("/");
     const footer = page.locator("footer");
     await expect(footer.getByRole("link", { name: "Términos y Condiciones" })).toBeVisible();
     await expect(footer.getByRole("link", { name: "Política de Privacidad" })).toBeVisible();
@@ -28,14 +81,14 @@ test.describe("Interfaz única por rol (M46), Legal (M45) y Tracking público (M
     await expect(footer).not.toContainText(/próximamente/i);
 
     // Navegación a Cliente
-    await clienteCard.click();
+    await pedirCard.click();
     await expect(page).toHaveURL(/\/cliente$/);
     await expect(page.getByRole("heading", { name: /cliente/i }).first()).toBeVisible();
     await expect(page.getByRole("button", { name: "Usar mi ubicación" })).toBeVisible();
 
     // Navegación a Restaurante
     await page.goto("/");
-    await restauranteCard.click();
+    await restaurantLink.click();
     await expect(page).toHaveURL(/\/restaurante$/);
     await expect(page.getByText("Valor de la comida (COP)")).toBeVisible();
     await expect(page.getByText("Valor del domicilio (COP)")).toBeVisible();

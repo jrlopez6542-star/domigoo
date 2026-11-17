@@ -20,11 +20,14 @@ export function DomigooShell({
       <header className="dg-header">
         <div className="dg-header-inner">
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <Link href="/" className="dg-brand-link">
-              <span className="dg-brand-mark" aria-hidden="true">
-                D
-              </span>
-              <span>{appName}</span>
+            <Link href="/" className="dg-brand-link" aria-label={`${appName} — Inicio`}>
+              <img
+                src="/brand/domigoo-horizontal-dark.svg"
+                alt={appName}
+                className="dg-brand-logo"
+                width={128}
+                height={38}
+              />
             </Link>
             <span className="dg-badge">Tocancipá</span>
           </div>
@@ -62,12 +65,14 @@ export function DomigooShell({
         </div>
       </header>
 
-      <main className="dg-main">{children}</main>
+      <main className={activeRoute === "home" ? "dg-main dg-main--home" : "dg-main"}>
+        {children}
+      </main>
 
       <footer className="dg-footer">
         <div className="dg-footer-inner">
           <span>
-            <strong>{appName}</strong> · Domicilios en Tocancipá, Cundinamarca
+            <strong>{appName}</strong> · Tu ciudad a tu puerta · Tocancipá, Cundinamarca
           </span>
 
           <nav className="dg-footer-links" aria-label="Enlaces legales y administración">

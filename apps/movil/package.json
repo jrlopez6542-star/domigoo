@@ -11,6 +11,7 @@
     "config:public": "npx expo config --type public"
   },
   "dependencies": {
+    "@domigoo/brand": "workspace:*",
     "expo": "53.0.9",
     "expo-status-bar": "2.2.3",
     "react": "19.0.0",
