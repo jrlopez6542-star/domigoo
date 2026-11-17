@@ -1,17 +1,26 @@
 import fs from "node:fs";
 import path from "node:path";
+import { extractTrackingToken } from "./api-client.js";
 import { buildLoginPayload } from "./contracts.js";
 import { getWebServerConfig } from "./env.js";
 
-describe("Seguridad y contratos de @domigoo/web (M29/M30/M39)", () => {
-  it("usa APP_NAME en la configuración del servidor", () => {
-    const prev = process.env["APP_NAME"];
+describe("Seguridad y contratos de @domigoo/web (M29/M30/M39/M46)", () => {
+  it("usa APP_NAME y ADMIN_APP_URL en la configuración del servidor", () => {
+    const prevApp = process.env["APP_NAME"];
+    const prevAdmin = process.env["ADMIN_APP_URL"];
     process.env["APP_NAME"] = "DOMIGOO-TEST";
+    process.env["ADMIN_APP_URL"] = "https://admin.ejemplo.com/";
     expect(getWebServerConfig().appName).toBe("DOMIGOO-TEST");
-    if (prev === undefined) {
+    expect(getWebServerConfig().adminAppUrl).toBe("https://admin.ejemplo.com");
+    if (prevApp === undefined) {
       delete process.env["APP_NAME"];
     } else {
-      process.env["APP_NAME"] = prev;
+      process.env["APP_NAME"] = prevApp;
+    }
+    if (prevAdmin === undefined) {
+      delete process.env["ADMIN_APP_URL"];
+    } else {
+      process.env["ADMIN_APP_URL"] = prevAdmin;
     }
   });
 
@@ -26,6 +35,14 @@ describe("Seguridad y contratos de @domigoo/web (M29/M30/M39)", () => {
       password: "ClaveSegura123",
       client: "WEB",
     });
+  });
+
+  it("extrae el token de seguimiento desde código directo o URL completa", () => {
+    expect(extractTrackingToken("trk_abc123")).toBe("trk_abc123");
+    expect(extractTrackingToken("https://domigoo-web.vercel.app/tracking/trk_xyz789?foo=1")).toBe(
+      "trk_xyz789",
+    );
+    expect(extractTrackingToken("   ")).toBe("");
   });
 
   it("no referencia DATABASE_URL ni APP_ENCRYPTION_KEY y usa los campos reales de la API", () => {

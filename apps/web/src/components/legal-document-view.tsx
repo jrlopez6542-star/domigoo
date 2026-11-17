@@ -1,5 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { DomigooShell } from "@/components/domigoo-shell";
+import { getWebServerConfig } from "@/lib/env";
 import {
   LEGAL_DOC_MAP,
   parseMarkdownBlocks,
@@ -82,181 +84,184 @@ function renderInline(text: string): ReactNode[] {
 }
 
 export function LegalDocumentView({ slug }: { slug: LegalDocSlug }) {
+  const { appName, adminAppUrl } = getWebServerConfig();
   const markdown = readLegalMarkdown(slug);
   const blocks = parseMarkdownBlocks(markdown);
 
   return (
-    <main style={{ maxWidth: 880, margin: "0 auto", padding: "32px 20px" }}>
-      <div style={{ marginBottom: 16 }}>
-        <Link href="/" style={{ color: "#1d4ed8", textDecoration: "underline", fontSize: 14 }}>
-          ← Volver al inicio
-        </Link>
-      </div>
+    <DomigooShell appName={appName} adminAppUrl={adminAppUrl} activeRoute="legal">
+      <div style={{ maxWidth: 880, margin: "0 auto" }}>
+        <div style={{ marginBottom: 16 }}>
+          <Link href="/" style={{ color: "#1d4ed8", textDecoration: "underline", fontSize: 14 }}>
+            ← Volver al inicio
+          </Link>
+        </div>
 
-      <div
-        role="status"
-        data-testid="legal-draft-banner"
-        style={{
-          backgroundColor: "#fef3c7",
-          border: "1px solid #f59e0b",
-          color: "#92400e",
-          borderRadius: 8,
-          padding: "12px 16px",
-          marginBottom: 24,
-          fontWeight: 600,
-        }}
-      >
-        Borrador en revisión legal — Estos textos son un borrador de trabajo pendiente de revisión
-        por abogado colombiano antes de su publicación definitiva.
-      </div>
+        <div
+          role="status"
+          data-testid="legal-draft-banner"
+          style={{
+            backgroundColor: "#fef3c7",
+            border: "1px solid #f59e0b",
+            color: "#92400e",
+            borderRadius: 8,
+            padding: "12px 16px",
+            marginBottom: 24,
+            fontWeight: 600,
+          }}
+        >
+          Borrador en revisión legal — Estos textos son un borrador de trabajo pendiente de revisión
+          por abogado colombiano antes de su publicación definitiva.
+        </div>
 
-      <nav
-        aria-label="Documentos legales"
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          gap: 12,
-          marginBottom: 24,
-          paddingBottom: 12,
-          borderBottom: "1px solid #e2e8f0",
-          fontSize: 14,
-        }}
-      >
-        {(Object.keys(LEGAL_DOC_MAP) as LegalDocSlug[]).map((itemSlug) => {
-          const item = LEGAL_DOC_MAP[itemSlug];
-          const isCurrent = itemSlug === slug;
-          return (
-            <Link
-              key={itemSlug}
-              href={item.route}
-              style={{
-                color: isCurrent ? "#0f172a" : "#1d4ed8",
-                fontWeight: isCurrent ? 700 : 400,
-                textDecoration: isCurrent ? "none" : "underline",
-              }}
-            >
-              {item.title}
-            </Link>
-          );
-        })}
-      </nav>
-
-      <article
-        style={{
-          backgroundColor: "#ffffff",
-          border: "1px solid #e2e8f0",
-          borderRadius: 10,
-          padding: "28px 24px",
-          lineHeight: 1.65,
-        }}
-      >
-        {blocks.map((block, idx) => {
-          if (block.type === "hr") {
+        <nav
+          aria-label="Documentos legales"
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 12,
+            marginBottom: 24,
+            paddingBottom: 12,
+            borderBottom: "1px solid #e2e8f0",
+            fontSize: 14,
+          }}
+        >
+          {(Object.keys(LEGAL_DOC_MAP) as LegalDocSlug[]).map((itemSlug) => {
+            const item = LEGAL_DOC_MAP[itemSlug];
+            const isCurrent = itemSlug === slug;
             return (
-              <hr
-                key={idx}
-                style={{ border: 0, borderTop: "1px solid #e2e8f0", margin: "20px 0" }}
-              />
-            );
-          }
-          if (block.type === "heading") {
-            if (block.level === 1) {
-              return (
-                <h1 key={idx} style={{ fontSize: 26, margin: "0 0 16px" }}>
-                  {renderInline(block.text)}
-                </h1>
-              );
-            }
-            if (block.level === 2) {
-              return (
-                <h2 key={idx} style={{ fontSize: 20, margin: "24px 0 10px" }}>
-                  {renderInline(block.text)}
-                </h2>
-              );
-            }
-            return (
-              <h3 key={idx} style={{ fontSize: 17, margin: "18px 0 8px" }}>
-                {renderInline(block.text)}
-              </h3>
-            );
-          }
-          if (block.type === "blockquote") {
-            return (
-              <blockquote
-                key={idx}
+              <Link
+                key={itemSlug}
+                href={item.route}
                 style={{
-                  margin: "14px 0",
-                  padding: "10px 14px",
-                  borderLeft: "4px solid #cbd5e1",
-                  backgroundColor: "#f8fafc",
+                  color: isCurrent ? "#0f172a" : "#1d4ed8",
+                  fontWeight: isCurrent ? 700 : 400,
+                  textDecoration: isCurrent ? "none" : "underline",
                 }}
               >
-                {block.lines.map((line, lIdx) => (
-                  <p key={lIdx} style={{ margin: "4px 0" }}>
-                    {renderInline(line)}
-                  </p>
-                ))}
-              </blockquote>
+                {item.title}
+              </Link>
             );
-          }
-          if (block.type === "list") {
-            const Tag = block.ordered ? "ol" : "ul";
-            return (
-              <Tag key={idx} style={{ margin: "12px 0", paddingLeft: 24 }}>
-                {block.items.map((item, itemIdx) => (
-                  <li key={itemIdx} style={{ marginBottom: 6 }}>
-                    {renderInline(item)}
-                  </li>
-                ))}
-              </Tag>
-            );
-          }
-          if (block.type === "table") {
-            return (
-              <div key={idx} style={{ overflowX: "auto", margin: "16px 0" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
-                  <thead>
-                    <tr>
-                      {block.headers.map((header, hIdx) => (
-                        <th
-                          key={hIdx}
-                          style={{
-                            textAlign: "left",
-                            border: "1px solid #cbd5e1",
-                            padding: "8px 10px",
-                            backgroundColor: "#f1f5f9",
-                          }}
-                        >
-                          {renderInline(header)}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {block.rows.map((row, rIdx) => (
-                      <tr key={rIdx}>
-                        {row.map((cell, cIdx) => (
-                          <td
-                            key={cIdx}
-                            style={{ border: "1px solid #cbd5e1", padding: "8px 10px" }}
+          })}
+        </nav>
+
+        <article
+          style={{
+            backgroundColor: "#ffffff",
+            border: "1px solid #e2e8f0",
+            borderRadius: 10,
+            padding: "28px 24px",
+            lineHeight: 1.65,
+          }}
+        >
+          {blocks.map((block, idx) => {
+            if (block.type === "hr") {
+              return (
+                <hr
+                  key={idx}
+                  style={{ border: 0, borderTop: "1px solid #e2e8f0", margin: "20px 0" }}
+                />
+              );
+            }
+            if (block.type === "heading") {
+              if (block.level === 1) {
+                return (
+                  <h1 key={idx} style={{ fontSize: 26, margin: "0 0 16px" }}>
+                    {renderInline(block.text)}
+                  </h1>
+                );
+              }
+              if (block.level === 2) {
+                return (
+                  <h2 key={idx} style={{ fontSize: 20, margin: "24px 0 10px" }}>
+                    {renderInline(block.text)}
+                  </h2>
+                );
+              }
+              return (
+                <h3 key={idx} style={{ fontSize: 17, margin: "18px 0 8px" }}>
+                  {renderInline(block.text)}
+                </h3>
+              );
+            }
+            if (block.type === "blockquote") {
+              return (
+                <blockquote
+                  key={idx}
+                  style={{
+                    margin: "14px 0",
+                    padding: "10px 14px",
+                    borderLeft: "4px solid #cbd5e1",
+                    backgroundColor: "#f8fafc",
+                  }}
+                >
+                  {block.lines.map((line, lIdx) => (
+                    <p key={lIdx} style={{ margin: "4px 0" }}>
+                      {renderInline(line)}
+                    </p>
+                  ))}
+                </blockquote>
+              );
+            }
+            if (block.type === "list") {
+              const Tag = block.ordered ? "ol" : "ul";
+              return (
+                <Tag key={idx} style={{ margin: "12px 0", paddingLeft: 24 }}>
+                  {block.items.map((item, itemIdx) => (
+                    <li key={itemIdx} style={{ marginBottom: 6 }}>
+                      {renderInline(item)}
+                    </li>
+                  ))}
+                </Tag>
+              );
+            }
+            if (block.type === "table") {
+              return (
+                <div key={idx} style={{ overflowX: "auto", margin: "16px 0" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+                    <thead>
+                      <tr>
+                        {block.headers.map((header, hIdx) => (
+                          <th
+                            key={hIdx}
+                            style={{
+                              textAlign: "left",
+                              border: "1px solid #cbd5e1",
+                              padding: "8px 10px",
+                              backgroundColor: "#f1f5f9",
+                            }}
                           >
-                            {renderInline(cell)}
-                          </td>
+                            {renderInline(header)}
+                          </th>
                         ))}
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {block.rows.map((row, rIdx) => (
+                        <tr key={rIdx}>
+                          {row.map((cell, cIdx) => (
+                            <td
+                              key={cIdx}
+                              style={{ border: "1px solid #cbd5e1", padding: "8px 10px" }}
+                            >
+                              {renderInline(cell)}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              );
+            }
+            return (
+              <p key={idx} style={{ margin: "10px 0" }}>
+                {renderInline(block.text)}
+              </p>
             );
-          }
-          return (
-            <p key={idx} style={{ margin: "10px 0" }}>
-              {renderInline(block.text)}
-            </p>
-          );
-        })}
-      </article>
-    </main>
+          })}
+        </article>
+      </div>
+    </DomigooShell>
   );
 }
