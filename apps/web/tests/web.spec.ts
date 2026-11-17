@@ -266,6 +266,12 @@ test.describe("HOME-002 (Futuro Urbano), Legal (M45) y Tracking público (M30)",
     await geoScreen.getByTestId("geo-consent-manual").click();
     await expect(geoScreen).toBeHidden();
 
+    // Aislamiento: Restaurante no puede entrar a pantallas de Cliente ni Domiciliario
+    await page.goto("/cliente/tarifa");
+    await expect(page).toHaveURL(/\/restaurante$/);
+    await page.goto("/domiciliario/entrega");
+    await expect(page).toHaveURL(/\/restaurante$/);
+
     await page.getByRole("button", { name: "Cerrar sesión" }).click();
 
     // 3. Domiciliario: login en móvil (barra inferior) y entrega en curso
@@ -275,6 +281,12 @@ test.describe("HOME-002 (Futuro Urbano), Legal (M45) y Tracking público (M30)",
     await page.getByLabel(/Contraseña/i).fill("ClavePruebaDomigoo2026");
     await page.getByRole("button", { name: "Ingresar" }).click();
     await expect(page.getByTestId("domiciliario-home-screen")).toBeVisible();
+
+    // Aislamiento: Domiciliario no puede entrar a pantallas de Cliente ni Restaurante
+    await page.goto("/cliente/tarifa");
+    await expect(page).toHaveURL(/\/domiciliario$/);
+    await page.goto("/restaurante/nuevo-domicilio");
+    await expect(page).toHaveURL(/\/domiciliario$/);
 
     await page.getByTestId("nav-domiciliario-entrega-bottom").click();
     await expect(page).toHaveURL(/\/domiciliario\/entrega$/);

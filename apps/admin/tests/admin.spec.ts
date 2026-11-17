@@ -31,7 +31,7 @@ test.describe("Admin de verificación y suscripciones (M31)", () => {
     await page.getByLabel(/Contraseña/i).fill("ClavePruebaDomigoo2026");
     await page.getByRole("button", { name: "Entrar" }).click();
 
-    await expect(page.getByRole("alert")).toContainText(
+    await expect(page.locator(".adm-alert--error")).toContainText(
       "Esta cuenta no tiene permisos administrativos.",
     );
     await expect(page.getByTestId("admin-session")).toHaveCount(0);
