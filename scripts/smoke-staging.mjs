@@ -138,12 +138,17 @@ async function jsonRequest(method, path, body, auth = {}) {
 }
 
 function extractSessionCookie(response) {
-  const setCookie =
+  const cookies =
     typeof response.headers.getSetCookie === "function"
-      ? (response.headers.getSetCookie()[0] ?? "")
-      : (response.headers.get("set-cookie") ?? "");
-  assert(setCookie.includes("domigoo_session="), "Falta cookie domigoo_session en la respuesta");
-  return setCookie.split(";")[0];
+      ? response.headers.getSetCookie()
+      : [response.headers.get("set-cookie") ?? ""];
+  const match = cookies.find((cookie) => cookie.includes("domigoo_session=")) ?? "";
+  assert(match.includes("domigoo_session="), "Falta cookie domigoo_session en la respuesta");
+  const pair = match
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith("domigoo_session="));
+  return pair ?? match.split(";")[0];
 }
 
 async function runStep(number, name, fn) {
@@ -547,6 +552,12 @@ async function main() {
     assert(
       trackFinal.json.deliveryPin === undefined,
       "Tracking en DELIVERED no debe exponer deliveryPin",
+    );
+    await jsonRequest(
+      "POST",
+      "/v1/couriers/me/availability",
+      { state: "OFFLINE" },
+      { token: courierToken, expectedStatus: 201 },
     );
     return { eventsCount: actual.length, trackingStatus: trackFinal.json.status };
   });
