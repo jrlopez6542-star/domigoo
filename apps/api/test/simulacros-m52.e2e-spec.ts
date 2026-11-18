@@ -84,7 +84,7 @@ async function setupBaseWorld(): Promise<{
     );
     await pool.query(
       `INSERT INTO admin_profiles ("userId", "displayName", role, "createdAt", "updatedAt")
-       VALUES ($1, 'Operaciones Simulacro', 'OPERATIONS', now(), now())`,
+       VALUES ($1, 'Operaciones Simulacro', 'SUPERADMIN', now(), now())`,
       [String(opsUser.rows[0]?.id)],
     );
 
