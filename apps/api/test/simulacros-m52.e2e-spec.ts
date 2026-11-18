@@ -76,187 +76,202 @@ async function setupBaseWorld(): Promise<{
   branchId: string;
 }> {
   const pool = new Pool({ connectionString: databaseUrl });
-  // Register real admin via auth + update admin_profiles so we have a valid session token
-  const adminToken = await registerUser("sim-m52-ops@ejemplo.com", "WEB");
-  const opsUser = await pool.query<{ id: string }>(
-    `SELECT id FROM users WHERE email = 'sim-m52-ops@ejemplo.com'`,
-  );
-  await pool.query(
-    `INSERT INTO admin_profiles ("userId", "displayName", role, "createdAt", "updatedAt")
-     VALUES ($1, 'Operaciones Simulacro', 'OPERATIONS', now(), now())`,
-    [String(opsUser.rows[0]?.id)],
-  );
+  try {
+    // Register real admin via auth + update admin_profiles so we have a valid session token
+    const adminToken = await registerUser("sim-m52-ops@ejemplo.com", "WEB");
+    const opsUser = await pool.query<{ id: string }>(
+      `SELECT id FROM users WHERE email = 'sim-m52-ops@ejemplo.com'`,
+    );
+    await pool.query(
+      `INSERT INTO admin_profiles ("userId", "displayName", role, "createdAt", "updatedAt")
+       VALUES ($1, 'Operaciones Simulacro', 'OPERATIONS', now(), now())`,
+      [String(opsUser.rows[0]?.id)],
+    );
 
-  // Legal docs
-  const docLegal = await pool.query<{ id: string }>(
-    `INSERT INTO legal_documents (id, kind, version, "contentHash", "publishedAt")
-     VALUES (gen_random_uuid(), 'DOCUMENT_PROCESSING', 'sim-doc-1', 'hash1', now()) RETURNING id`,
-  );
-  const gpsLegal = await pool.query<{ id: string }>(
-    `INSERT INTO legal_documents (id, kind, version, "contentHash", "publishedAt")
-     VALUES (gen_random_uuid(), 'GEOLOCATION_CONSENT', 'sim-gps-1', 'hash2', now()) RETURNING id`,
-  );
-  const docLegalId = String(docLegal.rows[0]?.id);
-  const gpsLegalId = String(gpsLegal.rows[0]?.id);
+    // Legal docs
+    const docLegal = await pool.query<{ id: string }>(
+      `INSERT INTO legal_documents (id, kind, version, "contentHash", "publishedAt")
+       VALUES (gen_random_uuid(), 'DOCUMENT_PROCESSING', 'sim-doc-1', 'hash1', now()) RETURNING id`,
+    );
+    const gpsLegal = await pool.query<{ id: string }>(
+      `INSERT INTO legal_documents (id, kind, version, "contentHash", "publishedAt")
+       VALUES (gen_random_uuid(), 'GEOLOCATION_CONSENT', 'sim-gps-1', 'hash2', now()) RETURNING id`,
+    );
+    const docLegalId = String(docLegal.rows[0]?.id);
+    const gpsLegalId = String(gpsLegal.rows[0]?.id);
 
-  // Tariff & Policy
-  const tariff = await pool.query<{ id: string }>(
-    `INSERT INTO tariff_versions (id, name, status, "publishedAt", "createdAt")
-     VALUES (gen_random_uuid(), 'Tarifa Simulacro', 'PUBLISHED', now(), now()) RETURNING id`,
-  );
-  await pool.query(
-    `INSERT INTO tariff_rules (
-       id, "versionId", "zoneId", "baseFeeCop", "perKmCop", "minimumFeeCop",
-       "nightMultiplierBps", "nightStartsMinute", "nightEndsMinute"
-     ) VALUES (gen_random_uuid(), $1, NULL, 5500, 0, 0, 10000, 0, 0)`,
-    [String(tariff.rows[0]?.id)],
-  );
-  await pool.query(
-    `INSERT INTO operations_policies (
-       id, name, status, "offerRadiusMeters", "directOfferTtlSeconds", "openOfferTtlSeconds",
-       "seekingTtlSeconds", "maxOffersPerWave", "locationFreshnessSeconds", "maxPinAttempts", "publishedAt", "createdAt"
-     ) VALUES (
-       gen_random_uuid(), 'Politica Simulacro', 'PUBLISHED', 3000, 120, 120, 600, 4, 120, 5, now(), now()
-     )`,
-  );
+    // Tariff & Policy (reutiliza publicados si ya existen tras seed/migración)
+    const existingTariff = await pool.query<{ id: string }>(
+      `SELECT id FROM tariff_versions WHERE status = 'PUBLISHED' LIMIT 1`,
+    );
+    if (existingTariff.rows[0] === undefined) {
+      const tariff = await pool.query<{ id: string }>(
+        `INSERT INTO tariff_versions (id, name, status, "publishedAt", "createdAt")
+         VALUES (gen_random_uuid(), 'Tarifa Simulacro', 'PUBLISHED', now(), now()) RETURNING id`,
+      );
+      await pool.query(
+        `INSERT INTO tariff_rules (
+           id, "versionId", "zoneId", "baseFeeCop", "perKmCop", "minimumFeeCop",
+           "nightMultiplierBps", "nightStartsMinute", "nightEndsMinute"
+         ) VALUES (gen_random_uuid(), $1, NULL, 5500, 0, 0, 10000, 0, 0)`,
+        [String(tariff.rows[0]?.id)],
+      );
+    }
+    const existingPolicy = await pool.query<{ id: string }>(
+      `SELECT id FROM operations_policies WHERE status = 'PUBLISHED' LIMIT 1`,
+    );
+    if (existingPolicy.rows[0] === undefined) {
+      await pool.query(
+        `INSERT INTO operations_policies (
+           id, name, status, "offerRadiusMeters", "directOfferTtlSeconds", "openOfferTtlSeconds",
+           "seekingTtlSeconds", "maxOffersPerWave", "locationFreshnessSeconds", "maxPinAttempts", "publishedAt", "createdAt"
+         ) VALUES (
+           gen_random_uuid(), 'Politica Simulacro', 'PUBLISHED', 3000, 120, 120, 600, 4, 120, 5, now(), now()
+         )`,
+      );
+    }
 
-  // Plan
-  await pool.query(
-    `INSERT INTO subscription_plans (
+    // Plan
+    await pool.query(
+      `INSERT INTO subscription_plans (
        id, code, name, "priceCop", "periodDays", "trialDays", "maxBranches", "maxConcurrentOrders"
      ) VALUES (gen_random_uuid(), 'TRIAL_15D', 'Prueba 15 dias', 0, 15, 15, 2, 10)
      ON CONFLICT (code) DO NOTHING`,
-  );
+    );
 
-  // Restaurant 1 + Branch in Tocancipá
-  const ownerToken = await registerUser("sim-m52-restaurante@ejemplo.com", "WEB");
-  const restRes = await request(server())
-    .post("/v1/restaurants")
-    .set("Authorization", `Bearer ${ownerToken}`)
-    .send({
-      legalName: "Simulacro Cocina SAS",
-      tradeName: "[SIM-M52] Cocina Tocancipa",
-      nit: "900520001",
-      email: "sim-m52-contacto@ejemplo.com",
-      phoneE164: "+573000005201",
-      establishmentName: "Sede Centro",
-      branchName: "Principal Tocancipa",
-      addressLine: "Calle Ficticia 12 # 5-30, Tocancipa",
-      longitude: -73.9132,
-      latitude: 4.9655,
-      hours: [{ weekday: 1, opensMinute: 0, closesMinute: 1439 }],
-    })
-    .expect(201);
-  const branchId = String(record(restRes.body)["branchId"]);
+    // Restaurant 1 + Branch in Tocancipá
+    const ownerToken = await registerUser("sim-m52-restaurante@ejemplo.com", "WEB");
+    const restRes = await request(server())
+      .post("/v1/restaurants")
+      .set("Authorization", `Bearer ${ownerToken}`)
+      .send({
+        legalName: "Simulacro Cocina SAS",
+        tradeName: "[SIM-M52] Cocina Tocancipa",
+        nit: "900520001",
+        email: "sim-m52-contacto@ejemplo.com",
+        phoneE164: "+573000005201",
+        establishmentName: "Sede Centro",
+        branchName: "Principal Tocancipa",
+        addressLine: "Calle Ficticia 12 # 5-30, Tocancipa",
+        longitude: -73.9132,
+        latitude: 4.9655,
+        hours: [{ weekday: 1, opensMinute: 0, closesMinute: 1439 }],
+      })
+      .expect(201);
+    const branchId = String(record(restRes.body)["branchId"]);
 
-  // Restaurant 2 (for isolation)
-  const otherOwnerToken = await registerUser("sim-m52-otro-restaurante@ejemplo.com", "WEB");
-  await request(server())
-    .post("/v1/restaurants")
-    .set("Authorization", `Bearer ${otherOwnerToken}`)
-    .send({
-      legalName: "Otro Restaurante SAS",
-      tradeName: "Otro Restaurante",
-      nit: "900520099",
-      email: "sim-m52-otro@ejemplo.com",
-      phoneE164: "+573000005299",
-      establishmentName: "Sede Norte",
-      branchName: "Norte Tocancipa",
-      addressLine: "Carrera Ficticia 8 # 10-20",
-      longitude: -73.912,
-      latitude: 4.968,
-      hours: [{ weekday: 1, opensMinute: 0, closesMinute: 1439 }],
-    })
-    .expect(201);
-
-  // Client 1
-  const clientToken = await registerUser("sim-m52-cliente1@ejemplo.com", "WEB");
-
-  // Approve 2 Couriers with location near Tocancipá branch
-  const approveOne = async (
-    email: string,
-    docNum: string,
-    plate: string,
-    lng: number,
-    lat: number,
-  ) => {
-    const token = await registerUser(email, "MOBILE");
+    // Restaurant 2 (for isolation)
+    const otherOwnerToken = await registerUser("sim-m52-otro-restaurante@ejemplo.com", "WEB");
     await request(server())
-      .post("/v1/consents")
-      .set("Authorization", `Bearer ${token}`)
-      .send({ legalDocumentId: docLegalId, purpose: "DOCUMENT_STORAGE", channel: "MOBILE" })
+      .post("/v1/restaurants")
+      .set("Authorization", `Bearer ${otherOwnerToken}`)
+      .send({
+        legalName: "Otro Restaurante SAS",
+        tradeName: "Otro Restaurante",
+        nit: "900520099",
+        email: "sim-m52-otro@ejemplo.com",
+        phoneE164: "+573000005299",
+        establishmentName: "Sede Norte",
+        branchName: "Norte Tocancipa",
+        addressLine: "Carrera Ficticia 8 # 10-20",
+        longitude: -73.912,
+        latitude: 4.968,
+        hours: [{ weekday: 1, opensMinute: 0, closesMinute: 1439 }],
+      })
       .expect(201);
-    const gpsConsent = await request(server())
-      .post("/v1/consents")
-      .set("Authorization", `Bearer ${token}`)
-      .send({ legalDocumentId: gpsLegalId, purpose: "GEOLOCATION", channel: "MOBILE" })
-      .expect(201);
-    const consentId = String(record(gpsConsent.body)["id"]);
-    await request(server())
-      .post("/v1/couriers")
-      .set("Authorization", `Bearer ${token}`)
-      .send({ documentType: "CC", documentNumber: docNum, firstName: "Sim", lastName: "Courier" })
-      .expect(201);
-    for (const type of documentTypes) {
+
+    // Client 1
+    const clientToken = await registerUser("sim-m52-cliente1@ejemplo.com", "WEB");
+
+    // Approve 2 Couriers with location near Tocancipá branch
+    const approveOne = async (
+      email: string,
+      docNum: string,
+      plate: string,
+      lng: number,
+      lat: number,
+    ) => {
+      const token = await registerUser(email, "MOBILE");
       await request(server())
-        .post("/v1/couriers/me/documents")
+        .post("/v1/consents")
         .set("Authorization", `Bearer ${token}`)
-        .field("type", type)
-        .attach("file", pdf, { filename: "sim.pdf", contentType: "application/pdf" })
+        .send({ legalDocumentId: docLegalId, purpose: "DOCUMENT_STORAGE", channel: "MOBILE" })
         .expect(201);
-    }
-    await request(server())
-      .post("/v1/couriers/me/vehicle")
-      .set("Authorization", `Bearer ${token}`)
-      .send({ plate, soatExpiresOn: "2028-04-01", techExpiresOn: "2028-08-01" })
-      .expect(201);
-    const opened = await request(server())
-      .post("/v1/couriers/me/verification-cases")
-      .set("Authorization", `Bearer ${token}`)
-      .expect(201);
-    await request(server())
-      .post(`/v1/admin/verification-cases/${String(record(opened.body)["id"])}/decision`)
-      .set("Authorization", `Bearer ${adminToken}`)
-      .send({ outcome: "APPROVED", reasonCode: "OK", comment: "Simulacro aprobado" })
-      .expect(201);
-    await request(server())
-      .post("/v1/couriers/me/availability")
-      .set("Authorization", `Bearer ${token}`)
-      .send({ state: "AVAILABLE", consentId })
-      .expect(201);
-    await request(server())
-      .post("/v1/couriers/me/location")
-      .set("Authorization", `Bearer ${token}`)
-      .send({ longitude: lng, latitude: lat, accuracyM: 10 })
-      .expect(201);
-    return token;
-  };
+      const gpsConsent = await request(server())
+        .post("/v1/consents")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ legalDocumentId: gpsLegalId, purpose: "GEOLOCATION", channel: "MOBILE" })
+        .expect(201);
+      const consentId = String(record(gpsConsent.body)["id"]);
+      await request(server())
+        .post("/v1/couriers")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ documentType: "CC", documentNumber: docNum, firstName: "Sim", lastName: "Courier" })
+        .expect(201);
+      for (const type of documentTypes) {
+        await request(server())
+          .post("/v1/couriers/me/documents")
+          .set("Authorization", `Bearer ${token}`)
+          .field("type", type)
+          .attach("file", pdf, { filename: "sim.pdf", contentType: "application/pdf" })
+          .expect(201);
+      }
+      await request(server())
+        .post("/v1/couriers/me/vehicle")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ plate, soatExpiresOn: "2028-04-01", techExpiresOn: "2028-08-01" })
+        .expect(201);
+      const opened = await request(server())
+        .post("/v1/couriers/me/verification-cases")
+        .set("Authorization", `Bearer ${token}`)
+        .expect(201);
+      await request(server())
+        .post(`/v1/admin/verification-cases/${String(record(opened.body)["id"])}/decision`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ outcome: "APPROVED", reasonCode: "OK", comment: "Simulacro aprobado" })
+        .expect(201);
+      await request(server())
+        .post("/v1/couriers/me/availability")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ state: "AVAILABLE", consentId })
+        .expect(201);
+      await request(server())
+        .post("/v1/couriers/me/location")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ longitude: lng, latitude: lat, accuracyM: 10 })
+        .expect(201);
+      return token;
+    };
 
-  const courier1Token = await approveOne(
-    "sim-m52-domiciliario1@ejemplo.com",
-    "9005200001",
-    "SIM52A",
-    -73.914,
-    4.966,
-  );
-  const courier2Token = await approveOne(
-    "sim-m52-domiciliario2@ejemplo.com",
-    "9005200002",
-    "SIM52B",
-    -73.915,
-    4.967,
-  );
+    const courier1Token = await approveOne(
+      "sim-m52-domiciliario1@ejemplo.com",
+      "9005200001",
+      "SIM52A",
+      -73.914,
+      4.966,
+    );
+    const courier2Token = await approveOne(
+      "sim-m52-domiciliario2@ejemplo.com",
+      "9005200002",
+      "SIM52B",
+      -73.915,
+      4.967,
+    );
 
-  return {
-    pool,
-    adminToken,
-    ownerToken,
-    otherOwnerToken,
-    clientToken,
-    courier1Token,
-    courier2Token,
-    branchId,
-  };
+    return {
+      pool,
+      adminToken,
+      ownerToken,
+      otherOwnerToken,
+      clientToken,
+      courier1Token,
+      courier2Token,
+      branchId,
+    };
+  } catch (err) {
+    await pool.end();
+    throw err;
+  }
 }
 
 async function createAndPublishOrder(ownerToken: string, branchId: string) {

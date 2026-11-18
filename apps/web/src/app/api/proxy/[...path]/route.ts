@@ -52,10 +52,17 @@ async function forward(
   });
 
   const responseText = await upstream.text();
-  const response = new NextResponse(responseText, {
+  const isNullBodyStatus =
+    upstream.status === 204 || upstream.status === 205 || upstream.status === 304;
+  const response = new NextResponse(isNullBodyStatus ? null : responseText, {
     status: upstream.status,
     headers: {
-      "content-type": upstream.headers.get("content-type") ?? "application/json; charset=utf-8",
+      ...(!isNullBodyStatus
+        ? {
+            "content-type":
+              upstream.headers.get("content-type") ?? "application/json; charset=utf-8",
+          }
+        : {}),
       "cache-control": "no-store",
     },
   });
