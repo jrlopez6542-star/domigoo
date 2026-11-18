@@ -217,22 +217,12 @@ export function LegalDocumentView({ slug }: { slug: LegalDocSlug }) {
             }
             if (block.type === "table") {
               return (
-                <div key={idx} style={{ overflowX: "auto", margin: "16px 0" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+                <div key={idx} className="dg-legal-table-wrap">
+                  <table className="dg-legal-table">
                     <thead>
                       <tr>
                         {block.headers.map((header, hIdx) => (
-                          <th
-                            key={hIdx}
-                            style={{
-                              textAlign: "left",
-                              border: "1px solid #cbd5e1",
-                              padding: "8px 10px",
-                              backgroundColor: "#f1f5f9",
-                            }}
-                          >
-                            {renderInline(header)}
-                          </th>
+                          <th key={hIdx}>{renderInline(header)}</th>
                         ))}
                       </tr>
                     </thead>
@@ -240,10 +230,7 @@ export function LegalDocumentView({ slug }: { slug: LegalDocSlug }) {
                       {block.rows.map((row, rIdx) => (
                         <tr key={rIdx}>
                           {row.map((cell, cIdx) => (
-                            <td
-                              key={cIdx}
-                              style={{ border: "1px solid #cbd5e1", padding: "8px 10px" }}
-                            >
+                            <td key={cIdx} data-label={block.headers[cIdx] ?? ""}>
                               {renderInline(cell)}
                             </td>
                           ))}

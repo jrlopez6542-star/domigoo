@@ -35,32 +35,32 @@ export function RolePanelShell({
   return (
     <div className="dg-role-main-pad">
       <div className="dg-role-topbar">
-        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "10px" }}>
+        <div className="dg-role-topbar-title">
           <span className="dg-badge">{roleBadge}</span>
-          <strong style={{ fontFamily: "var(--domigoo-font-brand)", fontSize: "1.02rem" }}>
+          <strong style={{ fontFamily: "var(--domigoo-font-brand)", fontSize: "0.98rem" }}>
             {roleHeading}
           </strong>
         </div>
-        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "10px" }}>
+        <div className="dg-role-topbar-actions">
           <span
-            className="dg-pill"
+            className="dg-pill dg-role-session-pill"
             data-testid="session-badge"
+            title={sessionUser.email ?? sessionUser.phoneE164 ?? sessionUser.id}
             style={{
               background: "rgba(121, 213, 208, 0.16)",
               color: "#79d5d0",
               border: "1px solid rgba(121, 213, 208, 0.4)",
             }}
           >
-            Sesión activa: {sessionUser.email ?? sessionUser.phoneE164 ?? sessionUser.id}
+            Sesión: {sessionUser.email ?? sessionUser.phoneE164 ?? sessionUser.id}
           </span>
           <button
             type="button"
-            className="dg-btn dg-btn--secondary"
-            style={{ minHeight: "38px", padding: "6px 14px", fontSize: "0.86rem" }}
+            className="dg-btn dg-btn--secondary dg-role-logout-btn"
             onClick={onLogout}
             disabled={loggingOut}
           >
-            {loggingOut ? "Cerrando sesión..." : "Cerrar sesión"}
+            {loggingOut ? "Cerrando..." : "Cerrar sesión"}
           </button>
         </div>
       </div>

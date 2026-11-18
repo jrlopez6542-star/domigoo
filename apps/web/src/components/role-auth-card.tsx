@@ -268,7 +268,7 @@ export function RoleAuthCard({
                   onChange={(e) => {
                     setPassword(e.target.value);
                   }}
-                  placeholder="••••••••••••"
+                  placeholder="Tu contraseña"
                   required
                 />
               </label>
@@ -287,7 +287,7 @@ export function RoleAuthCard({
                   />
                   <span>
                     Acepto los{" "}
-                    <Link href="/legal/terminos" className="dg-footer-link">
+                    <Link href="/legal/terminos" className="dg-inline-link">
                       Términos y Condiciones
                     </Link>{" "}
                     de DOMIGOO. (Obligatorio)
@@ -305,11 +305,11 @@ export function RoleAuthCard({
                   />
                   <span>
                     Autorizo el{" "}
-                    <Link href="/legal/autorizacion" className="dg-footer-link">
+                    <Link href="/legal/autorizacion" className="dg-inline-link">
                       Tratamiento de Datos Personales
                     </Link>{" "}
                     conforme a la{" "}
-                    <Link href="/legal/privacidad" className="dg-footer-link">
+                    <Link href="/legal/privacidad" className="dg-inline-link">
                       Política de Privacidad
                     </Link>
                     . (Obligatorio)
@@ -329,7 +329,7 @@ export function RoleAuthCard({
                     <span>
                       Autorizo el tratamiento de datos sensibles para verificación de domiciliarios
                       según los{" "}
-                      <Link href="/legal/domiciliarios" className="dg-footer-link">
+                      <Link href="/legal/domiciliarios" className="dg-inline-link">
                         Términos de Domiciliarios
                       </Link>
                       . (Obligatorio)
