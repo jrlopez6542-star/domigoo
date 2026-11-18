@@ -388,7 +388,7 @@ async function main(): Promise<void> {
       );
       branchId = String(branchIns.rows[0]?.id);
 
-      for (let weekday = 0; weekday <= 6; weekday += 1) {
+      for (let weekday = 1; weekday <= 7; weekday += 1) {
         await client.query(
           `INSERT INTO branch_hours (id, "branchId", weekday, "opensMinute", "closesMinute")
            VALUES (gen_random_uuid(), $1, $2, 0, 1439)`,
