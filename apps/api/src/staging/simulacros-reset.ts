@@ -125,7 +125,10 @@ async function main(): Promise<void> {
     let deletedRestaurants = 0;
     if (restaurantIds.length > 0) {
       await client.query(
-        `DELETE FROM subscription_payment_declarations WHERE "restaurantId" = ANY($1::uuid[])`,
+        `DELETE FROM subscription_payment_declarations
+         WHERE "subscriptionId" IN (
+           SELECT id FROM restaurant_subscriptions WHERE "restaurantId" = ANY($1::uuid[])
+         )`,
         [restaurantIds],
       );
       await client.query(
