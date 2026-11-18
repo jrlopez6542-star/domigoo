@@ -111,9 +111,9 @@ describe("M53 pantallas v2: directorio público, recepción, ofertas con distanc
     const db = new Pool({ connectionString: databaseUrl });
     try {
       await db.query(
-        `INSERT INTO user_roles ("userId", role)
-         SELECT id, 'ADMIN' FROM users WHERE email = 'admin-m53@ejemplo.com'
-         ON CONFLICT DO NOTHING`,
+        `INSERT INTO admin_profiles ("userId", "displayName", role, "createdAt", "updatedAt")
+         SELECT id, 'Admin M53', 'OPERATIONS', now(), now()
+         FROM users WHERE email = 'admin-m53@ejemplo.com'`,
       );
       await db.query(
         `INSERT INTO couriers (

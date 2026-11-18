@@ -32,10 +32,8 @@ export type PublicTrackingView = {
   status: string;
   restaurantName: string;
   courierFirstName: string | null;
-  courierPhone: string | null;
   dropoffAddress: string | null;
   deliveryFeeCop: number;
-  foodAmountCop: number;
   etaMinutes: number | null;
   pickupLocation: { latitude: number; longitude: number } | null;
   dropoffLocation: { latitude: number; longitude: number } | null;
@@ -211,10 +209,8 @@ export class TrackingRepository {
       restaurantName: string;
       courierId: string | null;
       courierFirstName: string | null;
-      courierPhone: string | null;
       dropoffAddress: string | null;
       deliveryFeeCop: number;
-      foodAmountCop: number;
       pickupLat: number | null;
       pickupLng: number | null;
       dropoffLat: number | null;
@@ -226,10 +222,8 @@ export class TrackingRepository {
               r."tradeName" AS "restaurantName",
               c.id AS "courierId",
               c."firstName" AS "courierFirstName",
-              u."phoneE164" AS "courierPhone",
               o."dropoffAddress",
               o."deliveryFeeCop",
-              o."foodAmountCop",
               CASE WHEN o."pickupLocation" IS NOT NULL THEN ST_Y(o."pickupLocation"::geometry)::float ELSE NULL END AS "pickupLat",
               CASE WHEN o."pickupLocation" IS NOT NULL THEN ST_X(o."pickupLocation"::geometry)::float ELSE NULL END AS "pickupLng",
               CASE WHEN o."dropoffLocation" IS NOT NULL THEN ST_Y(o."dropoffLocation"::geometry)::float ELSE NULL END AS "dropoffLat",
@@ -239,7 +233,6 @@ export class TrackingRepository {
        FROM orders o
        JOIN restaurants r ON r.id = o."restaurantId"
        LEFT JOIN couriers c ON c.id = o."assignedCourierId"
-       LEFT JOIN users u ON u.id = c."userId"
        WHERE o.id = $1`,
       [link.orderId],
     );
@@ -308,10 +301,8 @@ export class TrackingRepository {
       status: order.status,
       restaurantName: order.restaurantName,
       courierFirstName: order.courierFirstName,
-      courierPhone: isActiveCourier ? order.courierPhone : null,
       dropoffAddress: order.dropoffAddress,
       deliveryFeeCop: order.deliveryFeeCop,
-      foodAmountCop: order.foodAmountCop,
       etaMinutes,
       pickupLocation:
         order.pickupLat !== null && order.pickupLng !== null

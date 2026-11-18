@@ -116,7 +116,10 @@ describe("sistema", () => {
             path.startsWith("/v1/devices") ||
             path.startsWith("/v1/incidents") ||
             path.startsWith("/v1/data-subject-requests") ||
-            path.startsWith("/v1/tariffs"),
+            path.startsWith("/v1/tariffs") ||
+            // M53: directorio público de restaurantes (sin PII) e historial opcional de cliente
+            path.startsWith("/v1/public/restaurants") ||
+            path.startsWith("/v1/client/orders"),
         ),
       ).toBe(true);
     } finally {

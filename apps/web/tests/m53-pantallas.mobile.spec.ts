@@ -1,8 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { expect, test, type Page } from "@playwright/test";
 
-const CAPTURES_DIR = path.resolve(__dirname, "../../../docs/capturas/m53");
+const CAPTURES_DIR = fileURLToPath(new URL("../../../docs/capturas/m53", import.meta.url));
 
 async function assertNoHorizontalOverflow(page: Page) {
   const metrics = await page.evaluate(() => ({
