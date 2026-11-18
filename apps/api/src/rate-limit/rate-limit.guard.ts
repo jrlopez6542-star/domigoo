@@ -7,6 +7,7 @@ const DEFAULT_WINDOW_SECONDS = 60;
 const DEFAULT_AUTH_MAX = 60;
 const DEFAULT_AUTH_SESSION_MAX = 600;
 const DEFAULT_SENSITIVE_MAX = 30;
+const DEFAULT_TRACKING_MAX = 60;
 
 @Injectable()
 export class RateLimitGuard implements CanActivate {
@@ -74,7 +75,7 @@ function safeEquals(a: string, b: string): boolean {
   return timingSafeEqual(bufA, bufB);
 }
 
-function resolvePolicy(
+export function resolvePolicy(
   path: string,
   method: string,
 ): { bucket: string; limit: number; windowMs: number } | null {
@@ -98,6 +99,11 @@ function resolvePolicy(
       DEFAULT_AUTH_SESSION_MAX,
     );
     return { bucket: "auth_session", limit, windowMs };
+  }
+
+  if (method === "GET" && /^\/v1\/tracking\/[^/]+$/.test(path)) {
+    const limit = readPositiveInt(process.env["RATE_LIMIT_TRACKING_MAX"], DEFAULT_TRACKING_MAX);
+    return { bucket: "tracking", limit, windowMs };
   }
 
   if (

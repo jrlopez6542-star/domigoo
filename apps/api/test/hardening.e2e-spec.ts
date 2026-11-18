@@ -377,4 +377,30 @@ describe("endurecimiento M47 (rate limit, login throttling, storage privado, cro
       await checkPool.end();
     }
   });
+
+  it("aplica rate limiting en GET /v1/tracking/:token con 429 y Retry-After", async () => {
+    const previous = process.env["RATE_LIMIT_TRACKING_MAX"];
+    process.env["RATE_LIMIT_TRACKING_MAX"] = "3";
+    try {
+      for (let i = 0; i < 3; i += 1) {
+        await request(server())
+          .get("/v1/tracking/token-inexistente-m51")
+          .set("X-Forwarded-For", "198.51.100.55")
+          .expect(404);
+      }
+
+      const limited = await request(server())
+        .get("/v1/tracking/token-inexistente-m51")
+        .set("X-Forwarded-For", "198.51.100.55")
+        .expect(429);
+
+      expect(Number(limited.headers["retry-after"])).toBeGreaterThanOrEqual(1);
+    } finally {
+      if (previous === undefined) {
+        delete process.env["RATE_LIMIT_TRACKING_MAX"];
+      } else {
+        process.env["RATE_LIMIT_TRACKING_MAX"] = previous;
+      }
+    }
+  });
 });

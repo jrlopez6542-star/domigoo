@@ -196,14 +196,21 @@ export class JourneyRepository {
         if (targetStatus === "PICKED_UP") {
           await client.query(
             `UPDATE orders
-             SET status = 'PICKED_UP', "pickedUpAt" = now(), "updatedAt" = now()
+             SET status = 'PICKED_UP',
+                 "pickupPinCiphertext" = NULL,
+                 "pickedUpAt" = now(),
+                 "updatedAt" = now()
              WHERE id = $1`,
             [order.id],
           );
         } else {
           await client.query(
             `UPDATE orders
-             SET status = 'DELIVERED', "deliveredAt" = now(), "updatedAt" = now()
+             SET status = 'DELIVERED',
+                 "pickupPinCiphertext" = NULL,
+                 "deliveryPinCiphertext" = NULL,
+                 "deliveredAt" = now(),
+                 "updatedAt" = now()
              WHERE id = $1`,
             [order.id],
           );
@@ -388,6 +395,8 @@ export class JourneyRepository {
       await client.query(
         `UPDATE orders
          SET status = $2::"OrderStatus",
+             "pickupPinCiphertext" = NULL,
+             "deliveryPinCiphertext" = NULL,
              "cancelledAt" = now(),
              "cancelReason" = $3,
              "updatedAt" = now()
@@ -491,9 +500,15 @@ export class JourneyRepository {
         return "needs_critical";
       }
 
-      await client.query(`UPDATE orders SET status = 'FAILED', "updatedAt" = now() WHERE id = $1`, [
-        order.id,
-      ]);
+      await client.query(
+        `UPDATE orders
+         SET status = 'FAILED',
+             "pickupPinCiphertext" = NULL,
+             "deliveryPinCiphertext" = NULL,
+             "updatedAt" = now()
+         WHERE id = $1`,
+        [order.id],
+      );
 
       if (order.assignedCourierId !== null) {
         await client.query(

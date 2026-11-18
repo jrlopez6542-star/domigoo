@@ -247,12 +247,18 @@ describe("PIN de recogida y entrega (M25)", () => {
         .expect(201);
       expect(record(okPickup.body)["status"]).toBe("PICKED_UP");
 
-      // Restaurante ya NO ve pickupPin en PICKED_UP
+      // Restaurante ya NO ve pickupPin en PICKED_UP y el ciphertext se limpia en BD
       const restPickedUp = await request(server())
         .get(`/v1/orders/${orderId}`)
         .set("Authorization", `Bearer ${ownerToken}`)
         .expect(200);
       expect(record(restPickedUp.body)["pickupPin"]).toBeUndefined();
+
+      const afterPickupCols = await db.query<{ pickupPinCiphertext: string | null }>(
+        `SELECT "pickupPinCiphertext" FROM orders WHERE id = $1`,
+        [orderId],
+      );
+      expect(afterPickupCols.rows[0]?.pickupPinCiphertext).toBeNull();
 
       // 4. Llegar a destino (AT_DROPOFF) y agotar 5 intentos fallidos de PIN de entrega
       await request(server())

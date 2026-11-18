@@ -1,5 +1,5 @@
 import type { Request } from "express";
-import { extractClientIp } from "./rate-limit.guard.js";
+import { extractClientIp, resolvePolicy } from "./rate-limit.guard.js";
 
 function mockRequest(headers: Record<string, string | undefined>, ip = "127.0.0.1"): Request {
   return {
@@ -71,5 +71,30 @@ describe("extractClientIp", () => {
     );
 
     expect(extractClientIp(req)).toBe("192.0.2.15");
+  });
+});
+
+describe("resolvePolicy", () => {
+  const originalTrackingMax = process.env["RATE_LIMIT_TRACKING_MAX"];
+
+  afterEach(() => {
+    if (originalTrackingMax === undefined) {
+      delete process.env["RATE_LIMIT_TRACKING_MAX"];
+    } else {
+      process.env["RATE_LIMIT_TRACKING_MAX"] = originalTrackingMax;
+    }
+  });
+
+  it("aplica rate limit a GET /v1/tracking/:token", () => {
+    process.env["RATE_LIMIT_TRACKING_MAX"] = "15";
+    expect(resolvePolicy("/v1/tracking/abc123", "GET")).toEqual({
+      bucket: "tracking",
+      limit: 15,
+      windowMs: 60_000,
+    });
+  });
+
+  it("no aplica bucket de tracking a rutas no públicas", () => {
+    expect(resolvePolicy("/v1/orders", "GET")).toBeNull();
   });
 });

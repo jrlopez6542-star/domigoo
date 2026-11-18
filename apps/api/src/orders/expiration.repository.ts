@@ -25,7 +25,10 @@ export class ExpirationRepository {
       for (const row of staleOrders.rows) {
         const updated = await client.query(
           `UPDATE orders
-           SET status = 'EXPIRED', "updatedAt" = now()
+           SET status = 'EXPIRED',
+               "pickupPinCiphertext" = NULL,
+               "deliveryPinCiphertext" = NULL,
+               "updatedAt" = now()
            WHERE id = $1 AND status = 'SEEKING_COURIER'`,
           [row.id],
         );
