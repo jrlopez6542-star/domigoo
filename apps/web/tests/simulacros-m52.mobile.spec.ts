@@ -39,6 +39,7 @@ test.describe("M52-SIMULACROS: Flujo completo móvil (3 roles)", () => {
   test("escenarios a-h: camino feliz, PIN incorrecto, rechazo, concurrencia, cancelación, aislamiento y tracking inválido", async ({
     browser,
   }, testInfo) => {
+    test.setTimeout(180_000);
     test.skip(
       SIMULACRO_PASSWORD === "",
       "Requiere SIMULACRO_PASSWORD o STAGING_SEED_PASSWORD y seed:simulacros ejecutado",

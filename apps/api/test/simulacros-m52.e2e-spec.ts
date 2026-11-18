@@ -76,23 +76,7 @@ async function setupBaseWorld(): Promise<{
   branchId: string;
 }> {
   const pool = new Pool({ connectionString: databaseUrl });
-  const envAdmin = await pool.query<{ id: string }>(
-    `INSERT INTO users (id, email, "passwordHash", status, "createdAt", "updatedAt")
-     VALUES (gen_random_uuid(), 'sim-m52-admin@ejemplo.com', 'hash', 'ACTIVE', now(), now())
-     RETURNING id`,
-  );
-  const adminUserId = String(envAdmin.rows[0]?.id);
-  await pool.query(
-    `INSERT INTO admin_profiles ("userId", "displayName", role, "createdAt", "updatedAt")
-     VALUES ($1, 'Admin Simulacro', 'OPERATIONS', now(), now())`,
-    [adminUserId],
-  );
-  await pool.query(
-    `INSERT INTO sessions (id, "userId", "tokenHash", client, "expiresAt", "createdAt")
-     VALUES (gen_random_uuid(), $1, encode(sha256('sim-m52-admin-session'::bytea), 'hex'), 'ADMIN_WEB', now() + interval '1 day', now())`,
-    [adminUserId],
-  );
-  // Register real admin via auth + update admin_profiles so we have a valid signed/hashed session token
+  // Register real admin via auth + update admin_profiles so we have a valid session token
   const adminToken = await registerUser("sim-m52-ops@ejemplo.com", "WEB");
   const opsUser = await pool.query<{ id: string }>(
     `SELECT id FROM users WHERE email = 'sim-m52-ops@ejemplo.com'`,
