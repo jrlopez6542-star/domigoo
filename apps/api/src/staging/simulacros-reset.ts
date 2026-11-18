@@ -188,7 +188,12 @@ async function main(): Promise<void> {
       ]);
       await client.query(`DELETE FROM admin_profiles WHERE "userId" = ANY($1::uuid[])`, [userIds]);
       await client.query(`DELETE FROM sessions WHERE "userId" = ANY($1::uuid[])`, [userIds]);
-      const delUsr = await client.query(`DELETE FROM users WHERE id = ANY($1::uuid[])`, [userIds]);
+      const delUsr = await client.query(
+        `DELETE FROM users
+         WHERE id = ANY($1::uuid[])
+           AND NOT EXISTS (SELECT 1 FROM audit_logs WHERE "actorId" = users.id)`,
+        [userIds],
+      );
       deletedUsers = delUsr.rowCount ?? 0;
     }
 
