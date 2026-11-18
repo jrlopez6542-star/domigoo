@@ -1,5 +1,8 @@
+"use client";
+
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { Menu, X } from "lucide-react";
+import { useState, type ReactNode } from "react";
 
 export type ActiveRoleRoute =
   "home" | "cliente" | "restaurante" | "domiciliario" | "tracking" | "legal";
@@ -15,11 +18,13 @@ export function DomigooShell({
   activeRoute: ActiveRoleRoute;
   children: ReactNode;
 }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+
   return (
     <div className="dg-page">
       <header className="dg-header">
         <div className="dg-header-inner">
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <div className="dg-header-brand-row">
             <Link href="/" className="dg-brand-link" aria-label={`${appName} — Inicio`}>
               <img
                 src="/brand/domigoo-horizontal-dark.svg"
@@ -32,11 +37,31 @@ export function DomigooShell({
             <span className="dg-badge">Tocancipá</span>
           </div>
 
-          <nav className="dg-nav" aria-label="Navegación principal por rol">
+          <button
+            type="button"
+            className="dg-menu-toggle"
+            aria-label={menuOpen ? "Cerrar menú de navegación" : "Abrir menú de navegación"}
+            aria-expanded={menuOpen}
+            aria-controls="dg-primary-nav"
+            onClick={() => {
+              setMenuOpen((prev) => !prev);
+            }}
+          >
+            {menuOpen ? <X size={22} aria-hidden="true" /> : <Menu size={22} aria-hidden="true" />}
+          </button>
+
+          <nav
+            id="dg-primary-nav"
+            className={menuOpen ? "dg-nav dg-nav--open" : "dg-nav"}
+            aria-label="Navegación principal por rol"
+          >
             <Link
               href="/"
               className="dg-nav-link"
               aria-current={activeRoute === "home" ? "page" : undefined}
+              onClick={() => {
+                setMenuOpen(false);
+              }}
             >
               Inicio
             </Link>
@@ -44,6 +69,9 @@ export function DomigooShell({
               href="/cliente"
               className="dg-nav-link"
               aria-current={activeRoute === "cliente" ? "page" : undefined}
+              onClick={() => {
+                setMenuOpen(false);
+              }}
             >
               Cliente
             </Link>
@@ -51,6 +79,9 @@ export function DomigooShell({
               href="/restaurante"
               className="dg-nav-link"
               aria-current={activeRoute === "restaurante" ? "page" : undefined}
+              onClick={() => {
+                setMenuOpen(false);
+              }}
             >
               Restaurante
             </Link>
@@ -58,6 +89,9 @@ export function DomigooShell({
               href="/domiciliario"
               className="dg-nav-link"
               aria-current={activeRoute === "domiciliario" ? "page" : undefined}
+              onClick={() => {
+                setMenuOpen(false);
+              }}
             >
               Domiciliario
             </Link>

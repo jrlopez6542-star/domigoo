@@ -4,6 +4,14 @@ import Link from "next/link";
 import { useEffect, useState, type FormEvent } from "react";
 import { callProxy } from "@/lib/api-client";
 import { buildLoginPayload } from "@/lib/contracts";
+import {
+  clearStoredActiveRole,
+  getStoredActiveRole,
+  setStoredActiveRole,
+  type AccountRole,
+} from "@/lib/role-session";
+
+export type { AccountRole };
 
 export type SessionUser = {
   id: string;
@@ -11,8 +19,6 @@ export type SessionUser = {
   phoneE164: string | null;
   status: string;
 };
-
-export type AccountRole = "CUSTOMER" | "RESTAURANT" | "COURIER";
 
 export function RoleAuthCard({
   accountRole,
@@ -56,7 +62,11 @@ export function RoleAuthCard({
     callProxy<SessionUser>("auth/me", "GET")
       .then((user) => {
         if (active && user.id) {
-          onAuthenticated(user);
+          const storedRole = getStoredActiveRole();
+          if (!storedRole || storedRole === accountRole) {
+            setStoredActiveRole(accountRole);
+            onAuthenticated(user);
+          }
         }
       })
       .catch(() => {
@@ -70,7 +80,7 @@ export function RoleAuthCard({
     return () => {
       active = false;
     };
-  }, [onAuthenticated]);
+  }, [accountRole, onAuthenticated]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -108,6 +118,7 @@ export function RoleAuthCard({
             }
           : credentials;
       const data = await callProxy<SessionUser>(endpoint, "POST", payload);
+      setStoredActiveRole(accountRole);
       onAuthenticated(data);
       setPassword("");
       setStatusMessage(
@@ -135,6 +146,7 @@ export function RoleAuthCard({
     } catch {
       // Aunque falle la revocación remota, limpiamos estado local.
     } finally {
+      clearStoredActiveRole();
       onLoggedOut();
       setMode("login");
       setLoading(false);
@@ -225,7 +237,7 @@ export function RoleAuthCard({
             </button>
           </div>
 
-          <form onSubmit={(e) => void handleSubmit(e)} className="dg-stack">
+          <form onSubmit={(e) => void handleSubmit(e)} className="dg-stack dg-auth-form">
             <div className="dg-grid-2">
               <label className="dg-field" htmlFor="auth-identifier">
                 <span>Correo electrónico o celular (+57...)</span>
@@ -256,7 +268,7 @@ export function RoleAuthCard({
                   onChange={(e) => {
                     setPassword(e.target.value);
                   }}
-                  placeholder="••••••••••••"
+                  placeholder="Tu contraseña"
                   required
                 />
               </label>
@@ -275,7 +287,7 @@ export function RoleAuthCard({
                   />
                   <span>
                     Acepto los{" "}
-                    <Link href="/legal/terminos" className="dg-footer-link">
+                    <Link href="/legal/terminos" className="dg-inline-link">
                       Términos y Condiciones
                     </Link>{" "}
                     de DOMIGOO. (Obligatorio)
@@ -293,11 +305,11 @@ export function RoleAuthCard({
                   />
                   <span>
                     Autorizo el{" "}
-                    <Link href="/legal/autorizacion" className="dg-footer-link">
+                    <Link href="/legal/autorizacion" className="dg-inline-link">
                       Tratamiento de Datos Personales
                     </Link>{" "}
                     conforme a la{" "}
-                    <Link href="/legal/privacidad" className="dg-footer-link">
+                    <Link href="/legal/privacidad" className="dg-inline-link">
                       Política de Privacidad
                     </Link>
                     . (Obligatorio)
@@ -317,7 +329,7 @@ export function RoleAuthCard({
                     <span>
                       Autorizo el tratamiento de datos sensibles para verificación de domiciliarios
                       según los{" "}
-                      <Link href="/legal/domiciliarios" className="dg-footer-link">
+                      <Link href="/legal/domiciliarios" className="dg-inline-link">
                         Términos de Domiciliarios
                       </Link>
                       . (Obligatorio)

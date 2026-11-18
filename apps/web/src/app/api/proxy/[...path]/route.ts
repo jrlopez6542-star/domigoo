@@ -34,6 +34,12 @@ async function forward(
   if (proxySecret) {
     headers.set("x-domigoo-proxy-secret", proxySecret);
   }
+  if (process.env["VERCEL_ENV"] === "preview") {
+    const bypass = request.headers.get("x-vercel-protection-bypass")?.trim();
+    if (bypass) {
+      headers.set("x-vercel-protection-bypass", bypass);
+    }
+  }
 
   const hasBody = request.method !== "GET" && request.method !== "HEAD";
   const body = hasBody ? await request.text() : undefined;

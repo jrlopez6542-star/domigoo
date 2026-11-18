@@ -22,6 +22,7 @@ import {
   OrderRepository,
   type CourierOrderView,
   type DraftOrder,
+  type MyOrderSummary,
   type OrderEventItem,
   type RestaurantOrderView,
 } from "./order.repository.js";
@@ -113,6 +114,24 @@ export class OrdersController {
       throw new HttpException({ message: "No hay tarifa o política publicada" }, 422);
     }
     return published;
+  }
+
+  @Get("mine")
+  @ApiOperation({
+    summary: "Lista los pedidos del restaurante o domiciliario en sesión",
+  })
+  async mine(
+    @Req() request: AuthenticatedRequest,
+  ): Promise<{ role: "RESTAURANT" | "COURIER"; orders: MyOrderSummary[] }> {
+    const userId = request.auth?.userId;
+    if (userId === undefined) {
+      throw new NotFoundException();
+    }
+    const result = await this.orders.listMine(userId);
+    if (result === "forbidden") {
+      throw new ForbiddenException();
+    }
+    return result;
   }
 
   @Get(":id")

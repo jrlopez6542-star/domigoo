@@ -1,6 +1,8 @@
 import {
   Body,
   Controller,
+  ForbiddenException,
+  Get,
   Headers,
   HttpException,
   NotFoundException,
@@ -11,13 +13,33 @@ import {
 } from "@nestjs/common";
 import { ApiOperation, ApiTags } from "@nestjs/swagger";
 import { SessionGuard, type AuthenticatedRequest } from "../identity/session.guard.js";
-import { OffersRepository, type AcceptResult } from "./offers.repository.js";
+import {
+  OffersRepository,
+  type AcceptResult,
+  type AvailableOfferItem,
+} from "./offers.repository.js";
 
 @ApiTags("ofertas")
 @Controller("v1/offers")
 @UseGuards(SessionGuard)
 export class OffersController {
   constructor(private readonly offers: OffersRepository) {}
+
+  @Get("available")
+  @ApiOperation({
+    summary: "Lista las ofertas pendientes disponibles para el domiciliario en sesión",
+  })
+  async available(@Req() request: AuthenticatedRequest): Promise<{ offers: AvailableOfferItem[] }> {
+    const userId = request.auth?.userId;
+    if (userId === undefined) {
+      throw new NotFoundException();
+    }
+    const offers = await this.offers.listAvailableForUser(userId);
+    if (offers === "forbidden") {
+      throw new ForbiddenException();
+    }
+    return { offers };
+  }
 
   @Post(":id/accept")
   @ApiOperation({ summary: "Acepta una oferta en exclusiva" })

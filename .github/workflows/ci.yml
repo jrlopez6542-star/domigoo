@@ -280,8 +280,8 @@ jobs:
   preview_smoke:
     name: Smoke Vercel Preview
     if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork != true
-    runs-on: ubuntu-latest
-    timeout-minutes: 8
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v7

@@ -7,6 +7,16 @@ export type VisibleRestaurant = {
   tradeName: string;
 };
 
+export type MyBranchItem = {
+  id: string;
+  restaurantId: string;
+  restaurantName: string;
+  establishmentName: string;
+  name: string;
+  addressLine: string;
+  status: string;
+};
+
 @Injectable()
 export class RestaurantRepository {
   constructor(
@@ -293,5 +303,33 @@ export class RestaurantRepository {
       [membership.id, input.role],
     );
     return { membershipId: membership.id, from: membership.role, to: input.role };
+  }
+
+  async listBranchesForUser(userId: string): Promise<MyBranchItem[] | "forbidden"> {
+    const memberCheck = await this.database.pool.query<{ id: string }>(
+      `SELECT id FROM restaurant_memberships WHERE "userId" = $1 AND status = 'ACTIVE' LIMIT 1`,
+      [userId],
+    );
+    if (memberCheck.rows.length === 0) {
+      return "forbidden";
+    }
+    const result = await this.database.pool.query<MyBranchItem>(
+      `SELECT
+         b.id,
+         r.id AS "restaurantId",
+         r."tradeName" AS "restaurantName",
+         e.name AS "establishmentName",
+         b.name,
+         b."addressLine",
+         b.status::text AS status
+       FROM branches b
+       JOIN establishments e ON e.id = b."establishmentId"
+       JOIN restaurants r ON r.id = e."restaurantId"
+       JOIN restaurant_memberships m ON m."restaurantId" = r.id
+       WHERE m."userId" = $1 AND m.status = 'ACTIVE'
+       ORDER BY b."createdAt" DESC`,
+      [userId],
+    );
+    return result.rows;
   }
 }

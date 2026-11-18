@@ -1,6 +1,8 @@
 import {
   Body,
   Controller,
+  ForbiddenException,
+  Get,
   HttpException,
   NotFoundException,
   Param,
@@ -11,7 +13,7 @@ import {
 } from "@nestjs/common";
 import { ApiOperation, ApiTags } from "@nestjs/swagger";
 import { SessionGuard, type AuthenticatedRequest } from "../identity/session.guard.js";
-import { RestaurantRepository } from "./restaurant.repository.js";
+import { RestaurantRepository, type MyBranchItem } from "./restaurant.repository.js";
 
 type Slot = {
   weekday: number;
@@ -25,6 +27,20 @@ type Slot = {
 @UseGuards(SessionGuard)
 export class BranchesController {
   constructor(private readonly restaurants: RestaurantRepository) {}
+
+  @Get("mine")
+  @ApiOperation({ summary: "Lista las sucursales de los restaurantes del usuario en sesión" })
+  async mine(@Req() request: AuthenticatedRequest): Promise<{ branches: MyBranchItem[] }> {
+    const userId = request.auth?.userId;
+    if (userId === undefined) {
+      throw new NotFoundException();
+    }
+    const branches = await this.restaurants.listBranchesForUser(userId);
+    if (branches === "forbidden") {
+      throw new ForbiddenException();
+    }
+    return { branches };
+  }
 
   @Put(":id/hours")
   @ApiOperation({ summary: "Reemplaza las franjas horarias de la sucursal" })

@@ -157,4 +157,154 @@ describe("autorización", () => {
       .set("Authorization", `Bearer ${plainToken}`)
       .expect(404);
   });
+
+  it("aisla cliente, restaurante, domiciliario y admin y revoca token al cerrar sesión o expirar", async () => {
+    const clientToken = await tokenFor("cliente-cruzado@example.invalid");
+    const restaurantToken = await tokenFor("restaurante-cruzado@example.invalid");
+    const courierToken = await tokenFor("domiciliario-cruzado@example.invalid");
+
+    const restUsers = await query<{ id: string }>(
+      `SELECT id FROM users WHERE email = 'restaurante-cruzado@example.invalid'`,
+    );
+    const courierUsers = await query<{ id: string }>(
+      `SELECT id FROM users WHERE email = 'domiciliario-cruzado@example.invalid'`,
+    );
+    const restUserId = restUsers[0]?.id;
+    const courierUserId = courierUsers[0]?.id;
+    if (restUserId === undefined || courierUserId === undefined) {
+      throw new Error("Faltan usuarios de prueba");
+    }
+
+    await query(
+      `INSERT INTO restaurants (id, "legalName", "tradeName", nit, email, "phoneE164", "createdAt", "updatedAt")
+       VALUES ($1, 'Rest Cruzado SAS', 'Rest Cruzado', '900000099', 'rest-cruzado@example.invalid', '+573001119999', now(), now())`,
+      [restaurantId],
+    );
+    await query(
+      `INSERT INTO restaurant_memberships (id, "restaurantId", "userId", role, status, "createdAt", "updatedAt")
+       VALUES (gen_random_uuid(), $1, $2, 'OWNER', 'ACTIVE', now(), now())`,
+      [restaurantId, restUserId],
+    );
+    await query(
+      `INSERT INTO couriers (id, "userId", "documentType", "documentNumber", "firstName", "lastName", status, "registrationSource", "createdAt", "updatedAt")
+       VALUES (gen_random_uuid(), $1, 'CC', '99998888', 'Repartidor', 'Cruzado', 'APPROVED', 'OPEN', now(), now())`,
+      [courierUserId],
+    );
+
+    // 1. Cliente no puede acceder a endpoints de admin, restaurante ni domiciliario
+    await request(server())
+      .get("/v1/admin/stats")
+      .set("Authorization", `Bearer ${clientToken}`)
+      .expect(403);
+    await request(server())
+      .get("/v1/admin/verification-cases")
+      .set("Authorization", `Bearer ${clientToken}`)
+      .expect(403);
+    await request(server())
+      .get("/v1/couriers/me")
+      .set("Authorization", `Bearer ${clientToken}`)
+      .expect(404);
+    await request(server())
+      .get("/v1/offers/available")
+      .set("Authorization", `Bearer ${clientToken}`)
+      .expect(403);
+    await request(server())
+      .get("/v1/branches/mine")
+      .set("Authorization", `Bearer ${clientToken}`)
+      .expect(403);
+    await request(server())
+      .get("/v1/orders/mine")
+      .set("Authorization", `Bearer ${clientToken}`)
+      .expect(403);
+    await request(server())
+      .post("/v1/orders")
+      .set("Authorization", `Bearer ${clientToken}`)
+      .send({
+        branchId: "77777777-7777-4777-8777-777777777777",
+        foodAmountCop: 20000,
+        deliveryFeeCop: 5000,
+        paymentMethod: "CASH",
+      })
+      .expect(404);
+
+    // 2. Restaurante no puede acceder a endpoints de domiciliario ni admin
+    await request(server())
+      .get("/v1/offers/available")
+      .set("Authorization", `Bearer ${restaurantToken}`)
+      .expect(403);
+    await request(server())
+      .get("/v1/couriers/me")
+      .set("Authorization", `Bearer ${restaurantToken}`)
+      .expect(404);
+    await request(server())
+      .post("/v1/offers/88888888-8888-4888-8888-888888888888/accept")
+      .set("Authorization", `Bearer ${restaurantToken}`)
+      .set("idempotency-key", "rest-cross-accept-1")
+      .send({})
+      .expect(404);
+    await request(server())
+      .get("/v1/admin/stats")
+      .set("Authorization", `Bearer ${restaurantToken}`)
+      .expect(403);
+    await request(server())
+      .get("/v1/admin/me")
+      .set("Authorization", `Bearer ${restaurantToken}`)
+      .expect(404);
+
+    // 3. Domiciliario no puede acceder a endpoints de restaurante ni admin
+    await request(server())
+      .get("/v1/branches/mine")
+      .set("Authorization", `Bearer ${courierToken}`)
+      .expect(403);
+    await request(server())
+      .post("/v1/orders")
+      .set("Authorization", `Bearer ${courierToken}`)
+      .send({
+        branchId: "77777777-7777-4777-8777-777777777777",
+        foodAmountCop: 20000,
+        deliveryFeeCop: 5000,
+        paymentMethod: "CASH",
+      })
+      .expect(404);
+    await request(server())
+      .get(`/v1/restaurants/${restaurantId}`)
+      .set("Authorization", `Bearer ${courierToken}`)
+      .expect(404);
+    await request(server())
+      .get("/v1/admin/stats")
+      .set("Authorization", `Bearer ${courierToken}`)
+      .expect(403);
+    await request(server())
+      .get("/v1/admin/me")
+      .set("Authorization", `Bearer ${courierToken}`)
+      .expect(404);
+
+    // 4. Logout revoca el token inmediatamente
+    await request(server())
+      .post("/v1/auth/logout")
+      .set("Authorization", `Bearer ${clientToken}`)
+      .expect(204);
+    await request(server())
+      .get("/v1/auth/me")
+      .set("Authorization", `Bearer ${clientToken}`)
+      .expect(401);
+    await request(server())
+      .get("/v1/branches/mine")
+      .set("Authorization", `Bearer ${clientToken}`)
+      .expect(401);
+    await request(server())
+      .get("/v1/offers/available")
+      .set("Authorization", `Bearer ${clientToken}`)
+      .expect(401);
+
+    // 5. Expiración de token en base de datos invalida la sesión
+    await query(
+      `UPDATE sessions SET "expiresAt" = now() - interval '1 minute'
+       WHERE "userId" = (SELECT id FROM users WHERE email = 'restaurante-cruzado@example.invalid')`,
+    );
+    await request(server())
+      .get("/v1/auth/me")
+      .set("Authorization", `Bearer ${restaurantToken}`)
+      .expect(401);
+  });
 });
