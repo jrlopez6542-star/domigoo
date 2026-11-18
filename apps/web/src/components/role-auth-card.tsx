@@ -237,7 +237,7 @@ export function RoleAuthCard({
             </button>
           </div>
 
-          <form onSubmit={(e) => void handleSubmit(e)} className="dg-stack">
+          <form onSubmit={(e) => void handleSubmit(e)} className="dg-stack dg-auth-form">
             <div className="dg-grid-2">
               <label className="dg-field" htmlFor="auth-identifier">
                 <span>Correo electrónico o celular (+57...)</span>

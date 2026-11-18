@@ -58,8 +58,7 @@ button,
 .dg-header {
   background: linear-gradient(135deg, #29243e 0%, #1b172a 100%);
   border-bottom: 2px solid rgba(121, 213, 208, 0.35);
-  position: sticky;
-  top: 0;
+  position: static;
   z-index: 30;
   color: #f5f7fa;
 }
@@ -170,6 +169,11 @@ button,
 }
 
 @media (min-width: 768px) {
+  .dg-header {
+    position: sticky;
+    top: 0;
+  }
+
   .dg-header-inner {
     padding: 10px 16px;
   }
@@ -776,6 +780,7 @@ button,
   font-weight: 700;
   text-decoration: underline;
   text-underline-offset: 3px;
+  padding: 14px 0;
 }
 
 .dg-inline-link:hover {
@@ -870,6 +875,32 @@ button,
   flex-shrink: 0;
 }
 
+@media (max-width: 767px) {
+  .dg-card:has(.dg-auth-form) {
+    padding: 12px;
+  }
+
+  .dg-auth-form.dg-stack,
+  .dg-auth-form .dg-grid-2 {
+    gap: 8px;
+  }
+
+  .dg-auth-form .dg-field {
+    gap: 4px;
+  }
+
+  .dg-auth-form .dg-check-group {
+    gap: 6px;
+    padding: 8px 10px;
+  }
+
+  .dg-auth-form .dg-check-row {
+    font-size: 0.84rem;
+    line-height: 1.35;
+    gap: 8px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -960,6 +991,15 @@ button,
   align-items: center;
   gap: 8px;
   min-width: 0;
+  flex: 1 1 auto;
+}
+
+.dg-role-topbar-heading {
+  font-family: var(--domigoo-font-brand);
+  font-size: 0.95rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .dg-role-topbar-actions {

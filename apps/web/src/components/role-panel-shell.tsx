@@ -37,9 +37,7 @@ export function RolePanelShell({
       <div className="dg-role-topbar">
         <div className="dg-role-topbar-title">
           <span className="dg-badge">{roleBadge}</span>
-          <strong style={{ fontFamily: "var(--domigoo-font-brand)", fontSize: "0.98rem" }}>
-            {roleHeading}
-          </strong>
+          <strong className="dg-role-topbar-heading">{roleHeading}</strong>
         </div>
         <div className="dg-role-topbar-actions">
           <span

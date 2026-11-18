@@ -93,9 +93,11 @@ test.describe("M49-MOVIL: Auditoría móvil (iPhone 13 390x844 y Android 360x780
       await expect(page.getByTestId("register-consents")).toBeVisible();
       await assertNoHorizontalOverflow(page);
 
-      // Enlaces legales usan clase dg-inline-link (contraste sobre fondo claro)
+      // Enlaces legales usan clase dg-inline-link (contraste sobre fondo claro y área táctil >= 44px)
       const inlineLink = page.getByTestId("register-consents").locator("a.dg-inline-link").first();
       await expect(inlineLink).toBeVisible();
+      const inlineRectHeight = await inlineLink.evaluate((el) => el.getBoundingClientRect().height);
+      expect(inlineRectHeight).toBeGreaterThanOrEqual(44);
 
       const submitBtn = page.getByRole("button", { name: "Registrarme" });
       await submitBtn.scrollIntoViewIfNeeded();
@@ -105,6 +107,28 @@ test.describe("M49-MOVIL: Auditoría móvil (iPhone 13 390x844 y Android 360x780
       if (submitBox) {
         expect(submitBox.height).toBeGreaterThanOrEqual(44);
       }
+
+      // Tras llevar Registrarme a la vista, el campo de correo y su etiqueta quedan debajo del encabezado y visibles
+      const emailField = page.locator('label[for="auth-identifier"]');
+      const emailInput = page.locator("#auth-identifier");
+      await expect(emailField).toBeVisible();
+      await expect(emailInput).toBeVisible();
+      const visibilityMetrics = await page.evaluate(() => {
+        const header = document.querySelector("header.dg-header");
+        const label = document.querySelector('label[for="auth-identifier"]');
+        const input = document.querySelector("#auth-identifier");
+        return {
+          headerBottom: header ? header.getBoundingClientRect().bottom : 0,
+          labelTop: label ? label.getBoundingClientRect().top : -1,
+          inputTop: input ? input.getBoundingClientRect().top : -1,
+        };
+      });
+      expect(visibilityMetrics.labelTop).toBeGreaterThanOrEqual(
+        Math.max(0, visibilityMetrics.headerBottom),
+      );
+      expect(visibilityMetrics.inputTop).toBeGreaterThanOrEqual(
+        Math.max(0, visibilityMetrics.headerBottom),
+      );
     }
   });
 
