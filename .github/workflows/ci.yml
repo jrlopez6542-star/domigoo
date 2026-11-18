@@ -238,8 +238,31 @@ jobs:
             curl -fsS "$url" >/dev/null
           done
 
+          SIM_PASS="sim-$(openssl rand -hex 12)"
+          export SIMULACRO_PASSWORD="$SIM_PASS"
+          echo "=== Seed Simulacros M52 (Ejecución 1) ==="
+          DOMIGOO_ENV=staging \
+          STAGING_SEED_CONFIRM=yes \
+          NODE_ENV=development \
+          STAGING_ALLOWED_DB_HOSTS=127.0.0.1 \
+          pnpm seed:simulacros
+
+          echo "=== Seed Simulacros M52 (Ejecución 2 - Idempotencia) ==="
+          DOMIGOO_ENV=staging \
+          STAGING_SEED_CONFIRM=yes \
+          NODE_ENV=development \
+          STAGING_ALLOWED_DB_HOSTS=127.0.0.1 \
+          pnpm seed:simulacros
+
           pnpm --filter @domigoo/web test:e2e
           pnpm --filter @domigoo/admin test:e2e
+
+          echo "=== Reset Simulacros M52 ==="
+          DOMIGOO_ENV=staging \
+          STAGING_SEED_CONFIRM=yes \
+          NODE_ENV=development \
+          STAGING_ALLOWED_DB_HOSTS=127.0.0.1 \
+          pnpm reset:simulacros
 
           STAGING_PASS="stg-$(openssl rand -hex 12)"
           echo "=== Seed Staging (Ejecución 1) ==="
@@ -263,6 +286,14 @@ jobs:
           STAGING_ALLOWED_HOSTS=127.0.0.1 \
           STAGING_SEED_PASSWORD="$STAGING_PASS" \
           pnpm smoke:staging
+
+      - name: Subir capturas de simulacros M52
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m52-simulacros-capturas
+          path: docs/capturas/m52-simulacros/
+          if-no-files-found: ignore
 
       - name: Subir logs y trazas de diagnóstico en fallo
         if: failure()

@@ -10,7 +10,9 @@
     "vercel-build": "sh scripts/vercel-build.sh",
     "lint": "eslint . && prettier --check .",
     "typecheck": "pnpm -r --if-present typecheck",
-    "smoke:staging": "node scripts/smoke-staging.mjs"
+    "smoke:staging": "node scripts/smoke-staging.mjs",
+    "seed:simulacros": "pnpm --filter @domigoo/api seed:simulacros",
+    "reset:simulacros": "pnpm --filter @domigoo/api reset:simulacros"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
