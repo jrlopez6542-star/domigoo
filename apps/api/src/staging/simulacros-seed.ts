@@ -58,7 +58,7 @@ async function ensureUser(
 
 async function ensureLegalDocument(
   client: PoolClient,
-  kind: "DOCUMENT_PROCESSING" | "GEOLOCATION_CONSENT" | "TERMS" | "PRIVACY",
+  kind: "DOCUMENT_PROCESSING" | "GEOLOCATION_CONSENT" | "TERMS" | "PRIVACY_NOTICE",
   version: string,
   content: string,
 ): Promise<string> {
@@ -83,7 +83,7 @@ async function ensureConsent(
   client: PoolClient,
   userId: string,
   legalDocumentId: string,
-  purpose: "DOCUMENT_STORAGE" | "GEOLOCATION" | "TERMS_ACCEPTANCE" | "PRIVACY_ACCEPTANCE",
+  purpose: "DOCUMENT_STORAGE" | "GEOLOCATION" | "TERMS_ACCEPTANCE" | "ACCOUNT",
   channel: "WEB" | "MOBILE",
 ): Promise<string> {
   const existing = await client.query<{ id: string }>(
@@ -320,7 +320,7 @@ async function main(): Promise<void> {
     );
     const privacyLegalId = await ensureLegalDocument(
       client,
-      "PRIVACY",
+      "PRIVACY_NOTICE",
       "2026-sim-privacy",
       "Política de privacidad ficticia para simulacros M52",
     );
@@ -338,7 +338,7 @@ async function main(): Promise<void> {
     // 5. Restaurante simulacro con sede en Tocancipá
     const ownerUserId = await ensureUser(client, config.ownerEmail, "+573000005201", passwordHash);
     await ensureConsent(client, ownerUserId, termsLegalId, "TERMS_ACCEPTANCE", "WEB");
-    await ensureConsent(client, ownerUserId, privacyLegalId, "PRIVACY_ACCEPTANCE", "WEB");
+    await ensureConsent(client, ownerUserId, privacyLegalId, "ACCOUNT", "WEB");
 
     const existingRest = await client.query<{ id: string }>(
       `SELECT id FROM restaurants WHERE nit = $1 LIMIT 1`,
@@ -424,7 +424,7 @@ async function main(): Promise<void> {
       passwordHash,
     );
     await ensureConsent(client, client1UserId, termsLegalId, "TERMS_ACCEPTANCE", "WEB");
-    await ensureConsent(client, client1UserId, privacyLegalId, "PRIVACY_ACCEPTANCE", "WEB");
+    await ensureConsent(client, client1UserId, privacyLegalId, "ACCOUNT", "WEB");
 
     const client2UserId = await ensureUser(
       client,
@@ -433,7 +433,7 @@ async function main(): Promise<void> {
       passwordHash,
     );
     await ensureConsent(client, client2UserId, termsLegalId, "TERMS_ACCEPTANCE", "WEB");
-    await ensureConsent(client, client2UserId, privacyLegalId, "PRIVACY_ACCEPTANCE", "WEB");
+    await ensureConsent(client, client2UserId, privacyLegalId, "ACCOUNT", "WEB");
 
     // 7. Dos domiciliarios aprobados con ubicación en Tocancipá
     const courier1 = await ensureSimCourier(client, {
