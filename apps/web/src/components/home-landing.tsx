@@ -99,7 +99,7 @@ export function HomeLanding({ appName }: { appName: string }) {
             type="button"
             className="dg-v2-action-card"
             data-testid="home-card-seguir"
-            aria-label="Seguir solicitud"
+            aria-label="Seguir pedido"
             aria-expanded={trackingOpen}
             onClick={() => {
               setTrackingOpen((prev) => !prev);
@@ -111,7 +111,7 @@ export function HomeLanding({ appName }: { appName: string }) {
             </span>
             <span>
               <span className="dg-v2-action-title" style={{ display: "block" }}>
-                Seguir solicitud
+                Seguir pedido
               </span>
               <span className="dg-v2-action-sub" style={{ display: "block" }}>
                 Consulta el estado

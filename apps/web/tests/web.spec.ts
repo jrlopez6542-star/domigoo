@@ -47,7 +47,7 @@ test.describe("HOME-002 (Futuro Urbano), Legal (M45) y Tracking público (M30)",
     expect(fontCheck.interLoaded).toBe(true);
     expect(fontCheck.montserratLoaded).toBe(true);
 
-    // Verificar que las 3 tarjetas están en la misma fila en móvil (390px) y sin desborde horizontal
+    // Verificar que las 3 tarjetas están apiladas verticalmente sin desborde horizontal
     const [b1, b2, b3, overflow] = await Promise.all([
       pedirCard.boundingBox(),
       seguirCard.boundingBox(),
@@ -59,8 +59,8 @@ test.describe("HOME-002 (Futuro Urbano), Legal (M45) y Tracking público (M30)",
     expect(b2).not.toBeNull();
     expect(b3).not.toBeNull();
     if (b1 && b2 && b3) {
-      expect(Math.abs(b1.y - b2.y)).toBeLessThan(8);
-      expect(Math.abs(b2.y - b3.y)).toBeLessThan(8);
+      expect(b1.y).toBeLessThan(b2.y);
+      expect(b2.y).toBeLessThan(b3.y);
     }
 
     // Drawer de seguimiento en línea
@@ -91,12 +91,11 @@ test.describe("HOME-002 (Futuro Urbano), Legal (M45) y Tracking público (M30)",
     await registerLink.click();
     await expect(page).toHaveURL(/\/acceso\?modo=registro$/);
 
-    // Antes del login, cada rol muestra SOLO su pantalla de acceso (sin apilar formularios internos)
+    // Cliente entra directo al directorio sin cuenta obligatoria; restaurante y domiciliario muestran acceso
     await page.goto("/");
     await pedirCard.click();
     await expect(page).toHaveURL(/\/cliente$/);
-    await expect(page.getByRole("heading", { name: /cliente/i }).first()).toBeVisible();
-    await expect(page.getByTestId("tab-login")).toBeVisible();
+    await expect(page.getByPlaceholder(/Buscar restaurante/i)).toBeVisible();
     await expect(page.getByRole("button", { name: "Usar mi ubicación" })).toHaveCount(0);
 
     await page.goto("/");
@@ -213,25 +212,22 @@ test.describe("HOME-002 (Futuro Urbano), Legal (M45) y Tracking público (M30)",
       await route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
     });
 
-    // 1. Cliente: login y navegación entre sus 5 pantallas (desktop)
+    // 1. Cliente: login opcional en /cliente/cuenta, /cliente/pedir redirige a /cliente, /cliente/seguir
     await page.setViewportSize({ width: 1280, height: 800 });
-    await page.goto("/cliente");
+    await page.goto("/cliente/cuenta");
     await page.getByLabel(/Correo electrónico o celular/i).fill("cliente-m49@ejemplo.com");
     await page.getByLabel(/Contraseña/i).fill("ClavePruebaDomigoo2026");
     await page.getByRole("button", { name: "Ingresar" }).click();
-    await expect(page.getByTestId("cliente-home-screen")).toBeVisible();
+    await expect(
+      page.getByTestId("client-saved-orders").or(page.getByText(/Mis solicitudes guardadas/i)),
+    ).toBeVisible();
 
-    await page.getByTestId("nav-cliente-pedir-sidebar").click();
-    await expect(page).toHaveURL(/\/cliente\/pedir$/);
-    await expect(page.getByTestId("cliente-pedir-screen")).toBeVisible();
+    await page.goto("/cliente/pedir");
+    await expect(page).toHaveURL(/\/cliente$/);
 
     await page.getByTestId("nav-cliente-seguir-sidebar").click();
     await expect(page).toHaveURL(/\/cliente\/seguir$/);
-    await expect(page.getByTestId("cliente-seguir-screen")).toBeVisible();
-
-    await page.getByTestId("nav-cliente-tarifa-sidebar").click();
-    await expect(page).toHaveURL(/\/cliente\/tarifa$/);
-    await expect(page.getByRole("button", { name: "Usar mi ubicación" })).toBeVisible();
+    await expect(page.locator("#seguimiento")).toBeVisible();
 
     // Aislamiento: Cliente no puede entrar a pantallas de Restaurante ni Domiciliario
     await page.goto("/restaurante/nuevo-domicilio");
@@ -241,6 +237,7 @@ test.describe("HOME-002 (Futuro Urbano), Legal (M45) y Tracking público (M30)",
 
     // Cerrar sesión como Cliente
     await page.getByRole("button", { name: "Cerrar sesión" }).click();
+    await page.goto("/cliente/cuenta");
     await expect(page.getByTestId("tab-login")).toBeVisible();
 
     // 2. Restaurante: login, navegación, wizard de 3 pasos y geo consent
@@ -250,7 +247,7 @@ test.describe("HOME-002 (Futuro Urbano), Legal (M45) y Tracking público (M30)",
     await page.getByRole("button", { name: "Ingresar" }).click();
     await expect(page.getByTestId("restaurante-home-screen")).toBeVisible();
 
-    await page.getByTestId("nav-restaurante-nuevo-sidebar").click();
+    await page.goto("/restaurante/nuevo-domicilio");
     await expect(page).toHaveURL(/\/restaurante\/nuevo-domicilio$/);
     await expect(page.getByTestId("wizard-panel-1")).toBeVisible();
     await page.getByTestId("wizard-step-2").click();
@@ -432,7 +429,8 @@ test.describe("HOME-002 (Futuro Urbano), Legal (M45) y Tracking público (M30)",
     await page.getByLabel(/Correo electrónico o celular/i).fill("restaurante-pulido@ejemplo.com");
     await page.getByLabel(/Contraseña/i).fill("ClavePruebaDomigoo2026");
     await page.getByRole("button", { name: "Ingresar" }).click();
-    await page.getByTestId("nav-restaurante-nuevo-sidebar").click();
+    await expect(page.getByTestId("restaurante-home-screen")).toBeVisible();
+    await page.goto("/restaurante/nuevo-domicilio");
 
     await expect(page.getByLabel("ID de sucursal")).toHaveCount(0);
     await expect(page.getByTestId("rest-branch-select")).toHaveCount(0);
@@ -477,7 +475,7 @@ test.describe("HOME-002 (Futuro Urbano), Legal (M45) y Tracking público (M30)",
 
     const suffix = `${String(Date.now())}-${String(Math.floor(Math.random() * 10000))}`;
     const roles = [
-      { route: "/cliente", email: `cliente-${suffix}@ejemplo.com`, courier: false },
+      { route: "/cliente/cuenta", email: `cliente-${suffix}@ejemplo.com`, courier: false },
       { route: "/restaurante", email: `restaurante-${suffix}@ejemplo.com`, courier: false },
       { route: "/domiciliario", email: `domiciliario-${suffix}@ejemplo.com`, courier: true },
     ];

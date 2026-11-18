@@ -32,11 +32,8 @@ export type PublicTrackingView = {
   status: string;
   restaurantName: string;
   courierFirstName: string | null;
-  dropoffAddress: string | null;
-  deliveryFeeCop: number;
   etaMinutes: number | null;
   pickupLocation: { latitude: number; longitude: number } | null;
-  dropoffLocation: { latitude: number; longitude: number } | null;
   courierLocation: { latitude: number; longitude: number; recordedAt: string } | null;
   deliveryPin?: string;
   events: PublicTrackingEvent[];
@@ -48,7 +45,6 @@ export type ClaimedOrderItem = {
   status: string;
   restaurantName: string;
   dropoffAddress: string | null;
-  foodAmountCop: number;
   deliveryFeeCop: number;
   createdAt: string;
   deliveredAt: string | null;
@@ -209,12 +205,8 @@ export class TrackingRepository {
       restaurantName: string;
       courierId: string | null;
       courierFirstName: string | null;
-      dropoffAddress: string | null;
-      deliveryFeeCop: number;
       pickupLat: number | null;
       pickupLng: number | null;
-      dropoffLat: number | null;
-      dropoffLng: number | null;
       distanceMeters: number | null;
       deliveryPinCiphertext: string | null;
     }>(
@@ -222,12 +214,8 @@ export class TrackingRepository {
               r."tradeName" AS "restaurantName",
               c.id AS "courierId",
               c."firstName" AS "courierFirstName",
-              o."dropoffAddress",
-              o."deliveryFeeCop",
               CASE WHEN o."pickupLocation" IS NOT NULL THEN ST_Y(o."pickupLocation"::geometry)::float ELSE NULL END AS "pickupLat",
               CASE WHEN o."pickupLocation" IS NOT NULL THEN ST_X(o."pickupLocation"::geometry)::float ELSE NULL END AS "pickupLng",
-              CASE WHEN o."dropoffLocation" IS NOT NULL THEN ST_Y(o."dropoffLocation"::geometry)::float ELSE NULL END AS "dropoffLat",
-              CASE WHEN o."dropoffLocation" IS NOT NULL THEN ST_X(o."dropoffLocation"::geometry)::float ELSE NULL END AS "dropoffLng",
               ST_Distance(o."pickupLocation", o."dropoffLocation")::float AS "distanceMeters",
               o."deliveryPinCiphertext"
        FROM orders o
@@ -301,16 +289,10 @@ export class TrackingRepository {
       status: order.status,
       restaurantName: order.restaurantName,
       courierFirstName: order.courierFirstName,
-      dropoffAddress: order.dropoffAddress,
-      deliveryFeeCop: order.deliveryFeeCop,
       etaMinutes,
       pickupLocation:
         order.pickupLat !== null && order.pickupLng !== null
           ? { latitude: order.pickupLat, longitude: order.pickupLng }
-          : null,
-      dropoffLocation:
-        order.dropoffLat !== null && order.dropoffLng !== null
-          ? { latitude: order.dropoffLat, longitude: order.dropoffLng }
           : null,
       courierLocation,
       ...(deliveryPin !== undefined ? { deliveryPin } : {}),
@@ -368,7 +350,6 @@ export class TrackingRepository {
       status: string;
       restaurantName: string;
       dropoffAddress: string | null;
-      foodAmountCop: number;
       deliveryFeeCop: number;
       createdAt: Date | string;
       deliveredAt: Date | string | null;
@@ -377,7 +358,6 @@ export class TrackingRepository {
       `SELECT o.id, o."referenceCode", o.status::text AS status,
               r."tradeName" AS "restaurantName",
               o."dropoffAddress",
-              o."foodAmountCop",
               o."deliveryFeeCop",
               o."createdAt",
               o."deliveredAt",
@@ -397,7 +377,6 @@ export class TrackingRepository {
       status: r.status,
       restaurantName: r.restaurantName,
       dropoffAddress: r.dropoffAddress,
-      foodAmountCop: r.foodAmountCop,
       deliveryFeeCop: r.deliveryFeeCop,
       createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : r.createdAt,
       deliveredAt:

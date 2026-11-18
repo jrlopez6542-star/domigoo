@@ -2,31 +2,15 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import {
-  ArrowLeft,
-  Check,
-  Clock,
-  MapPin,
-  MessageCircle,
-  Navigation,
-  Phone,
-  ShieldCheck,
-  User,
-} from "lucide-react";
-import { buildTelLink, buildWhatsAppLink, formatCop } from "@/lib/contracts";
+import { ArrowLeft, Check, Clock, MapPin, Navigation, ShieldCheck, User } from "lucide-react";
 
 export type TrackingPayload = {
   referenceCode: string;
   status: string;
   restaurantName: string;
   courierFirstName: string | null;
-  courierPhone: string | null;
-  dropoffAddress: string | null;
-  deliveryFeeCop: number;
-  foodAmountCop: number;
   etaMinutes: number | null;
   pickupLocation: { latitude: number; longitude: number } | null;
-  dropoffLocation: { latitude: number; longitude: number } | null;
   courierLocation: { latitude: number; longitude: number; recordedAt: string } | null;
   deliveryPin?: string;
   events: Array<{ fromStatus: string | null; toStatus: string; createdAt: string }>;
@@ -134,9 +118,7 @@ export function PublicTrackingView({
   }
 
   const activeMapPoint =
-    !isTerminal && tracking.courierLocation
-      ? tracking.courierLocation
-      : (tracking.dropoffLocation ?? tracking.pickupLocation);
+    !isTerminal && tracking.courierLocation ? tracking.courierLocation : tracking.pickupLocation;
 
   const steps = [
     {
@@ -215,9 +197,6 @@ export function PublicTrackingView({
             <h2 style={{ margin: 0, fontSize: "1rem", color: "#F5F7FA" }}>
               {tracking.restaurantName}
             </h2>
-            <span style={{ fontSize: "0.82rem", color: "#C0C6D4" }}>
-              Domicilio: {formatCop(tracking.deliveryFeeCop)}
-            </span>
           </div>
 
           <div className="dg-v2-timeline">
@@ -317,11 +296,6 @@ export function PublicTrackingView({
               src={buildOsmEmbedUrl(activeMapPoint.latitude, activeMapPoint.longitude)}
               loading="lazy"
             />
-            {tracking.dropoffAddress ? (
-              <p style={{ margin: "10px 0 0", fontSize: "0.85rem", color: "#C0C6D4" }}>
-                Entrega: {tracking.dropoffAddress}
-              </p>
-            ) : null}
           </section>
         ) : null}
 
@@ -357,32 +331,6 @@ export function PublicTrackingView({
                   <p style={{ margin: 0, fontSize: "0.82rem", color: "#4B4563" }}>Domiciliario</p>
                 </div>
               </div>
-
-              {tracking.courierPhone && !isTerminal ? (
-                <div style={{ display: "flex", gap: 8 }}>
-                  <a
-                    href={buildTelLink(tracking.courierPhone)}
-                    className="dg-btn"
-                    style={{ minHeight: 42, padding: "8px 12px" }}
-                    aria-label="Llamar al domiciliario"
-                  >
-                    <Phone size={17} />
-                  </a>
-                  <a
-                    href={buildWhatsAppLink(
-                      tracking.courierPhone,
-                      `Hola ${tracking.courierFirstName}, te escribo por la solicitud #${tracking.referenceCode} en ${appName}.`,
-                    )}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="dg-btn"
-                    style={{ minHeight: 42, padding: "8px 12px" }}
-                    aria-label="WhatsApp al domiciliario"
-                  >
-                    <MessageCircle size={17} />
-                  </a>
-                </div>
-              ) : null}
             </div>
           </section>
         ) : null}

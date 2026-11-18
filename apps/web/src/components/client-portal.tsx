@@ -46,7 +46,6 @@ type ClaimedOrderItem = {
   status: string;
   restaurantName: string;
   dropoffAddress: string | null;
-  foodAmountCop: number;
   deliveryFeeCop: number;
   createdAt: string;
   deliveredAt: string | null;
@@ -112,8 +111,9 @@ export function ClientPortalShell({ children }: { children: ReactNode }) {
     setCheckingSession(true);
     const res = await fetch("/api/proxy/auth/me", { cache: "no-store" });
     if (res.ok) {
-      const data = (await res.json()) as { user: SessionUser };
-      setSessionUser(data.user);
+      const data = (await res.json()) as SessionUser | { user: SessionUser };
+      const resolvedUser = "user" in data ? data.user : data;
+      setSessionUser(resolvedUser);
       const storedRole = getStoredActiveRole();
       if (storedRole && storedRole !== "CUSTOMER") {
         router.replace(ROLE_BASE_PATH[storedRole]);
@@ -514,7 +514,7 @@ export function ClientTrackingView() {
   return (
     <div className="dg-stack">
       <section className="dg-v2-card dg-stack" id="seguimiento">
-        <h1 style={{ margin: 0, fontSize: "1.3rem", fontWeight: 800 }}>Seguir solicitud</h1>
+        <h1 style={{ margin: 0, fontSize: "1.3rem", fontWeight: 800 }}>Seguir pedido</h1>
         <p style={{ margin: 0, fontSize: "0.9rem", color: "#C0C6D4" }}>
           Consulta el estado de tu domicilio con el código o enlace que te compartió el restaurante.
           No necesitas iniciar sesión.

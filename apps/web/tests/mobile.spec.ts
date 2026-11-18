@@ -72,7 +72,7 @@ test.describe("M49-MOVIL: Auditoría móvil (iPhone 13 390x844 y Android 360x780
   test("pantallas de login/registro por rol tienen pestañas >=44px, placeholder sin puntos, enlaces legibles y botón visible", async ({
     page,
   }) => {
-    for (const roleRoute of ["/cliente", "/restaurante", "/domiciliario"]) {
+    for (const roleRoute of ["/cliente/cuenta", "/restaurante", "/domiciliario"]) {
       await page.goto(roleRoute);
       await assertNoHorizontalOverflow(page);
 
@@ -139,13 +139,7 @@ test.describe("M49-MOVIL: Auditoría móvil (iPhone 13 390x844 y Android 360x780
       "cliente.con.correo.muy.largo.tocancipa.2026@restaurantes-domigoo.example.com";
 
     const roleRoutes: Record<"CUSTOMER" | "RESTAURANT" | "COURIER", string[]> = {
-      CUSTOMER: [
-        "/cliente",
-        "/cliente/pedir",
-        "/cliente/seguir",
-        "/cliente/tarifa",
-        "/cliente/cuenta",
-      ],
+      CUSTOMER: ["/cliente", "/cliente/seguir", "/cliente/cuenta"],
       RESTAURANT: [
         "/restaurante",
         "/restaurante/negocio",

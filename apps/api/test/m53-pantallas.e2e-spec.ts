@@ -31,6 +31,43 @@ function record(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
+const FORBIDDEN_TRACKING_KEY_PATTERN = /(amount|price|total|fee|cop|phone|email|address|nit)/i;
+const FORBIDDEN_TRACKING_VALUES = [
+  "32000",
+  "6500",
+  "+573004445566",
+  "+573001112233",
+  "Vereda Verganzo",
+  "ejemplo.com",
+  "80053001",
+];
+
+function assertNoSensitiveTrackingData(payload: unknown): void {
+  const visit = (node: unknown): void => {
+    if (Array.isArray(node)) {
+      for (const item of node) {
+        visit(item);
+      }
+      return;
+    }
+    if (typeof node === "object" && node !== null) {
+      for (const [key, val] of Object.entries(node as Record<string, unknown>)) {
+        if (FORBIDDEN_TRACKING_KEY_PATTERN.test(key)) {
+          throw new Error(`Clave no permitida en tracking público: ${key}`);
+        }
+        visit(val);
+      }
+    }
+  };
+  visit(payload);
+  const serialized = JSON.stringify(payload);
+  for (const forbidden of FORBIDDEN_TRACKING_VALUES) {
+    if (serialized.includes(forbidden)) {
+      throw new Error(`Dato sensible expuesto en tracking público: ${forbidden}`);
+    }
+  }
+}
+
 async function createApp(env: AppEnv): Promise<INestApplication> {
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
     .overrideProvider(APP_ENV)
@@ -112,7 +149,7 @@ describe("M53 pantallas v2: directorio público, recepción, ofertas con distanc
     try {
       await db.query(
         `INSERT INTO admin_profiles ("userId", "displayName", role, "createdAt", "updatedAt")
-         SELECT id, 'Admin M53', 'OPERATIONS', now(), now()
+         SELECT id, 'Operaciones M53', 'OPERATIONS', now(), now()
          FROM users WHERE email = 'admin-m53@ejemplo.com'`,
       );
       await db.query(
@@ -145,6 +182,7 @@ describe("M53 pantallas v2: directorio público, recepción, ofertas con distanc
         latitude: 4.9652,
       })
       .expect(201);
+    const restaurantId = String(record(restRes.body)["restaurantId"]);
     const branchId = String(record(restRes.body)["branchId"]);
 
     const slots = [1, 2, 3, 4, 5, 6, 7].map((weekday) => ({
@@ -162,6 +200,18 @@ describe("M53 pantallas v2: directorio público, recepción, ofertas con distanc
     await request(server())
       .post(`/v1/branches/${branchId}/activate`)
       .set("authorization", `Bearer ${ownerToken}`)
+      .send({})
+      .expect(201);
+
+    await request(server())
+      .post(`/v1/restaurants/${restaurantId}/submit`)
+      .set("authorization", `Bearer ${ownerToken}`)
+      .send({})
+      .expect(201);
+
+    await request(server())
+      .post(`/v1/admin/restaurants/${restaurantId}/activate`)
+      .set("authorization", `Bearer ${adminToken}`)
       .send({})
       .expect(201);
 
@@ -282,6 +332,7 @@ describe("M53 pantallas v2: directorio público, recepción, ofertas con distanc
     const clientOrders = record(clientOrdersRes.body)["orders"] as Array<Record<string, unknown>>;
     expect(clientOrders.length).toBe(1);
     expect(clientOrders[0]?.["id"]).toBe(orderId);
+    expect("foodAmountCop" in (clientOrders[0] ?? {})).toBe(false);
 
     // 9. Ganancias informativas antes y después de entregar
     const earningsBefore = await request(server())
@@ -300,6 +351,7 @@ describe("M53 pantallas v2: directorio público, recepción, ofertas con distanc
     const linkDetailRes = await request(server()).get(`/v1/tracking/${trackingToken}`).expect(200);
     expect(pickupPin.length).toBeGreaterThanOrEqual(4);
     expect(record(linkDetailRes.body)["status"]).toBe("ACCEPTED");
+    assertNoSensitiveTrackingData(linkDetailRes.body);
 
     await request(server())
       .post(`/v1/orders/${orderId}/arrive-pickup`)
@@ -321,6 +373,7 @@ describe("M53 pantallas v2: directorio público, recepción, ofertas con distanc
       .get(`/v1/tracking/${trackingToken}`)
       .expect(200);
     const deliveryPin = String(record(pickedUpTrackRes.body)["deliveryPin"]);
+    assertNoSensitiveTrackingData(pickedUpTrackRes.body);
 
     await request(server())
       .post(`/v1/orders/${orderId}/at-dropoff`)
@@ -339,6 +392,7 @@ describe("M53 pantallas v2: directorio público, recepción, ofertas con distanc
       .expect(200);
     expect(record(deliveredTrackRes.body)["status"]).toBe("DELIVERED");
     expect(record(deliveredTrackRes.body)["courierLocation"]).toBeNull();
+    assertNoSensitiveTrackingData(deliveredTrackRes.body);
 
     // Ganancias informativas reflejan el domicilio entregado
     const earningsAfter = await request(server())
