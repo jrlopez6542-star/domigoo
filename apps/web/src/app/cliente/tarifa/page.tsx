@@ -1,5 +1,5 @@
-import { ClientTarifaScreen } from "@/components/client-portal";
+import { redirect } from "next/navigation";
 
-export default function ClienteTarifaPage() {
-  return <ClientTarifaScreen />;
+export default function ClienteTarifaRedirectPage() {
+  redirect("/cliente");
 }

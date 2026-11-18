@@ -1,5 +1,6 @@
 import {
   Controller,
+  ForbiddenException,
   Get,
   NotFoundException,
   Param,
@@ -13,6 +14,7 @@ import type { Request, Response } from "express";
 import { SessionGuard, type AuthenticatedRequest } from "../identity/session.guard.js";
 import {
   TrackingRepository,
+  type ClaimedOrderItem,
   type PublicTrackingView,
   type TrackingLinkIssued,
 } from "./tracking.repository.js";
@@ -78,5 +80,40 @@ export class TrackingController {
       throw new NotFoundException();
     }
     return view;
+  }
+
+  @Post("tracking/:token/claim")
+  @UseGuards(SessionGuard)
+  @ApiOperation({ summary: "Guarda opcionalmente el pedido seguido en la cuenta del cliente" })
+  async claimOrder(
+    @Param("token") token: string,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<{ orderId: string; referenceCode: string }> {
+    const userId = request.auth?.userId;
+    if (userId === undefined) {
+      throw new NotFoundException();
+    }
+    const result = await this.tracking.claimByToken(token, userId);
+    if (result === "missing") {
+      throw new NotFoundException();
+    }
+    if (result === "forbidden") {
+      throw new ForbiddenException();
+    }
+    return result;
+  }
+
+  @Get("client/orders")
+  @UseGuards(SessionGuard)
+  @ApiOperation({ summary: "Lista el historial de pedidos guardados en la cuenta del cliente" })
+  async listClientOrders(
+    @Req() request: AuthenticatedRequest,
+  ): Promise<{ orders: ClaimedOrderItem[] }> {
+    const userId = request.auth?.userId;
+    if (userId === undefined) {
+      throw new NotFoundException();
+    }
+    const orders = await this.tracking.listClaimedOrders(userId);
+    return { orders };
   }
 }

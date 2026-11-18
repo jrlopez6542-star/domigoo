@@ -1,5 +1,5 @@
-import { ClientPedirScreen } from "@/components/client-portal";
+import { redirect } from "next/navigation";
 
-export default function ClientePedirPage() {
-  return <ClientPedirScreen />;
+export default function ClientePedirRedirectPage() {
+  redirect("/cliente");
 }

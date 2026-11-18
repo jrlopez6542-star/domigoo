@@ -1,5 +1,10 @@
-import { ClientCuentaScreen } from "@/components/client-portal";
+import { Suspense } from "react";
+import { ClientAccountView } from "@/components/client-portal";
 
 export default function ClienteCuentaPage() {
-  return <ClientCuentaScreen />;
+  return (
+    <Suspense fallback={<div className="dg-v2-card">Cargando perfil...</div>}>
+      <ClientAccountView />
+    </Suspense>
+  );
 }

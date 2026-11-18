@@ -7,6 +7,12 @@ export type AdminStats = {
   eligibleCouriers: number;
   medianAcceptSeconds: number | null;
   openIncidents: number;
+  activeRestaurants: number;
+  registeredCouriers: number;
+  registeredClients: number;
+  ordersToday: number;
+  ordersInProgress: number;
+  ordersCompletedToday: number;
 };
 
 @Injectable()
@@ -159,11 +165,47 @@ export class AdminRepository {
        WHERE status IN ('OPEN', 'ACKNOWLEDGED', 'INVESTIGATING')`,
     );
 
+    const summaryRow = await this.database.pool.query<{
+      activeRestaurants: number;
+      registeredCouriers: number;
+      registeredClients: number;
+      ordersToday: number;
+      ordersInProgress: number;
+      ordersCompletedToday: number;
+    }>(
+      `SELECT
+         (SELECT COUNT(*)::int FROM restaurants WHERE status = 'ACTIVE') AS "activeRestaurants",
+         (SELECT COUNT(*)::int FROM couriers WHERE status <> 'REJECTED') AS "registeredCouriers",
+         (SELECT COUNT(*)::int FROM users u
+          WHERE u.status = 'ACTIVE'
+            AND NOT EXISTS (SELECT 1 FROM admin_profiles ap WHERE ap."userId" = u.id)
+            AND NOT EXISTS (SELECT 1 FROM restaurant_memberships rm WHERE rm."userId" = u.id)
+            AND NOT EXISTS (SELECT 1 FROM couriers c WHERE c."userId" = u.id)
+         ) AS "registeredClients",
+         (SELECT COUNT(*)::int FROM orders
+          WHERE ("createdAt" AT TIME ZONE 'America/Bogota')::date = (now() AT TIME ZONE 'America/Bogota')::date
+         ) AS "ordersToday",
+         (SELECT COUNT(*)::int FROM orders
+          WHERE status IN ('SEEKING_COURIER', 'ACCEPTED', 'ARRIVING_PICKUP', 'AT_PICKUP', 'PICKED_UP', 'AT_DROPOFF')
+         ) AS "ordersInProgress",
+         (SELECT COUNT(*)::int FROM orders
+          WHERE status = 'DELIVERED'
+            AND ("deliveredAt" AT TIME ZONE 'America/Bogota')::date = (now() AT TIME ZONE 'America/Bogota')::date
+         ) AS "ordersCompletedToday"`,
+    );
+    const s = summaryRow.rows[0];
+
     return {
       ordersByStatus,
       eligibleCouriers: couriersRow.rows[0]?.total ?? 0,
       medianAcceptSeconds: medianRow.rows[0]?.medianSeconds ?? null,
       openIncidents: incidentsRow.rows[0]?.total ?? 0,
+      activeRestaurants: s?.activeRestaurants ?? 0,
+      registeredCouriers: s?.registeredCouriers ?? 0,
+      registeredClients: s?.registeredClients ?? 0,
+      ordersToday: s?.ordersToday ?? 0,
+      ordersInProgress: s?.ordersInProgress ?? 0,
+      ordersCompletedToday: s?.ordersCompletedToday ?? 0,
     };
   }
 

@@ -51,13 +51,19 @@ async function forward(
     cache: "no-store",
   });
 
-  const responseText = await upstream.text();
+  const isNoBodyStatus =
+    upstream.status === 204 || upstream.status === 205 || upstream.status === 304;
+  const responseText = isNoBodyStatus ? null : await upstream.text();
+  const headersOut: Record<string, string> = {
+    "cache-control": "no-store",
+  };
+  if (!isNoBodyStatus) {
+    headersOut["content-type"] =
+      upstream.headers.get("content-type") ?? "application/json; charset=utf-8";
+  }
   const response = new NextResponse(responseText, {
     status: upstream.status,
-    headers: {
-      "content-type": upstream.headers.get("content-type") ?? "application/json; charset=utf-8",
-      "cache-control": "no-store",
-    },
+    headers: headersOut,
   });
 
   const setCookie = upstream.headers.get("set-cookie");

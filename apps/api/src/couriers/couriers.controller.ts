@@ -1,6 +1,8 @@
 import {
   Body,
   Controller,
+  ForbiddenException,
+  Get,
   HttpException,
   NotFoundException,
   Post,
@@ -45,5 +47,21 @@ export class CouriersController {
       throw new Error("El alta no puede aprobar al domiciliario");
     }
     return { id: created.id, status: "REGISTERING" };
+  }
+
+  @Get("me/earnings")
+  @ApiOperation({
+    summary: "Resumen informativo de domicilios entregados (pago directo del cliente)",
+  })
+  async earnings(@Req() request: AuthenticatedRequest) {
+    const userId = request.auth?.userId;
+    if (userId === undefined) {
+      throw new NotFoundException();
+    }
+    const summary = await this.couriers.getEarningsForUser(userId);
+    if (summary === null) {
+      throw new ForbiddenException();
+    }
+    return summary;
   }
 }

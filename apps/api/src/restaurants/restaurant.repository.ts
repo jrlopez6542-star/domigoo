@@ -14,7 +14,31 @@ export type MyBranchItem = {
   establishmentName: string;
   name: string;
   addressLine: string;
+  publicPhone: string | null;
+  acceptingOrders: boolean;
   status: string;
+};
+
+export type PublicBranchHour = {
+  weekday: number;
+  opensMinute: number;
+  closesMinute: number;
+  closed: boolean;
+};
+
+export type PublicRestaurantItem = {
+  id: string;
+  restaurantId: string;
+  tradeName: string;
+  branchName: string;
+  addressLine: string;
+  neighborhood: string | null;
+  city: string;
+  publicPhone: string | null;
+  acceptingOrders: boolean;
+  isOpen: boolean;
+  todayHoursLabel: string;
+  hours: PublicBranchHour[];
 };
 
 @Injectable()
@@ -321,6 +345,8 @@ export class RestaurantRepository {
          e.name AS "establishmentName",
          b.name,
          b."addressLine",
+         b."publicPhone",
+         b."acceptingOrders",
          b.status::text AS status
        FROM branches b
        JOIN establishments e ON e.id = b."establishmentId"
@@ -332,4 +358,256 @@ export class RestaurantRepository {
     );
     return result.rows;
   }
+
+  async updateBranchReception(input: {
+    branchId: string;
+    userId: string;
+    acceptingOrders?: boolean;
+    publicPhone?: string | null;
+  }): Promise<
+    { branchId: string; acceptingOrders: boolean; publicPhone: string | null } | "missing"
+  > {
+    const member = await this.database.pool.query<{ id: string }>(
+      `SELECT b.id
+       FROM branches b
+       JOIN establishments e ON e.id = b."establishmentId"
+       JOIN restaurant_memberships m ON m."restaurantId" = e."restaurantId"
+       WHERE b.id = $1 AND m."userId" = $2 AND m.status = 'ACTIVE'
+         AND m.role IN ('OWNER', 'MANAGER', 'OPERATOR')`,
+      [input.branchId, input.userId],
+    );
+    if (member.rows[0] === undefined) {
+      return "missing";
+    }
+    const updated = await this.database.pool.query<{
+      branchId: string;
+      acceptingOrders: boolean;
+      publicPhone: string | null;
+    }>(
+      `UPDATE branches
+       SET "acceptingOrders" = COALESCE($2, "acceptingOrders"),
+           "publicPhone" = CASE WHEN $3::boolean THEN $4 ELSE "publicPhone" END,
+           "updatedAt" = now()
+       WHERE id = $1
+       RETURNING id AS "branchId", "acceptingOrders", "publicPhone"`,
+      [
+        input.branchId,
+        input.acceptingOrders ?? null,
+        input.publicPhone !== undefined,
+        input.publicPhone ?? null,
+      ],
+    );
+    return updated.rows[0] ?? "missing";
+  }
+
+  async countNearbyCouriers(branchId: string, userId: string): Promise<number | "missing"> {
+    const member = await this.database.pool.query<{ id: string }>(
+      `SELECT b.id
+       FROM branches b
+       JOIN establishments e ON e.id = b."establishmentId"
+       JOIN restaurant_memberships m ON m."restaurantId" = e."restaurantId"
+       WHERE b.id = $1 AND m."userId" = $2 AND m.status = 'ACTIVE'`,
+      [branchId, userId],
+    );
+    if (member.rows[0] === undefined) {
+      return "missing";
+    }
+    const countQuery = await this.database.pool.query<{ total: number }>(
+      `SELECT COUNT(*)::int AS total
+       FROM branches b
+       JOIN couriers c ON c.status = 'APPROVED'
+       JOIN courier_availabilities a ON a."courierId" = c.id AND a.state = 'AVAILABLE'
+       JOIN location_pings lp ON lp."courierId" = c.id
+       WHERE b.id = $1
+         AND b.location IS NOT NULL
+         AND lp.id = (
+           SELECT lp2.id FROM location_pings lp2
+           WHERE lp2."courierId" = c.id
+           ORDER BY lp2."recordedAt" DESC
+           LIMIT 1
+         )
+         AND ST_DWithin(b.location, lp.location, 5000)`,
+      [branchId],
+    );
+    return countQuery.rows[0]?.total ?? 0;
+  }
+
+  async listPublicRestaurants(query?: string, at = new Date()): Promise<PublicRestaurantItem[]> {
+    const search = query?.trim() ?? "";
+    const rows = await this.database.pool.query<{
+      id: string;
+      restaurantId: string;
+      tradeName: string;
+      branchName: string;
+      addressLine: string;
+      neighborhood: string | null;
+      city: string;
+      publicPhone: string | null;
+      acceptingOrders: boolean;
+    }>(
+      `SELECT
+         b.id,
+         r.id AS "restaurantId",
+         r."tradeName",
+         b.name AS "branchName",
+         b."addressLine",
+         b.neighborhood,
+         b.city,
+         b."publicPhone",
+         b."acceptingOrders"
+       FROM branches b
+       JOIN establishments e ON e.id = b."establishmentId"
+       JOIN restaurants r ON r.id = e."restaurantId"
+       WHERE r.status = 'ACTIVE'
+         AND b.status = 'ACTIVE'
+         AND ($1 = '' OR r."tradeName" ILIKE '%' || $1 || '%' OR b.name ILIKE '%' || $1 || '%' OR COALESCE(b.neighborhood, '') ILIKE '%' || $1 || '%')
+       ORDER BY r."tradeName" ASC, b.name ASC`,
+      [search],
+    );
+    if (rows.rows.length === 0) {
+      return [];
+    }
+    const branchIds = rows.rows.map((r) => r.id);
+    const hoursRows = await this.database.pool.query<PublicBranchHour & { branchId: string }>(
+      `SELECT "branchId", weekday, "opensMinute", "closesMinute", closed
+       FROM branch_hours
+       WHERE "branchId" = ANY($1::uuid[])
+       ORDER BY weekday ASC, "opensMinute" ASC`,
+      [branchIds],
+    );
+    const hoursByBranch = new Map<string, PublicBranchHour[]>();
+    for (const h of hoursRows.rows) {
+      const list = hoursByBranch.get(h.branchId) ?? [];
+      list.push({
+        weekday: h.weekday,
+        opensMinute: h.opensMinute,
+        closesMinute: h.closesMinute,
+        closed: h.closed,
+      });
+      hoursByBranch.set(h.branchId, list);
+    }
+
+    return rows.rows.map((row) => {
+      const hours = hoursByBranch.get(row.id) ?? [];
+      const { isOpen, todayHoursLabel } = evaluateBogotaBranchHours(hours, row.acceptingOrders, at);
+      return {
+        ...row,
+        isOpen,
+        todayHoursLabel,
+        hours,
+      };
+    });
+  }
+
+  async getPublicRestaurant(
+    branchId: string,
+    at = new Date(),
+  ): Promise<PublicRestaurantItem | null> {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(branchId)) {
+      return null;
+    }
+    const rows = await this.database.pool.query<{
+      id: string;
+      restaurantId: string;
+      tradeName: string;
+      branchName: string;
+      addressLine: string;
+      neighborhood: string | null;
+      city: string;
+      publicPhone: string | null;
+      acceptingOrders: boolean;
+    }>(
+      `SELECT
+         b.id,
+         r.id AS "restaurantId",
+         r."tradeName",
+         b.name AS "branchName",
+         b."addressLine",
+         b.neighborhood,
+         b.city,
+         b."publicPhone",
+         b."acceptingOrders"
+       FROM branches b
+       JOIN establishments e ON e.id = b."establishmentId"
+       JOIN restaurants r ON r.id = e."restaurantId"
+       WHERE b.id = $1 AND r.status = 'ACTIVE' AND b.status = 'ACTIVE'
+       LIMIT 1`,
+      [branchId],
+    );
+    const row = rows.rows[0];
+    if (row === undefined) {
+      return null;
+    }
+    const hoursRows = await this.database.pool.query<PublicBranchHour>(
+      `SELECT weekday, "opensMinute", "closesMinute", closed
+       FROM branch_hours
+       WHERE "branchId" = $1
+       ORDER BY weekday ASC, "opensMinute" ASC`,
+      [branchId],
+    );
+    const { isOpen, todayHoursLabel } = evaluateBogotaBranchHours(
+      hoursRows.rows,
+      row.acceptingOrders,
+      at,
+    );
+    return {
+      ...row,
+      isOpen,
+      todayHoursLabel,
+      hours: hoursRows.rows,
+    };
+  }
+}
+
+function evaluateBogotaBranchHours(
+  hours: PublicBranchHour[],
+  acceptingOrders: boolean,
+  at: Date,
+): { isOpen: boolean; todayHoursLabel: string } {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Bogota",
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(at);
+
+  const weekdayMap: Record<string, number> = {
+    Mon: 1,
+    Tue: 2,
+    Wed: 3,
+    Thu: 4,
+    Fri: 5,
+    Sat: 6,
+    Sun: 7,
+  };
+  const weekdayStr = parts.find((p) => p.type === "weekday")?.value ?? "Mon";
+  const weekday = weekdayMap[weekdayStr] ?? 1;
+  const hour = Number(parts.find((p) => p.type === "hour")?.value ?? "0");
+  const minute = Number(parts.find((p) => p.type === "minute")?.value ?? "0");
+  const minuteOfDay = hour * 60 + minute;
+
+  const todaySlots = hours.filter((h) => h.weekday === weekday && !h.closed);
+  if (todaySlots.length === 0) {
+    return { isOpen: false, todayHoursLabel: "Hoy: Cerrado" };
+  }
+  const withinSlot = todaySlots.some(
+    (s) => minuteOfDay >= s.opensMinute && minuteOfDay < s.closesMinute,
+  );
+  const label = todaySlots
+    .map((s) => `${formatMinute(s.opensMinute)} – ${formatMinute(s.closesMinute)}`)
+    .join(", ");
+
+  return {
+    isOpen: acceptingOrders && withinSlot,
+    todayHoursLabel: `Hoy: ${label}`,
+  };
+}
+
+function formatMinute(totalMinutes: number): string {
+  const h24 = Math.floor(totalMinutes / 60) % 24;
+  const m = totalMinutes % 60;
+  const suffix = h24 >= 12 ? "p. m." : "a. m.";
+  const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
+  return `${String(h12)}:${String(m).padStart(2, "0")} ${suffix}`;
 }

@@ -264,6 +264,14 @@ jobs:
           STAGING_SEED_PASSWORD="$STAGING_PASS" \
           pnpm smoke:staging
 
+      - name: Subir capturas M53
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m53-capturas-movil
+          path: docs/capturas/m53/
+          if-no-files-found: ignore
+
       - name: Subir logs y trazas de diagnóstico en fallo
         if: failure()
         uses: actions/upload-artifact@v4

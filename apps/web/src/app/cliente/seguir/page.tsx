@@ -1,5 +1,5 @@
-import { ClientSeguirScreen } from "@/components/client-portal";
+import { ClientTrackingView } from "@/components/client-portal";
 
 export default function ClienteSeguirPage() {
-  return <ClientSeguirScreen />;
+  return <ClientTrackingView />;
 }

@@ -9,7 +9,7 @@ import "@fontsource/montserrat/700.css";
 import "@fontsource/montserrat/700-italic.css";
 import "@fontsource/montserrat/800.css";
 import { getWebServerConfig } from "@/lib/env";
-import "@domigoo/brand/tokens.css";
+import "@/styles/design-tokens.css";
 import "@/styles/domigoo.css";
 
 export function generateMetadata(): Metadata {

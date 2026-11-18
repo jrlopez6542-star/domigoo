@@ -7,13 +7,28 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
+  useRef,
   useState,
   type FormEvent,
   type ReactNode,
 } from "react";
-import { ClipboardList, Home, PlusCircle, ShieldCheck, Store } from "lucide-react";
+import {
+  ClipboardList,
+  Copy,
+  History,
+  Home,
+  MessageCircle,
+  Store,
+  Users,
+  XCircle,
+} from "lucide-react";
 import { callProxy } from "@/lib/api-client";
-import type { CreateRestaurantPayload, QuotePayload } from "@/lib/contracts";
+import {
+  buildWhatsAppLink,
+  type CreateRestaurantPayload,
+  type QuotePayload,
+} from "@/lib/contracts";
 import {
   clearStoredActiveRole,
   getStoredActiveRole,
@@ -45,6 +60,8 @@ export type RestaurantBranchItem = {
   establishmentName: string;
   name: string;
   addressLine: string;
+  publicPhone?: string | null;
+  acceptingOrders?: boolean;
   status: string;
 };
 
@@ -142,6 +159,14 @@ type RestaurantContextValue = {
   trackingUrl: string;
   handleRefreshOrder: (targetOrderId?: string) => Promise<void>;
   handleCreateTrackingLink: (targetOrderId?: string) => Promise<void>;
+  handleCancelOrder: (targetOrderId: string) => Promise<void>;
+  nearbyCouriersCount: number | null;
+  loadNearbyCouriersCount: (targetBranchId?: string) => Promise<void>;
+  handleUpdateReception: (input: {
+    branchId: string;
+    acceptingOrders?: boolean;
+    publicPhone?: string | null;
+  }) => Promise<void>;
 };
 
 const RestaurantContext = createContext<RestaurantContextValue | null>(null);
@@ -155,32 +180,32 @@ const RESTAURANT_NAV_ITEMS: RoleNavItem[] = [
     testId: "nav-restaurante-inicio",
   },
   {
-    href: "/restaurante/negocio",
-    label: "Mi negocio y sucursal",
-    shortLabel: "Negocio",
-    icon: <Store size={18} />,
-    testId: "nav-restaurante-negocio",
-  },
-  {
-    href: "/restaurante/nuevo-domicilio",
-    label: "Nuevo domicilio",
-    shortLabel: "Nuevo",
-    icon: <PlusCircle size={18} />,
-    testId: "nav-restaurante-nuevo",
-  },
-  {
     href: "/restaurante/pedidos",
-    label: "Pedidos activos",
-    shortLabel: "Pedidos",
+    label: "Solicitudes",
+    shortLabel: "Solicitudes",
     icon: <ClipboardList size={18} />,
     testId: "nav-restaurante-pedidos",
   },
   {
-    href: "/restaurante/cuenta",
-    label: "Mi cuenta",
-    shortLabel: "Cuenta",
-    icon: <ShieldCheck size={18} />,
-    testId: "nav-restaurante-cuenta",
+    href: "/restaurante/domiciliarios",
+    label: "Domiciliarios",
+    shortLabel: "Domiciliarios",
+    icon: <Users size={18} />,
+    testId: "nav-restaurante-domiciliarios",
+  },
+  {
+    href: "/restaurante/historial",
+    label: "Historial",
+    shortLabel: "Historial",
+    icon: <History size={18} />,
+    testId: "nav-restaurante-historial",
+  },
+  {
+    href: "/restaurante/negocio",
+    label: "Perfil",
+    shortLabel: "Perfil",
+    icon: <Store size={18} />,
+    testId: "nav-restaurante-negocio",
   },
 ];
 
@@ -249,6 +274,28 @@ export function RestaurantPortalShell({
   const [orderView, setOrderView] = useState<OrderView | null>(null);
   const [events, setEvents] = useState<OrderEvent[]>([]);
   const [trackingUrl, setTrackingUrl] = useState<string>("");
+  const [nearbyCouriersCount, setNearbyCouriersCount] = useState<number | null>(null);
+  const prevOrderStatusesRef = useRef<Record<string, string>>({});
+
+  function playAcceptChime() {
+    try {
+      const AudioCtx = window.AudioContext;
+      const ctx = new AudioCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(660, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.14);
+      gain.gain.setValueAtTime(0.08, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.36);
+    } catch {
+      // El navegador puede bloquear audio automático antes de interacción.
+    }
+  }
 
   useEffect(() => {
     let active = true;
@@ -313,6 +360,20 @@ export function RestaurantPortalShell({
     try {
       const data = await callProxy<{ orders?: RestaurantOrderSummary[] }>("orders/mine", "GET");
       const list = Array.isArray(data.orders) ? data.orders : [];
+      const prevMap = prevOrderStatusesRef.current;
+      let acceptedTransition = false;
+      const nextMap: Record<string, string> = {};
+      for (const order of list) {
+        nextMap[order.id] = order.status;
+        if (prevMap[order.id] === "SEEKING_COURIER" && order.status === "ACCEPTED") {
+          acceptedTransition = true;
+        }
+      }
+      prevOrderStatusesRef.current = nextMap;
+      if (acceptedTransition) {
+        playAcceptChime();
+        setStatusMessage("Un domiciliario aceptó una solicitud activa.");
+      }
       setMyOrders(list);
       setOrderId((prev) => prev || list[0]?.id || "");
     } catch {
@@ -322,12 +383,44 @@ export function RestaurantPortalShell({
     }
   }, []);
 
+  const loadNearbyCouriersCount = useCallback(
+    async (targetBranchId?: string) => {
+      const id = targetBranchId ?? branchId;
+      if (!id) return;
+      try {
+        const res = await callProxy<{ count: number }>(
+          `branches/${id}/nearby-couriers-count`,
+          "GET",
+        );
+        setNearbyCouriersCount(res.count);
+      } catch {
+        setNearbyCouriersCount(null);
+      }
+    },
+    [branchId],
+  );
+
   useEffect(() => {
     if (sessionUser) {
       void loadMyBranches();
       void loadMyOrders();
     }
   }, [sessionUser, loadMyBranches, loadMyOrders]);
+
+  useEffect(() => {
+    if (!sessionUser || !branchId) return;
+    void loadNearbyCouriersCount(branchId);
+  }, [sessionUser, branchId, loadNearbyCouriersCount]);
+
+  useEffect(() => {
+    if (!sessionUser) return;
+    const timer = window.setInterval(() => {
+      void loadMyOrders();
+    }, 5000);
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [sessionUser, loadMyOrders]);
 
   const handleAuthenticated = useCallback((user: SessionUser) => {
     setStoredActiveRole("RESTAURANT");
@@ -582,6 +675,65 @@ export function RestaurantPortalShell({
     });
   }
 
+  async function handleCancelOrder(targetOrderId: string) {
+    await runAction("cancel", async () => {
+      await callProxy(`orders/${targetOrderId}/cancel`, "POST", {
+        reason: "Cancelado por el restaurante desde el panel",
+      });
+      setStatusMessage("Solicitud cancelada correctamente.");
+      await loadMyOrders();
+      if (orderId === targetOrderId) {
+        await handleRefreshOrder(targetOrderId);
+      }
+    });
+  }
+
+  async function handleUpdateReception(input: {
+    branchId: string;
+    acceptingOrders?: boolean;
+    publicPhone?: string | null;
+  }) {
+    await runAction("reception", async () => {
+      const updated = await callProxy<{
+        branchId: string;
+        acceptingOrders: boolean;
+        publicPhone: string | null;
+      }>(`branches/${input.branchId}/reception`, "PATCH", {
+        acceptingOrders: input.acceptingOrders,
+        publicPhone: input.publicPhone,
+      });
+      setBranches((prev) =>
+        prev.map((b) =>
+          b.id === updated.branchId
+            ? {
+                ...b,
+                acceptingOrders: updated.acceptingOrders,
+                publicPhone: updated.publicPhone,
+              }
+            : b,
+        ),
+      );
+      setStatusMessage(
+        updated.acceptingOrders
+          ? "Recepción de solicitudes abierta."
+          : "Recepción de solicitudes cerrada.",
+      );
+    });
+  }
+
+  const activeOrdersCount = useMemo(
+    () => myOrders.filter((o) => o.status !== "DELIVERED" && o.status !== "CANCELLED").length,
+    [myOrders],
+  );
+
+  const navItemsWithBadge = useMemo(
+    () =>
+      RESTAURANT_NAV_ITEMS.map((item) =>
+        item.href === "/restaurante/pedidos" ? { ...item, badge: activeOrdersCount } : item,
+      ),
+    [activeOrdersCount],
+  );
+
   if (checkingSession) {
     return (
       <div className="dg-card">
@@ -706,12 +858,16 @@ export function RestaurantPortalShell({
         trackingUrl,
         handleRefreshOrder,
         handleCreateTrackingLink,
+        handleCancelOrder,
+        nearbyCouriersCount,
+        loadNearbyCouriersCount,
+        handleUpdateReception,
       }}
     >
       <RolePanelShell
         roleBadge="Restaurante"
         roleHeading={`${appName} — Portal de Restaurantes`}
-        navItems={RESTAURANT_NAV_ITEMS}
+        navItems={navItemsWithBadge}
         sessionUser={sessionUser}
         onLogout={() => void handleLogout()}
         loggingOut={loggingOut}
@@ -743,7 +899,9 @@ function useRestaurantPortal() {
 }
 
 export function RestaurantHomeScreen() {
-  const { branchId, orderId, orderView } = useRestaurantPortal();
+  const { branches, branchId, myOrders, nearbyCouriersCount } = useRestaurantPortal();
+  const activeBranch = branches.find((b) => b.id === branchId) ?? branches[0];
+  const activeOrders = myOrders.filter((o) => o.status !== "DELIVERED" && o.status !== "CANCELLED");
 
   return (
     <div className="dg-stack" data-testid="restaurante-home-screen">
@@ -752,52 +910,78 @@ export function RestaurantHomeScreen() {
           Inicio · Restaurante
         </span>
         <h1 style={{ margin: "4px 0 8px", fontSize: "clamp(1.35rem, 3vw, 1.75rem)" }}>
-          Resumen de tu operación
+          Operación del restaurante
         </h1>
         <p className="dg-muted" style={{ margin: 0 }}>
-          Configura tu sucursal, crea y publica nuevos domicilios por pasos y consulta el recorrido
-          en tiempo real.
+          Gestiona solicitudes de domicilio, publica envíos para domiciliarios en Tocancipá y
+          comparte enlaces de seguimiento al instante.
         </p>
-        <div className="dg-btn-row" style={{ marginTop: "14px" }}>
-          <span className="dg-pill">
-            Sucursal: {branchId ? branchId : "Pendiente por configurar"}
-          </span>
-          <span className="dg-pill">
-            Pedido activo: {orderId ? `${orderId} (${orderView?.status ?? "—"})` : "Ninguno"}
-          </span>
+        <div className="dg-kpi-grid" style={{ marginTop: "14px" }}>
+          <div className="dg-kpi-card">
+            <span className="dg-kpi-label">Solicitudes activas</span>
+            <strong className="dg-kpi-value">{activeOrders.length}</strong>
+          </div>
+          <div className="dg-kpi-card">
+            <span className="dg-kpi-label">Domiciliarios cerca</span>
+            <strong className="dg-kpi-value">
+              {nearbyCouriersCount !== null ? nearbyCouriersCount : "—"}
+            </strong>
+          </div>
+          <div className="dg-kpi-card">
+            <span className="dg-kpi-label">Recepción</span>
+            <strong className="dg-kpi-value">
+              {activeBranch
+                ? activeBranch.acceptingOrders === false
+                  ? "Cerrada"
+                  : "Abierta"
+                : "—"}
+            </strong>
+          </div>
         </div>
       </div>
 
       <div className="dg-grid-2">
-        <Link href="/restaurante/negocio" className="dg-card" style={{ textDecoration: "none" }}>
-          <h2 style={{ marginBottom: "6px" }}>Mi negocio y sucursal</h2>
+        <Link
+          href="/restaurante/nuevo-domicilio"
+          className="dg-card dg-action-card"
+          style={{ textDecoration: "none" }}
+        >
+          <h2 style={{ marginBottom: "6px" }}>Crear domicilio</h2>
           <p className="dg-muted" style={{ margin: 0 }}>
-            Registra razón social, NIT, establecimiento y ubicación de tu sucursal.
+            Registra cliente, dirección de entrega, valor del domicilio y publícalo.
           </p>
         </Link>
 
         <Link
-          href="/restaurante/nuevo-domicilio"
-          className="dg-card"
+          href="/restaurante/pedidos"
+          className="dg-card dg-action-card"
           style={{ textDecoration: "none" }}
         >
-          <h2 style={{ marginBottom: "6px" }}>Nuevo domicilio</h2>
+          <h2 style={{ marginBottom: "6px" }}>Solicitudes ({activeOrders.length})</h2>
           <p className="dg-muted" style={{ margin: 0 }}>
-            Asistente por pasos: cotizar envío, crear borrador y publicar oferta.
+            Tarjetas de solicitudes activas, PIN de recogida, cancelar y compartir enlace.
           </p>
         </Link>
 
-        <Link href="/restaurante/pedidos" className="dg-card" style={{ textDecoration: "none" }}>
-          <h2 style={{ marginBottom: "6px" }}>Pedidos activos y seguimiento</h2>
+        <Link
+          href="/restaurante/domiciliarios"
+          className="dg-card dg-action-card"
+          style={{ textDecoration: "none" }}
+        >
+          <h2 style={{ marginBottom: "6px" }}>Domiciliarios y recepción</h2>
           <p className="dg-muted" style={{ margin: 0 }}>
-            Consulta estado, PIN de recogida, eventos y genera el enlace público.
+            Conteo de domiciliarios cercanos y control de apertura o cierre de recepción.
           </p>
         </Link>
 
-        <Link href="/restaurante/cuenta" className="dg-card" style={{ textDecoration: "none" }}>
-          <h2 style={{ marginBottom: "6px" }}>Mi cuenta</h2>
+        <Link
+          href="/restaurante/historial"
+          className="dg-card dg-action-card"
+          style={{ textDecoration: "none" }}
+        >
+          <h2 style={{ marginBottom: "6px" }}>Historial</h2>
           <p className="dg-muted" style={{ margin: 0 }}>
-            Revisa tu sesión, permisos de geolocalización y documentos legales.
+            Solicitudes entregadas y canceladas de tu sucursal.
           </p>
         </Link>
       </div>
@@ -1467,6 +1651,13 @@ export function RestaurantNuevoDomicilioScreen() {
   );
 }
 
+function formatMinutesAgo(createdAt: string): string {
+  const diffMin = Math.max(0, Math.round((Date.now() - new Date(createdAt).getTime()) / 60000));
+  if (diffMin < 1) return "Hace un momento";
+  if (diffMin === 1) return "Hace 1 min";
+  return `Hace ${String(diffMin)} min`;
+}
+
 export function RestaurantPedidosScreen() {
   const {
     sessionUser,
@@ -1480,7 +1671,23 @@ export function RestaurantPedidosScreen() {
     trackingUrl,
     handleRefreshOrder,
     handleCreateTrackingLink,
+    handleCancelOrder,
   } = useRestaurantPortal();
+  const [copiedLink, setCopiedLink] = useState(false);
+
+  const activeOrders = myOrders.filter((o) => o.status !== "DELIVERED" && o.status !== "CANCELLED");
+
+  const fullTrackingUrl =
+    trackingUrl && typeof window !== "undefined"
+      ? `${window.location.origin}${trackingUrl}`
+      : trackingUrl;
+
+  const whatsappShareHref = fullTrackingUrl
+    ? buildWhatsAppLink("", `Sigue tu domicilio en Domigoo aquí: ${fullTrackingUrl}`).replace(
+        "https://wa.me/?",
+        "https://wa.me/?",
+      )
+    : "";
 
   return (
     <div className="dg-stack" data-testid="restaurante-pedidos-screen">
@@ -1495,26 +1702,36 @@ export function RestaurantPedidosScreen() {
             flexWrap: "wrap",
           }}
         >
-          <h1 id="restaurant-tracking-title" style={{ margin: 0 }}>
-            Pedidos activos y seguimiento
-          </h1>
-          <button
-            type="button"
-            className="dg-btn dg-btn--secondary"
-            disabled={!sessionUser || loadingOrders}
-            onClick={() => {
-              void loadMyOrders();
-            }}
-          >
-            {loadingOrders ? "Actualizando..." : "Actualizar pedidos"}
-          </button>
+          <div>
+            <h1 id="restaurant-tracking-title" style={{ margin: 0 }}>
+              Solicitudes activas
+            </h1>
+            <p className="dg-muted" style={{ margin: "4px 0 0" }}>
+              Actualización automática cada 5 segundos.
+            </p>
+          </div>
+          <div className="dg-btn-row">
+            <Link href="/restaurante/nuevo-domicilio" className="dg-btn">
+              Crear domicilio
+            </Link>
+            <button
+              type="button"
+              className="dg-btn dg-btn--secondary"
+              disabled={!sessionUser || loadingOrders}
+              onClick={() => {
+                void loadMyOrders();
+              }}
+            >
+              {loadingOrders ? "Actualizando..." : "Actualizar"}
+            </button>
+          </div>
         </div>
 
-        {myOrders.length === 0 ? (
+        {activeOrders.length === 0 ? (
           <p className="dg-muted" style={{ marginBottom: "12px" }}>
             {loadingOrders
-              ? "Cargando pedidos..."
-              : "Aún no tienes pedidos registrados. Crea uno en Nuevo domicilio."}
+              ? "Cargando solicitudes..."
+              : "No hay solicitudes activas en este momento. Crea una desde Crear domicilio."}
           </p>
         ) : (
           <div
@@ -1522,17 +1739,21 @@ export function RestaurantPedidosScreen() {
             style={{ marginBottom: "14px" }}
             data-testid="restaurant-orders-list"
           >
-            {myOrders.map((item) => {
+            {activeOrders.map((item) => {
               const isSelected = item.id === orderId;
+              const canCancel =
+                item.status === "DRAFT" ||
+                item.status === "SEEKING_COURIER" ||
+                item.status === "ACCEPTED";
               return (
                 <article
                   key={item.id}
                   data-testid={`restaurant-order-card-${item.id}`}
-                  className="dg-card"
+                  className="dg-card dg-request-card"
                   style={{
                     margin: 0,
                     padding: "14px",
-                    borderColor: isSelected ? "var(--dg-accent, #0f766e)" : undefined,
+                    borderColor: isSelected ? "var(--dg-accent, #79D5D0)" : undefined,
                   }}
                 >
                   <div
@@ -1546,14 +1767,20 @@ export function RestaurantPedidosScreen() {
                     }}
                   >
                     <strong>
-                      Pedido #{item.referenceCode} · {item.branchName}
+                      #S-{item.referenceCode} · {item.branchName}
                     </strong>
-                    <span className="dg-pill">{item.status}</span>
+                    <div className="dg-btn-row" style={{ gap: "6px" }}>
+                      <span className="dg-muted" style={{ fontSize: "0.85rem" }}>
+                        {formatMinutesAgo(item.createdAt)}
+                      </span>
+                      <span className="dg-pill">{item.status}</span>
+                    </div>
                   </div>
                   <p className="dg-muted" style={{ margin: "0 0 8px" }}>
                     {item.customerName ? `Cliente: ${item.customerName} · ` : ""}
-                    {item.dropoffAddress ? `Destino: ${item.dropoffAddress} · ` : ""}
-                    Domicilio: ${item.deliveryFeeCop.toLocaleString("es-CO")} COP
+                    Servicio: Domicilio Tocancipá
+                    {item.dropoffAddress ? ` · Destino: ${item.dropoffAddress}` : ""} · Tarifa: $
+                    {item.deliveryFeeCop.toLocaleString("es-CO")} COP
                     {item.pickupPin ? ` · PIN recogida: ${item.pickupPin}` : ""}
                   </p>
                   <div className="dg-btn-row">
@@ -1565,7 +1792,7 @@ export function RestaurantPedidosScreen() {
                         void handleRefreshOrder(item.id);
                       }}
                     >
-                      Consultar estado y eventos
+                      Ver detalle
                     </button>
                     <button
                       type="button"
@@ -1575,8 +1802,21 @@ export function RestaurantPedidosScreen() {
                         void handleCreateTrackingLink(item.id);
                       }}
                     >
-                      Generar enlace público
+                      Enlace de seguimiento
                     </button>
+                    {canCancel ? (
+                      <button
+                        type="button"
+                        className="dg-btn dg-btn--danger"
+                        disabled={!sessionUser || busyAction === "cancel"}
+                        onClick={() => {
+                          void handleCancelOrder(item.id);
+                        }}
+                      >
+                        <XCircle size={16} />
+                        Cancelar solicitud
+                      </button>
+                    ) : null}
                   </div>
                 </article>
               );
@@ -1586,18 +1826,52 @@ export function RestaurantPedidosScreen() {
 
         {orderView ? (
           <div className="dg-alert dg-alert--success">
-            Pedido <strong>{orderView.id}</strong> · Estado: <strong>{orderView.status}</strong>
+            Solicitud <strong>{orderView.id}</strong> · Estado: <strong>{orderView.status}</strong>
             {orderView.pickupPin ? ` · PIN recogida: ${orderView.pickupPin}` : ""}
           </div>
         ) : null}
+
         {trackingUrl ? (
-          <p>
-            Enlace para el cliente:{" "}
-            <a href={trackingUrl} className="dg-footer-link">
-              {trackingUrl}
-            </a>
-          </p>
+          <div className="dg-card" style={{ marginTop: "10px", padding: "12px" }}>
+            <p style={{ margin: "0 0 8px" }}>
+              Enlace para el cliente:{" "}
+              <a href={trackingUrl} className="dg-footer-link">
+                {trackingUrl}
+              </a>
+            </p>
+            <div className="dg-btn-row">
+              <button
+                type="button"
+                className="dg-btn dg-btn--secondary"
+                onClick={() => {
+                  if (typeof navigator !== "undefined" && fullTrackingUrl) {
+                    void navigator.clipboard.writeText(fullTrackingUrl);
+                    setCopiedLink(true);
+                    window.setTimeout(() => {
+                      setCopiedLink(false);
+                    }, 2000);
+                  }
+                }}
+              >
+                <Copy size={16} />
+                {copiedLink ? "Enlace copiado" : "Copiar enlace"}
+              </button>
+              <a
+                href={`https://wa.me/?text=${encodeURIComponent(
+                  `Sigue tu solicitud de domicilio en Domigoo: ${fullTrackingUrl || trackingUrl}`,
+                )}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="dg-btn"
+              >
+                <MessageCircle size={16} />
+                Compartir por WhatsApp
+              </a>
+            </div>
+            {whatsappShareHref ? null : null}
+          </div>
         ) : null}
+
         {events.length > 0 ? (
           <ul style={{ margin: "8px 0 0", paddingLeft: "20px" }}>
             {events.map((ev) => (
@@ -1608,13 +1882,208 @@ export function RestaurantPedidosScreen() {
           </ul>
         ) : null}
       </section>
+    </div>
+  );
+}
 
-      <section className="dg-card" aria-labelledby="restaurant-soon-title">
-        <h2 id="restaurant-soon-title">Funciones en camino</h2>
-        <div className="dg-alert dg-alert--soon" style={{ marginBottom: 0 }}>
-          <strong>Próximamente:</strong> Filtros avanzados e historial exportable de pedidos del
-          restaurante.
+export function RestaurantDomiciliariosScreen() {
+  const {
+    branches,
+    branchId,
+    setBranchId,
+    nearbyCouriersCount,
+    loadNearbyCouriersCount,
+    handleUpdateReception,
+    busyAction,
+  } = useRestaurantPortal();
+
+  const activeBranch = branches.find((b) => b.id === branchId) ?? branches[0];
+  const [publicPhoneInput, setPublicPhoneInput] = useState(activeBranch?.publicPhone ?? "");
+
+  useEffect(() => {
+    setPublicPhoneInput(activeBranch?.publicPhone ?? "");
+  }, [activeBranch?.id, activeBranch?.publicPhone]);
+
+  const isAccepting = activeBranch?.acceptingOrders !== false;
+
+  return (
+    <div className="dg-stack" data-testid="restaurante-domiciliarios-screen">
+      <section className="dg-card">
+        <span className="dg-badge" style={{ marginBottom: "8px" }}>
+          Domiciliarios y recepción
+        </span>
+        <h1 style={{ margin: "4px 0 8px" }}>Disponibilidad en Tocancipá</h1>
+        <p className="dg-muted" style={{ margin: 0 }}>
+          Por privacidad de los repartidores, se muestra únicamente el conteo de domiciliarios
+          disponibles cerca de tu sucursal.
+        </p>
+
+        {branches.length > 1 ? (
+          <label className="dg-field" style={{ marginTop: "12px" }}>
+            <span>Sucursal</span>
+            <select
+              className="dg-select"
+              value={branchId}
+              onChange={(e) => {
+                setBranchId(e.target.value);
+              }}
+            >
+              {branches.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.restaurantName} · {b.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+
+        <div className="dg-kpi-grid" style={{ marginTop: "14px" }}>
+          <div className="dg-kpi-card">
+            <span className="dg-kpi-label">Domiciliarios cerca (conteo)</span>
+            <strong className="dg-kpi-value" data-testid="nearby-couriers-count">
+              {nearbyCouriersCount !== null ? nearbyCouriersCount : "—"}
+            </strong>
+          </div>
+          <div className="dg-kpi-card">
+            <span className="dg-kpi-label">Recepción de solicitudes</span>
+            <strong className="dg-kpi-value">{isAccepting ? "Abierta" : "Cerrada"}</strong>
+          </div>
         </div>
+
+        <div className="dg-btn-row" style={{ marginTop: "14px" }}>
+          <button
+            type="button"
+            className="dg-btn dg-btn--secondary"
+            onClick={() => {
+              if (activeBranch) {
+                void loadNearbyCouriersCount(activeBranch.id);
+              }
+            }}
+          >
+            Actualizar conteo
+          </button>
+          {activeBranch ? (
+            <button
+              type="button"
+              className={isAccepting ? "dg-btn dg-btn--danger" : "dg-btn"}
+              disabled={busyAction === "reception"}
+              onClick={() => {
+                void handleUpdateReception({
+                  branchId: activeBranch.id,
+                  acceptingOrders: !isAccepting,
+                });
+              }}
+            >
+              {isAccepting ? "Cerrar recepción" : "Abrir recepción"}
+            </button>
+          ) : null}
+        </div>
+      </section>
+
+      {activeBranch ? (
+        <section className="dg-card">
+          <h2 style={{ marginBottom: "8px" }}>Teléfono público para clientes</h2>
+          <p className="dg-muted" style={{ margin: "0 0 12px" }}>
+            Este número opcional aparece en el directorio público para que los clientes te contacten
+            por WhatsApp o llamada.
+          </p>
+          <form
+            className="dg-stack"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void handleUpdateReception({
+                branchId: activeBranch.id,
+                publicPhone: publicPhoneInput.trim() || null,
+              });
+            }}
+          >
+            <label className="dg-field" htmlFor="rest-public-phone">
+              <span>Teléfono público (+57...)</span>
+              <input
+                id="rest-public-phone"
+                className="dg-input"
+                type="text"
+                value={publicPhoneInput}
+                onChange={(e) => {
+                  setPublicPhoneInput(e.target.value);
+                }}
+                placeholder="+573001112233"
+              />
+            </label>
+            <div className="dg-btn-row">
+              <button type="submit" className="dg-btn" disabled={busyAction === "reception"}>
+                Guardar teléfono público
+              </button>
+            </div>
+          </form>
+        </section>
+      ) : null}
+    </div>
+  );
+}
+
+export function RestaurantHistorialScreen() {
+  const { myOrders, loadingOrders, loadMyOrders } = useRestaurantPortal();
+  const historyOrders = myOrders.filter(
+    (o) => o.status === "DELIVERED" || o.status === "CANCELLED",
+  );
+
+  return (
+    <div className="dg-stack" data-testid="restaurante-historial-screen">
+      <section className="dg-card">
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: "12px",
+            marginBottom: "12px",
+            flexWrap: "wrap",
+          }}
+        >
+          <h1 style={{ margin: 0 }}>Historial de solicitudes</h1>
+          <button
+            type="button"
+            className="dg-btn dg-btn--secondary"
+            disabled={loadingOrders}
+            onClick={() => {
+              void loadMyOrders();
+            }}
+          >
+            {loadingOrders ? "Actualizando..." : "Actualizar"}
+          </button>
+        </div>
+        {historyOrders.length === 0 ? (
+          <p className="dg-muted" style={{ margin: 0 }}>
+            Aún no hay solicitudes entregadas o canceladas.
+          </p>
+        ) : (
+          <div className="dg-stack">
+            {historyOrders.map((item) => (
+              <article key={item.id} className="dg-card" style={{ margin: 0, padding: "14px" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: "8px",
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <strong>
+                    #S-{item.referenceCode} · {item.branchName}
+                  </strong>
+                  <span className="dg-pill">{item.status}</span>
+                </div>
+                <p className="dg-muted" style={{ margin: "6px 0 0" }}>
+                  {item.customerName ? `Cliente: ${item.customerName} · ` : ""}
+                  Domicilio: ${item.deliveryFeeCop.toLocaleString("es-CO")} COP ·{" "}
+                  {formatMinutesAgo(item.createdAt)}
+                </p>
+              </article>
+            ))}
+          </div>
+        )}
       </section>
     </div>
   );

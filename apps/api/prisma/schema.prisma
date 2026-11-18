@@ -71,6 +71,7 @@ model User {
   memberships                RestaurantMembership[]
   courier                    Courier?
   ordersCreated              Order[]                          @relation("OrderCreatedBy")
+  claimedOrders              Order[]                          @relation("OrderClaimedBy")
   orderEvents                OrderEvent[]                     @relation("OrderEventActor")
   verificationDecisions      VerificationDecision[]           @relation("DecisionReviewer")
   accessInvitesCreated       AccessInvite[]                   @relation("InviteCreatedBy")
@@ -853,6 +854,7 @@ model Order {
   restaurantId         String        @db.Uuid
   branchId             String        @db.Uuid
   createdById          String        @db.Uuid
+  claimedByUserId      String?       @db.Uuid
   operationsPolicyId   String?       @db.Uuid
   dispatchMode         DispatchMode?
   status               OrderStatus   @default(DRAFT)
@@ -888,6 +890,7 @@ model Order {
   restaurant       Restaurant        @relation(fields: [restaurantId], references: [id], onDelete: Restrict)
   branch           Branch            @relation(fields: [branchId], references: [id], onDelete: Restrict)
   createdBy        User              @relation("OrderCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  claimedBy        User?             @relation("OrderClaimedBy", fields: [claimedByUserId], references: [id], onDelete: SetNull)
   operationsPolicy OperationsPolicy? @relation(fields: [operationsPolicyId], references: [id], onDelete: Restrict)
   assignedCourier  Courier?          @relation(fields: [assignedCourierId], references: [id], onDelete: Restrict)
   quote            TariffQuote?
@@ -901,6 +904,7 @@ model Order {
   @@index([restaurantId, status, createdAt])
   @@index([assignedCourierId, status])
   @@index([status, seekingExpiresAt])
+  @@index([claimedByUserId, createdAt])
   @@index([pickupLocation], type: Gist, map: "orders_pickup_location_gist")
   @@index([dropoffLocation], type: Gist, map: "orders_dropoff_location_gist")
   @@map("orders")

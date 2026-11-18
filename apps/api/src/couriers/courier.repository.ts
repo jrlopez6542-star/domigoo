@@ -161,6 +161,71 @@ export class CourierRepository {
       client.release();
     }
   }
+
+  async getEarningsForUser(userId: string): Promise<{
+    deliveredCount: number;
+    totalDeliveryFeeCop: number;
+    note: string;
+    recentDeliveries: Array<{
+      id: string;
+      referenceCode: string;
+      restaurantName: string;
+      deliveryFeeCop: number;
+      deliveredAt: string | null;
+    }>;
+  } | null> {
+    const courierRow = await this.database.pool.query<{ id: string }>(
+      `SELECT id FROM couriers WHERE "userId" = $1 LIMIT 1`,
+      [userId],
+    );
+    const courier = courierRow.rows[0];
+    if (courier === undefined) {
+      return null;
+    }
+    const agg = await this.database.pool.query<{
+      deliveredCount: number;
+      totalDeliveryFeeCop: number;
+    }>(
+      `SELECT COUNT(*)::int AS "deliveredCount",
+              COALESCE(SUM("deliveryFeeCop"), 0)::int AS "totalDeliveryFeeCop"
+       FROM orders
+       WHERE "assignedCourierId" = $1 AND status = 'DELIVERED'`,
+      [courier.id],
+    );
+    const recent = await this.database.pool.query<{
+      id: string;
+      referenceCode: string;
+      restaurantName: string;
+      deliveryFeeCop: number;
+      deliveredAt: Date | string | null;
+    }>(
+      `SELECT o.id, o."referenceCode", r."tradeName" AS "restaurantName",
+              o."deliveryFeeCop", o."deliveredAt"
+       FROM orders o
+       JOIN restaurants r ON r.id = o."restaurantId"
+       WHERE o."assignedCourierId" = $1 AND o.status = 'DELIVERED'
+       ORDER BY o."deliveredAt" DESC NULLS LAST, o."createdAt" DESC
+       LIMIT 20`,
+      [courier.id],
+    );
+    return {
+      deliveredCount: agg.rows[0]?.deliveredCount ?? 0,
+      totalDeliveryFeeCop: agg.rows[0]?.totalDeliveryFeeCop ?? 0,
+      note: "Pago directo del cliente, DOMIGOO no recauda",
+      recentDeliveries: recent.rows.map((r) => ({
+        id: r.id,
+        referenceCode: r.referenceCode,
+        restaurantName: r.restaurantName,
+        deliveryFeeCop: r.deliveryFeeCop,
+        deliveredAt:
+          r.deliveredAt === null
+            ? null
+            : r.deliveredAt instanceof Date
+              ? r.deliveredAt.toISOString()
+              : r.deliveredAt,
+      })),
+    };
+  }
 }
 
 function pgCode(error: unknown): string | undefined {

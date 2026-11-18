@@ -22,6 +22,12 @@ export type AvailableOfferItem = {
   pickupAddress: string;
   dropoffAddress: string;
   deliveryFeeCop: number;
+  distanceKm: number;
+  etaMinutes: number;
+  pickupLat: number | null;
+  pickupLng: number | null;
+  dropoffLat: number | null;
+  dropoffLng: number | null;
   expiresAt: string;
 };
 
@@ -316,6 +322,12 @@ export class OffersRepository {
          b."addressLine" AS "pickupAddress",
          COALESCE(o."dropoffAddress", '') AS "dropoffAddress",
          o."deliveryFeeCop",
+         ROUND((COALESCE(ST_Distance(o."pickupLocation", o."dropoffLocation"), 0) / 1000.0)::numeric, 1)::float AS "distanceKm",
+         GREATEST(3, CEIL(COALESCE(ST_Distance(o."pickupLocation", o."dropoffLocation"), 0) / 1000.0 / 0.35))::int AS "etaMinutes",
+         CASE WHEN o."pickupLocation" IS NOT NULL THEN ST_Y(o."pickupLocation"::geometry)::float ELSE NULL END AS "pickupLat",
+         CASE WHEN o."pickupLocation" IS NOT NULL THEN ST_X(o."pickupLocation"::geometry)::float ELSE NULL END AS "pickupLng",
+         CASE WHEN o."dropoffLocation" IS NOT NULL THEN ST_Y(o."dropoffLocation"::geometry)::float ELSE NULL END AS "dropoffLat",
+         CASE WHEN o."dropoffLocation" IS NOT NULL THEN ST_X(o."dropoffLocation"::geometry)::float ELSE NULL END AS "dropoffLng",
          d."expiresAt"::text AS "expiresAt"
        FROM dispatch_offers d
        JOIN couriers c ON c.id = d."courierId"
