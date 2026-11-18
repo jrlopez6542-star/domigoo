@@ -155,7 +155,11 @@ async function setupBaseWorld(): Promise<{
         addressLine: "Calle Ficticia 12 # 5-30, Tocancipa",
         longitude: -73.9132,
         latitude: 4.9655,
-        hours: [{ weekday: 1, opensMinute: 0, closesMinute: 1439 }],
+        hours: [1, 2, 3, 4, 5, 6, 7].map((weekday) => ({
+          weekday,
+          opensMinute: 0,
+          closesMinute: 1439,
+        })),
       })
       .expect(201);
     const branchId = String(record(restRes.body)["branchId"]);
@@ -275,13 +279,24 @@ async function setupBaseWorld(): Promise<{
 }
 
 async function createAndPublishOrder(ownerToken: string, branchId: string) {
+  const quote = await request(server())
+    .post("/v1/tariffs/quote")
+    .set("Authorization", `Bearer ${ownerToken}`)
+    .send({
+      origin: { longitude: -73.9132, latitude: 4.9655 },
+      destination: { longitude: -73.918, latitude: 4.97 },
+      at: new Date().toISOString(),
+    })
+    .expect(201);
+  const deliveryFeeCop = Number(record(quote.body)["deliveryFeeCop"]);
+
   const draft = await request(server())
     .post("/v1/orders")
     .set("Authorization", `Bearer ${ownerToken}`)
     .send({
       branchId,
       foodAmountCop: 32000,
-      deliveryFeeCop: 5500,
+      deliveryFeeCop,
       paymentMethod: "CASH",
     })
     .expect(201);
