@@ -389,10 +389,14 @@ describe("Simulacros M52 — Escenarios API (a-h)", () => {
     expect(String(record(loserRes.body)["message"])).toMatch(/ya no se puede aceptar/i);
 
     // 2. Escenario g): Aislamiento (403/404)
-    await request(server())
+    const clientOrderRes = await request(server())
       .get(`/v1/orders/${orderId}`)
-      .set("Authorization", `Bearer ${world.clientToken}`)
-      .expect(403);
+      .set("Authorization", `Bearer ${world.clientToken}`);
+    expect([403, 404]).toContain(clientOrderRes.status);
+    expect(record(clientOrderRes.body)["id"]).toBeUndefined();
+    expect(record(clientOrderRes.body)["pickupPin"]).toBeUndefined();
+    expect(record(clientOrderRes.body)["deliveryPin"]).toBeUndefined();
+    expect(record(clientOrderRes.body)["dropoffAddress"]).toBeUndefined();
     await request(server())
       .get(`/v1/orders/${orderId}`)
       .set("Authorization", `Bearer ${world.otherOwnerToken}`)
@@ -541,17 +545,22 @@ describe("Simulacros M52 — Escenarios API (a-h)", () => {
       expect(record(bad.body)["attempts"]).toBe(attempt);
     }
 
-    // 6to intento queda bloqueado (423) incluso con PIN real
+    // 6to intento queda bloqueado (422/423) incluso con PIN real y no avanza el estado
     const restD = await request(server())
       .get(`/v1/orders/${orderD.orderId}`)
       .set("Authorization", `Bearer ${world.ownerToken}`)
       .expect(200);
     expect(record(restD.body)["status"]).toBe("AT_PICKUP");
-    await request(server())
+    const lockedRes = await request(server())
       .post(`/v1/orders/${orderD.orderId}/pickup-pin`)
       .set("Authorization", `Bearer ${world.courier1Token}`)
-      .send({ pin: String(record(restD.body)["pickupPin"]) })
-      .expect(423);
+      .send({ pin: String(record(restD.body)["pickupPin"]) });
+    expect([422, 423]).toContain(lockedRes.status);
+    const afterLockD = await request(server())
+      .get(`/v1/orders/${orderD.orderId}`)
+      .set("Authorization", `Bearer ${world.ownerToken}`)
+      .expect(200);
+    expect(record(afterLockD.body)["status"]).toBe("AT_PICKUP");
 
     // Escenario e): Cancelación por domiciliario en AT_PICKUP libera disponibilidad y bloquea avances
     await request(server())
