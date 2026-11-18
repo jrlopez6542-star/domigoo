@@ -388,32 +388,42 @@ describe("Simulacros M52 — Escenarios API (a-h)", () => {
     const loserRes = accept1.status === 409 ? accept1 : accept2;
     expect(String(record(loserRes.body)["message"])).toMatch(/ya no se puede aceptar/i);
 
-    // 2. Escenario g): Aislamiento (403/404)
-    const clientOrderRes = await request(server())
-      .get(`/v1/orders/${orderId}`)
-      .set("Authorization", `Bearer ${world.clientToken}`);
-    expect([403, 404]).toContain(clientOrderRes.status);
-    expect(record(clientOrderRes.body)["id"]).toBeUndefined();
-    expect(record(clientOrderRes.body)["pickupPin"]).toBeUndefined();
-    expect(record(clientOrderRes.body)["deliveryPin"]).toBeUndefined();
-    expect(record(clientOrderRes.body)["dropoffAddress"]).toBeUndefined();
-    await request(server())
-      .get(`/v1/orders/${orderId}`)
-      .set("Authorization", `Bearer ${world.otherOwnerToken}`)
-      .expect(403);
-    await request(server())
-      .get(`/v1/orders/${orderId}`)
-      .set("Authorization", `Bearer ${loserToken}`)
-      .expect(403);
-    await request(server())
-      .post(`/v1/orders/${orderId}/arrive-pickup`)
-      .set("Authorization", `Bearer ${loserToken}`)
-      .expect(403);
-    await request(server())
-      .post(`/v1/orders/${orderId}/cancel`)
-      .set("Authorization", `Bearer ${loserToken}`)
-      .send({ reason: "Intento no autorizado" })
-      .expect(403);
+    // 2. Escenario g): Aislamiento (403/404 sin filtrar datos del pedido)
+    const assertIsolated = (res: request.Response) => {
+      expect([403, 404]).toContain(res.status);
+      const body = record(res.body);
+      expect(body["id"]).toBeUndefined();
+      expect(body["pickupPin"]).toBeUndefined();
+      expect(body["deliveryPin"]).toBeUndefined();
+      expect(body["dropoffAddress"]).toBeUndefined();
+    };
+
+    assertIsolated(
+      await request(server())
+        .get(`/v1/orders/${orderId}`)
+        .set("Authorization", `Bearer ${world.clientToken}`),
+    );
+    assertIsolated(
+      await request(server())
+        .get(`/v1/orders/${orderId}`)
+        .set("Authorization", `Bearer ${world.otherOwnerToken}`),
+    );
+    assertIsolated(
+      await request(server())
+        .get(`/v1/orders/${orderId}`)
+        .set("Authorization", `Bearer ${loserToken}`),
+    );
+    assertIsolated(
+      await request(server())
+        .post(`/v1/orders/${orderId}/arrive-pickup`)
+        .set("Authorization", `Bearer ${loserToken}`),
+    );
+    assertIsolated(
+      await request(server())
+        .post(`/v1/orders/${orderId}/cancel`)
+        .set("Authorization", `Bearer ${loserToken}`)
+        .send({ reason: "Intento no autorizado" }),
+    );
 
     // 3. Emitir tracking link y verificar flujo completo (Escenario a)
     const trkRes = await request(server())
