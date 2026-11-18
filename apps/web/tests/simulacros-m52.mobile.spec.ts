@@ -89,7 +89,7 @@ test.describe("M52-SIMULACROS: Flujo completo móvil (3 roles)", () => {
     await restPage.locator("#rest-customer-phone").fill("+573000005211");
     await restPage.locator("#rest-dropoff-address").fill("Carrera Ficticia 7 # 14-22, Tocancipa");
     await restPage.getByRole("button", { name: "Publicar domicilio" }).click();
-    await expect(restPage.getByText(/SEEKING_COURIER/)).toBeVisible();
+    await expect(restPage.getByText(/SEEKING_COURIER/).first()).toBeVisible();
 
     await restPage.goto("/restaurante/pedidos");
     await restPage.getByRole("button", { name: "Actualizar pedidos" }).click();
@@ -109,7 +109,7 @@ test.describe("M52-SIMULACROS: Flujo completo móvil (3 roles)", () => {
     await clientPage.goto("/cliente/seguir");
     await clientPage.locator("#client-tracking-input").fill(trackingToken);
     await clientPage.getByRole("button", { name: "Consultar estado" }).click();
-    await expect(clientPage.getByText(/SEEKING_COURIER/)).toBeVisible();
+    await expect(clientPage.getByText(/SEEKING_COURIER/).first()).toBeVisible();
     await clientPage.goto(`/tracking/${trackingToken}`);
     await expect(clientPage.getByTestId("tracking-status")).toContainText("SEEKING_COURIER");
     await captureStep(clientPage, testInfo.project.name, "02-cliente-buscando");
@@ -138,9 +138,9 @@ test.describe("M52-SIMULACROS: Flujo completo móvil (3 roles)", () => {
 
     // 6. Domiciliario 1 avanza a AT_PICKUP y prueba Escenario d) PIN recogida incorrecto
     await courier1Page.getByRole("button", { name: "Voy en camino" }).click();
-    await expect(courier1Page.getByText(/ARRIVING_PICKUP/)).toBeVisible();
+    await expect(courier1Page.getByText(/Estado:\s*ARRIVING_PICKUP/)).toBeVisible();
     await courier1Page.getByRole("button", { name: "Llegué al restaurante" }).click();
-    await expect(courier1Page.getByText(/AT_PICKUP/)).toBeVisible();
+    await expect(courier1Page.getByText(/Estado:\s*AT_PICKUP/)).toBeVisible();
 
     await courier1Page.locator("#courier-pickup-pin").fill("000000");
     await courier1Page.getByRole("button", { name: "Confirmar recogida" }).click();
@@ -153,9 +153,9 @@ test.describe("M52-SIMULACROS: Flujo completo móvil (3 roles)", () => {
     // 7. PIN recogida correcto -> PICKED_UP -> AT_DROPOFF
     await courier1Page.locator("#courier-pickup-pin").fill(pickupPin);
     await courier1Page.getByRole("button", { name: "Confirmar recogida" }).click();
-    await expect(courier1Page.getByText(/PICKED_UP/)).toBeVisible();
+    await expect(courier1Page.getByText(/Estado:\s*PICKED_UP/)).toBeVisible();
     await courier1Page.getByRole("button", { name: "Llegué al cliente" }).click();
-    await expect(courier1Page.getByText(/AT_DROPOFF/)).toBeVisible();
+    await expect(courier1Page.getByText(/Estado:\s*AT_DROPOFF/)).toBeVisible();
     await captureStep(courier1Page, testInfo.project.name, "06-domiciliario-en-entrega");
 
     // 8. Cliente ve AT_DROPOFF y PIN de entrega en enlace público
@@ -175,7 +175,7 @@ test.describe("M52-SIMULACROS: Flujo completo móvil (3 roles)", () => {
 
     await courier1Page.locator("#courier-delivery-pin").fill(deliveryPin);
     await courier1Page.getByRole("button", { name: "Confirmar entrega" }).click();
-    await expect(courier1Page.getByText(/DELIVERED/)).toBeVisible();
+    await expect(courier1Page.getByText(/Estado:\s*DELIVERED/)).toBeVisible();
     await captureStep(courier1Page, testInfo.project.name, "08-domiciliario-entregado");
 
     await clientPage.reload();
@@ -201,14 +201,14 @@ test.describe("M52-SIMULACROS: Flujo completo móvil (3 roles)", () => {
     await restPage.locator("#rest-customer-phone").fill("+573000005212");
     await restPage.locator("#rest-dropoff-address").fill("Calle Ficticia 20 # 3-10, Tocancipa");
     await restPage.getByRole("button", { name: "Publicar domicilio" }).click();
-    await expect(restPage.getByText(/SEEKING_COURIER/)).toBeVisible();
+    await expect(restPage.getByText(/SEEKING_COURIER/).first()).toBeVisible();
 
     await courier1Page.goto("/domiciliario");
     await courier1Page.getByTestId("courier-refresh-offers").click();
     const declineBtn = courier1Page.locator('[data-testid^="courier-decline-offer-"]').first();
     await expect(declineBtn).toBeVisible();
     await declineBtn.click();
-    await expect(courier1Page.getByText(/Oferta rechazada/)).toBeVisible();
+    await expect(courier1Page.getByText(/Oferta rechazada/).first()).toBeVisible();
 
     await courier2Page.goto("/domiciliario");
     await courier2Page.getByTestId("courier-refresh-offers").click();
