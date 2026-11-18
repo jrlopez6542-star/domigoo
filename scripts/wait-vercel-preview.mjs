@@ -77,7 +77,9 @@ async function readVercelBotComment() {
     }
     const encoded = firstLine.slice(colonIdx + 1).trim();
     const decoded = JSON.parse(Buffer.from(encoded, "base64").toString("utf8"));
-    const project = decoded?.projects?.[0];
+    const project = Array.isArray(decoded?.projects)
+      ? decoded.projects.find((p) => p?.name === "domigoo")
+      : undefined;
     if (!project) {
       return null;
     }
