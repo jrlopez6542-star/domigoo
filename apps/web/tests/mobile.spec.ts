@@ -204,7 +204,9 @@ test.describe("M49-MOVIL: Auditoría móvil (iPhone 13 390x844 y Android 360x780
           // Encabezado del sitio oculto en móvil cuando hay portal autenticado
           await expect(page.locator("header.dg-header")).toBeHidden();
 
-          const logoutBtn = page.getByRole("button", { name: /Cerrar sesión/i });
+          const logoutBtn = page
+            .locator(".dg-role-topbar")
+            .getByRole("button", { name: /Cerrar sesión/i });
           const logoutBox = await logoutBtn.boundingBox();
           expect(logoutBox).not.toBeNull();
           if (logoutBox) {
