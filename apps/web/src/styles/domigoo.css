@@ -883,7 +883,12 @@ button,
 
 @media (max-width: 767px) {
   .dg-card:has(.dg-auth-form) {
-    padding: 12px;
+    padding: 10px 12px;
+  }
+
+  .dg-auth-form,
+  .dg-auth-form .dg-grid-2 {
+    gap: 8px;
   }
 
   .dg-auth-form.dg-stack,
@@ -896,14 +901,28 @@ button,
   }
 
   .dg-auth-form .dg-check-group {
-    gap: 6px;
+    gap: 5px;
     padding: 8px 10px;
   }
 
   .dg-auth-form .dg-check-row {
-    font-size: 0.84rem;
-    line-height: 1.35;
+    font-size: 0.8rem;
+    line-height: 1.25;
     gap: 8px;
+  }
+
+  .dg-card:has(.dg-auth-form) .dg-tabs {
+    margin-bottom: 8px;
+  }
+
+  .dg-card:has(.dg-auth-form) .dg-field {
+    gap: 4px;
+    font-size: 0.84rem;
+  }
+
+  .dg-card:has(.dg-auth-form) .dg-input {
+    min-height: 40px;
+    padding: 8px 10px;
   }
 }
 

@@ -164,8 +164,15 @@ export function ClientPortalShell({ children }: { children: ReactNode }) {
       }}
     >
       <RolePanelShell
+        roleBadge="Cliente"
+        roleHeading="Cliente · Tocancipá"
         sidebarTitle="Cliente · Tocancipá"
         navItems={CLIENT_NAV_ITEMS}
+        sessionUser={sessionUser}
+        onLogout={() => {
+          void handleLogout();
+        }}
+        loggingOut={loggingOut}
         currentPath={pathname}
         navAriaLabel="Navegación de cliente"
       >

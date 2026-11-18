@@ -4,6 +4,7 @@ import {
   Get,
   NotFoundException,
   Param,
+  ParseUUIDPipe,
   Patch,
   Post,
   Req,
@@ -79,7 +80,7 @@ export class AdminController {
   @UseGuards(AdminGuard)
   @ApiOperation({ summary: "Activa un restaurante que está en revisión" })
   async activateRestaurant(
-    @Param("id") restaurantId: string,
+    @Param("id", ParseUUIDPipe) restaurantId: string,
     @Req() request: AdminRequest,
   ): Promise<{ status: "ACTIVE" }> {
     if (request.auth === undefined) {

@@ -6,6 +6,7 @@ import {
   HttpException,
   NotFoundException,
   Param,
+  ParseUUIDPipe,
   Patch,
   Post,
   Put,
@@ -46,7 +47,7 @@ export class BranchesController {
   @Put(":id/hours")
   @ApiOperation({ summary: "Reemplaza las franjas horarias de la sucursal" })
   async replaceHours(
-    @Param("id") branchId: string,
+    @Param("id", ParseUUIDPipe) branchId: string,
     @Body() body: unknown,
     @Req() request: AuthenticatedRequest,
   ): Promise<{ replaced: number }> {
@@ -65,7 +66,7 @@ export class BranchesController {
   @Post(":id/activate")
   @ApiOperation({ summary: "Activa la sucursal si tiene punto y al menos una franja" })
   async activate(
-    @Param("id") branchId: string,
+    @Param("id", ParseUUIDPipe) branchId: string,
     @Req() request: AuthenticatedRequest,
   ): Promise<{ status: "ACTIVE" }> {
     const userId = request.auth?.userId;
@@ -85,7 +86,7 @@ export class BranchesController {
   @Patch(":id/reception")
   @ApiOperation({ summary: "Abre o cierra recepción de pedidos y actualiza teléfono público" })
   async updateReception(
-    @Param("id") branchId: string,
+    @Param("id", ParseUUIDPipe) branchId: string,
     @Body() body: unknown,
     @Req() request: AuthenticatedRequest,
   ): Promise<{ branchId: string; acceptingOrders: boolean; publicPhone: string | null }> {
@@ -111,7 +112,7 @@ export class BranchesController {
   @Get(":id/nearby-couriers-count")
   @ApiOperation({ summary: "Cuenta domiciliarios disponibles cerca de la sucursal (sin PII)" })
   async nearbyCouriersCount(
-    @Param("id") branchId: string,
+    @Param("id", ParseUUIDPipe) branchId: string,
     @Req() request: AuthenticatedRequest,
   ): Promise<{ count: number }> {
     const userId = request.auth?.userId;

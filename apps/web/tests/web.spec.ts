@@ -225,7 +225,7 @@ test.describe("HOME-002 (Futuro Urbano), Legal (M45) y Tracking público (M30)",
     await page.goto("/cliente/pedir");
     await expect(page).toHaveURL(/\/cliente$/);
 
-    await page.getByTestId("nav-cliente-seguir-sidebar").click();
+    await page.getByTestId("nav-cliente-solicitudes-sidebar").click();
     await expect(page).toHaveURL(/\/cliente\/seguir$/);
     await expect(page.locator("#seguimiento")).toBeVisible();
 
@@ -457,6 +457,8 @@ test.describe("HOME-002 (Futuro Urbano), Legal (M45) y Tracking público (M30)",
     await page.getByLabel(/Correo electrónico o celular/i).fill("domiciliario-pulido@ejemplo.com");
     await page.getByLabel(/Contraseña/i).fill("ClavePruebaDomigoo2026");
     await page.getByRole("button", { name: "Ingresar" }).click();
+    await expect(page.getByTestId("session-badge")).toBeVisible();
+    await page.goto("/domiciliario/ofertas");
 
     const offerCard = page.getByTestId("courier-offer-card-33333333-3333-4333-8333-333333333333");
     await expect(offerCard).toBeVisible();

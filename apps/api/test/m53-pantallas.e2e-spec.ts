@@ -182,8 +182,14 @@ describe("M53 pantallas v2: directorio público, recepción, ofertas con distanc
         latitude: 4.9652,
       })
       .expect(201);
-    const restaurantId = String(record(restRes.body)["restaurantId"]);
+    const restaurantId = String(record(restRes.body)["id"]);
     const branchId = String(record(restRes.body)["branchId"]);
+
+    await request(server())
+      .post("/v1/restaurants/not-a-uuid/submit")
+      .set("authorization", `Bearer ${ownerToken}`)
+      .send({})
+      .expect(400);
 
     const slots = [1, 2, 3, 4, 5, 6, 7].map((weekday) => ({
       weekday,
