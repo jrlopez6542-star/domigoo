@@ -52,13 +52,13 @@ async function createApp(env: AppEnv): Promise<INestApplication> {
   return app;
 }
 
-async function registerUser(email: string, client: "WEB" | "MOBILE"): Promise<string> {
+async function registerUser(email: string): Promise<string> {
   const res = await request(server())
     .post("/v1/auth/register")
     .send({
       email,
       password,
-      client,
+      client: "MOBILE",
       consents: { termsAccepted: true, privacyAccepted: true },
     })
     .expect(201);
@@ -78,7 +78,7 @@ async function setupBaseWorld(): Promise<{
   const pool = new Pool({ connectionString: databaseUrl });
   try {
     // Register real admin via auth + update admin_profiles so we have a valid session token
-    const adminToken = await registerUser("sim-m52-ops@ejemplo.com", "WEB");
+    const adminToken = await registerUser("sim-m52-ops@ejemplo.com");
     const opsUser = await pool.query<{ id: string }>(
       `SELECT id FROM users WHERE email = 'sim-m52-ops@ejemplo.com'`,
     );
@@ -140,7 +140,7 @@ async function setupBaseWorld(): Promise<{
     );
 
     // Restaurant 1 + Branch in Tocancipá
-    const ownerToken = await registerUser("sim-m52-restaurante@ejemplo.com", "WEB");
+    const ownerToken = await registerUser("sim-m52-restaurante@ejemplo.com");
     const restRes = await request(server())
       .post("/v1/restaurants")
       .set("Authorization", `Bearer ${ownerToken}`)
@@ -161,7 +161,7 @@ async function setupBaseWorld(): Promise<{
     const branchId = String(record(restRes.body)["branchId"]);
 
     // Restaurant 2 (for isolation)
-    const otherOwnerToken = await registerUser("sim-m52-otro-restaurante@ejemplo.com", "WEB");
+    const otherOwnerToken = await registerUser("sim-m52-otro-restaurante@ejemplo.com");
     await request(server())
       .post("/v1/restaurants")
       .set("Authorization", `Bearer ${otherOwnerToken}`)
@@ -181,7 +181,7 @@ async function setupBaseWorld(): Promise<{
       .expect(201);
 
     // Client 1
-    const clientToken = await registerUser("sim-m52-cliente1@ejemplo.com", "WEB");
+    const clientToken = await registerUser("sim-m52-cliente1@ejemplo.com");
 
     // Approve 2 Couriers with location near Tocancipá branch
     const approveOne = async (
@@ -191,7 +191,7 @@ async function setupBaseWorld(): Promise<{
       lng: number,
       lat: number,
     ) => {
-      const token = await registerUser(email, "MOBILE");
+      const token = await registerUser(email);
       await request(server())
         .post("/v1/consents")
         .set("Authorization", `Bearer ${token}`)

@@ -27,10 +27,12 @@ async function captureStep(page: Page, projectName: string, stepName: string) {
 
 async function loginRole(page: Page, route: string, email: string, password: string) {
   await page.goto(route);
-  await expect(page.getByTestId("tab-login")).toBeVisible();
+  const tabLogin = page.getByTestId("tab-login");
+  await expect(tabLogin).toBeVisible();
+  await tabLogin.click();
   await page.locator("#auth-identifier").fill(email);
   await page.locator("#auth-password").fill(password);
-  await page.getByRole("button", { name: "Iniciar sesión" }).click();
+  await page.getByRole("button", { name: "Ingresar" }).click();
 }
 
 test.describe("M52-SIMULACROS: Flujo completo móvil (3 roles)", () => {
