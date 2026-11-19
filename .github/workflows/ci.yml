@@ -3,6 +3,12 @@ name: CI
 on:
   pull_request:
   push:
+    branches:
+      - Contabilidad
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -263,6 +269,14 @@ jobs:
           STAGING_ALLOWED_HOSTS=127.0.0.1 \
           STAGING_SEED_PASSWORD="$STAGING_PASS" \
           pnpm smoke:staging
+
+      - name: Subir capturas M53
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m53-capturas-movil
+          path: docs/capturas/m53/
+          if-no-files-found: ignore
 
       - name: Subir logs y trazas de diagnóstico en fallo
         if: failure()

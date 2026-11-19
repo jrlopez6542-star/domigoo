@@ -6,6 +6,8 @@ import {
   HttpException,
   NotFoundException,
   Param,
+  ParseUUIDPipe,
+  Patch,
   Post,
   Put,
   Req,
@@ -45,7 +47,7 @@ export class BranchesController {
   @Put(":id/hours")
   @ApiOperation({ summary: "Reemplaza las franjas horarias de la sucursal" })
   async replaceHours(
-    @Param("id") branchId: string,
+    @Param("id", ParseUUIDPipe) branchId: string,
     @Body() body: unknown,
     @Req() request: AuthenticatedRequest,
   ): Promise<{ replaced: number }> {
@@ -64,7 +66,7 @@ export class BranchesController {
   @Post(":id/activate")
   @ApiOperation({ summary: "Activa la sucursal si tiene punto y al menos una franja" })
   async activate(
-    @Param("id") branchId: string,
+    @Param("id", ParseUUIDPipe) branchId: string,
     @Req() request: AuthenticatedRequest,
   ): Promise<{ status: "ACTIVE" }> {
     const userId = request.auth?.userId;
@@ -79,6 +81,49 @@ export class BranchesController {
       throw new HttpException({ message: "La sucursal necesita punto y horario" }, 422);
     }
     return { status: "ACTIVE" };
+  }
+
+  @Patch(":id/reception")
+  @ApiOperation({ summary: "Abre o cierra recepción de pedidos y actualiza teléfono público" })
+  async updateReception(
+    @Param("id", ParseUUIDPipe) branchId: string,
+    @Body() body: unknown,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<{ branchId: string; acceptingOrders: boolean; publicPhone: string | null }> {
+    const userId = request.auth?.userId;
+    if (userId === undefined) {
+      throw new NotFoundException();
+    }
+    const parsed = readReception(body);
+    if (parsed === null) {
+      throw new HttpException({ message: "Datos de recepción inválidos" }, 422);
+    }
+    const updated = await this.restaurants.updateBranchReception({
+      branchId,
+      userId,
+      ...parsed,
+    });
+    if (updated === "missing") {
+      throw new NotFoundException();
+    }
+    return updated;
+  }
+
+  @Get(":id/nearby-couriers-count")
+  @ApiOperation({ summary: "Cuenta domiciliarios disponibles cerca de la sucursal (sin PII)" })
+  async nearbyCouriersCount(
+    @Param("id", ParseUUIDPipe) branchId: string,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<{ count: number }> {
+    const userId = request.auth?.userId;
+    if (userId === undefined) {
+      throw new NotFoundException();
+    }
+    const count = await this.restaurants.countNearbyCouriers(branchId, userId);
+    if (count === "missing") {
+      throw new NotFoundException();
+    }
+    return { count };
   }
 }
 
@@ -118,4 +163,34 @@ function readSlots(body: unknown): Slot[] | null {
     slots.push({ weekday, opensMinute, closesMinute, closed });
   }
   return slots;
+}
+
+function readReception(
+  body: unknown,
+): { acceptingOrders?: boolean; publicPhone?: string | null } | null {
+  if (typeof body !== "object" || body === null) {
+    return null;
+  }
+  const obj = body as Record<string, unknown>;
+  const result: { acceptingOrders?: boolean; publicPhone?: string | null } = {};
+  if ("acceptingOrders" in obj) {
+    if (typeof obj["acceptingOrders"] !== "boolean") {
+      return null;
+    }
+    result.acceptingOrders = obj["acceptingOrders"];
+  }
+  if ("publicPhone" in obj) {
+    const raw = obj["publicPhone"];
+    if (raw === null || raw === "") {
+      result.publicPhone = null;
+    } else if (typeof raw === "string" && raw.trim().length <= 20) {
+      result.publicPhone = raw.trim();
+    } else {
+      return null;
+    }
+  }
+  if (result.acceptingOrders === undefined && !("publicPhone" in result)) {
+    return null;
+  }
+  return result;
 }

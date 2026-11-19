@@ -1,5 +1,5 @@
-import { ClientHomeScreen } from "@/components/client-portal";
+import { ClientRestaurantsView } from "@/components/client-portal";
 
 export default function ClientePage() {
-  return <ClientHomeScreen />;
+  return <ClientRestaurantsView />;
 }

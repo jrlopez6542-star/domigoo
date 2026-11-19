@@ -5,6 +5,7 @@ import {
   HttpException,
   NotFoundException,
   Param,
+  ParseUUIDPipe,
   Patch,
   Post,
   Req,
@@ -59,7 +60,7 @@ export class RestaurantsController {
   @UseGuards(SessionGuard)
   @ApiOperation({ summary: "Lee la sede y el punto de la sucursal" })
   async site(
-    @Param("id") id: string,
+    @Param("id", ParseUUIDPipe) id: string,
     @Req() request: AuthenticatedRequest,
   ): Promise<{
     id: string;
@@ -94,8 +95,8 @@ export class RestaurantsController {
   @UseGuards(SessionGuard)
   @ApiOperation({ summary: "Cambia el papel de una membresía. Solo el dueño." })
   async changeRole(
-    @Param("id") restaurantId: string,
-    @Param("userId") userId: string,
+    @Param("id", ParseUUIDPipe) restaurantId: string,
+    @Param("userId", ParseUUIDPipe) userId: string,
     @Body() body: unknown,
     @Req() request: AuthenticatedRequest,
   ): Promise<{ role: string }> {
@@ -128,7 +129,7 @@ export class RestaurantsController {
   @UseGuards(SessionGuard)
   @ApiOperation({ summary: "Pasa el restaurante de borrador a revisión" })
   async submit(
-    @Param("id") restaurantId: string,
+    @Param("id", ParseUUIDPipe) restaurantId: string,
     @Req() request: AuthenticatedRequest,
   ): Promise<{ status: "PENDING_REVIEW" }> {
     const userId = request.auth?.userId;

@@ -19,13 +19,36 @@ export type PublicTrackingEvent = {
   createdAt: string;
 };
 
+const ACTIVE_COURIER_TRACKING_STATUSES = new Set([
+  "ACCEPTED",
+  "ARRIVING_PICKUP",
+  "AT_PICKUP",
+  "PICKED_UP",
+  "AT_DROPOFF",
+]);
+
 export type PublicTrackingView = {
   referenceCode: string;
   status: string;
   restaurantName: string;
   courierFirstName: string | null;
+  etaMinutes: number | null;
+  pickupLocation: { latitude: number; longitude: number } | null;
+  courierLocation: { latitude: number; longitude: number; recordedAt: string } | null;
   deliveryPin?: string;
   events: PublicTrackingEvent[];
+};
+
+export type ClaimedOrderItem = {
+  id: string;
+  referenceCode: string;
+  status: string;
+  restaurantName: string;
+  dropoffAddress: string | null;
+  deliveryFeeCop: number;
+  createdAt: string;
+  deliveredAt: string | null;
+  trackingToken: string | null;
 };
 
 @Injectable()
@@ -180,12 +203,20 @@ export class TrackingRepository {
       referenceCode: string;
       status: string;
       restaurantName: string;
+      courierId: string | null;
       courierFirstName: string | null;
+      pickupLat: number | null;
+      pickupLng: number | null;
+      distanceMeters: number | null;
       deliveryPinCiphertext: string | null;
     }>(
       `SELECT o.id, o."referenceCode", o.status::text AS status,
               r."tradeName" AS "restaurantName",
+              c.id AS "courierId",
               c."firstName" AS "courierFirstName",
+              CASE WHEN o."pickupLocation" IS NOT NULL THEN ST_Y(o."pickupLocation"::geometry)::float ELSE NULL END AS "pickupLat",
+              CASE WHEN o."pickupLocation" IS NOT NULL THEN ST_X(o."pickupLocation"::geometry)::float ELSE NULL END AS "pickupLng",
+              ST_Distance(o."pickupLocation", o."dropoffLocation")::float AS "distanceMeters",
               o."deliveryPinCiphertext"
        FROM orders o
        JOIN restaurants r ON r.id = o."restaurantId"
@@ -210,6 +241,34 @@ export class TrackingRepository {
       [order.id],
     );
 
+    const isActiveCourier = ACTIVE_COURIER_TRACKING_STATUSES.has(order.status);
+    let courierLocation: { latitude: number; longitude: number; recordedAt: string } | null = null;
+    if (isActiveCourier && order.courierId !== null) {
+      const pingQuery = await this.database.pool.query<{
+        latitude: number;
+        longitude: number;
+        recordedAt: Date | string;
+      }>(
+        `SELECT ST_Y(location::geometry)::float AS latitude,
+                ST_X(location::geometry)::float AS longitude,
+                "recordedAt"
+         FROM location_pings
+         WHERE "courierId" = $1
+         ORDER BY "recordedAt" DESC
+         LIMIT 1`,
+        [order.courierId],
+      );
+      const ping = pingQuery.rows[0];
+      if (ping !== undefined) {
+        courierLocation = {
+          latitude: ping.latitude,
+          longitude: ping.longitude,
+          recordedAt:
+            ping.recordedAt instanceof Date ? ping.recordedAt.toISOString() : ping.recordedAt,
+        };
+      }
+    }
+
     const deliveryPin =
       DELIVERY_PIN_TRACKING_STATUSES.has(order.status) && order.deliveryPinCiphertext !== null
         ? decryptPin(
@@ -220,11 +279,22 @@ export class TrackingRepository {
           )
         : undefined;
 
+    const etaMinutes =
+      isActiveCourier && order.distanceMeters !== null
+        ? Math.max(3, Math.ceil(order.distanceMeters / 1000 / 0.35))
+        : null;
+
     return {
       referenceCode: order.referenceCode,
       status: order.status,
       restaurantName: order.restaurantName,
       courierFirstName: order.courierFirstName,
+      etaMinutes,
+      pickupLocation:
+        order.pickupLat !== null && order.pickupLng !== null
+          ? { latitude: order.pickupLat, longitude: order.pickupLng }
+          : null,
+      courierLocation,
       ...(deliveryPin !== undefined ? { deliveryPin } : {}),
       events: eventsQuery.rows.map((ev) => ({
         fromStatus: ev.fromStatus,
@@ -232,6 +302,94 @@ export class TrackingRepository {
         createdAt: ev.createdAt instanceof Date ? ev.createdAt.toISOString() : ev.createdAt,
       })),
     };
+  }
+
+  async claimByToken(
+    rawToken: string,
+    userId: string,
+  ): Promise<{ orderId: string; referenceCode: string } | "missing" | "forbidden"> {
+    if (rawToken.trim() === "") {
+      return "missing";
+    }
+    const tokenHash = hashTrackingToken(rawToken);
+    const linkQuery = await this.database.pool.query<{
+      orderId: string;
+      referenceCode: string;
+      claimedByUserId: string | null;
+      expiresAt: Date | string;
+      revokedAt: Date | string | null;
+    }>(
+      `SELECT tl."orderId", o."referenceCode", o."claimedByUserId", tl."expiresAt", tl."revokedAt"
+       FROM tracking_links tl
+       JOIN orders o ON o.id = tl."orderId"
+       WHERE tl."tokenHash" = $1`,
+      [tokenHash],
+    );
+    const row = linkQuery.rows[0];
+    if (
+      row === undefined ||
+      row.revokedAt !== null ||
+      new Date(row.expiresAt).getTime() <= Date.now()
+    ) {
+      return "missing";
+    }
+    if (row.claimedByUserId !== null && row.claimedByUserId !== userId) {
+      return "forbidden";
+    }
+    await this.database.pool.query(
+      `UPDATE orders SET "claimedByUserId" = $2, "updatedAt" = now() WHERE id = $1`,
+      [row.orderId, userId],
+    );
+    return { orderId: row.orderId, referenceCode: row.referenceCode };
+  }
+
+  async listClaimedOrders(userId: string): Promise<ClaimedOrderItem[]> {
+    const rows = await this.database.pool.query<{
+      id: string;
+      referenceCode: string;
+      status: string;
+      restaurantName: string;
+      dropoffAddress: string | null;
+      deliveryFeeCop: number;
+      createdAt: Date | string;
+      deliveredAt: Date | string | null;
+      tokenCiphertext: string | null;
+    }>(
+      `SELECT o.id, o."referenceCode", o.status::text AS status,
+              r."tradeName" AS "restaurantName",
+              o."dropoffAddress",
+              o."deliveryFeeCop",
+              o."createdAt",
+              o."deliveredAt",
+              tl."tokenCiphertext"
+       FROM orders o
+       JOIN restaurants r ON r.id = o."restaurantId"
+       LEFT JOIN tracking_links tl
+         ON tl."orderId" = o.id AND tl."revokedAt" IS NULL AND tl."expiresAt" > now()
+       WHERE o."claimedByUserId" = $1
+       ORDER BY o."createdAt" DESC
+       LIMIT 50`,
+      [userId],
+    );
+    return rows.rows.map((r) => ({
+      id: r.id,
+      referenceCode: r.referenceCode,
+      status: r.status,
+      restaurantName: r.restaurantName,
+      dropoffAddress: r.dropoffAddress,
+      deliveryFeeCop: r.deliveryFeeCop,
+      createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : r.createdAt,
+      deliveredAt:
+        r.deliveredAt === null
+          ? null
+          : r.deliveredAt instanceof Date
+            ? r.deliveredAt.toISOString()
+            : r.deliveredAt,
+      trackingToken:
+        r.tokenCiphertext !== null
+          ? decryptTrackingToken(r.tokenCiphertext, r.id, this.pinEnv.appEncryptionKey)
+          : null,
+    }));
   }
 }
 
