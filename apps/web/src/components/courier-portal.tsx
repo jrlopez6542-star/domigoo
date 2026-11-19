@@ -490,7 +490,7 @@ export function CourierPortalShell({ children }: { children: ReactNode }) {
         }
       }
       setStatusMessage(`Oferta aceptada (${data.orderStatus ?? data.status ?? "ACCEPTED"}).`);
-      router.push("/domiciliario/servicios");
+      router.push("/domiciliario/entrega");
     });
   }
 
@@ -553,6 +553,14 @@ export function CourierPortalShell({ children }: { children: ReactNode }) {
     });
   }
 
+  const navItemsWithBadge = useMemo(
+    () =>
+      COURIER_NAV_ITEMS.map((item) =>
+        item.href === "/domiciliario/ofertas" ? { ...item, badge: availableOffers.length } : item,
+      ),
+    [availableOffers.length],
+  );
+
   if (checkingSession) {
     return (
       <div className="dg-card">
@@ -600,14 +608,6 @@ export function CourierPortalShell({ children }: { children: ReactNode }) {
       </div>
     );
   }
-
-  const navItemsWithBadge = useMemo(
-    () =>
-      COURIER_NAV_ITEMS.map((item) =>
-        item.href === "/domiciliario/ofertas" ? { ...item, badge: availableOffers.length } : item,
-      ),
-    [availableOffers.length],
-  );
 
   return (
     <CourierContext.Provider
@@ -1558,7 +1558,7 @@ export function CourierGananciasScreen() {
 }
 
 export function CourierCuentaScreen() {
-  const { sessionUser, handleLogout, loggingOut } = useCourierPortal();
+  const { sessionUser } = useCourierPortal();
 
   return (
     <div className="dg-stack" data-testid="domiciliario-cuenta-screen">
@@ -1581,17 +1581,6 @@ export function CourierCuentaScreen() {
           <Link href="/legal/autorizacion" className="dg-btn dg-btn--secondary">
             Autorización de Datos
           </Link>
-        </div>
-
-        <div className="dg-btn-row" style={{ marginTop: "16px" }}>
-          <button
-            type="button"
-            className="dg-btn dg-btn--danger"
-            onClick={() => void handleLogout()}
-            disabled={loggingOut}
-          >
-            {loggingOut ? "Cerrando sesión..." : "Cerrar sesión"}
-          </button>
         </div>
       </section>
     </div>

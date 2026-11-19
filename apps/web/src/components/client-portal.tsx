@@ -206,8 +206,8 @@ export function ClientRestaurantsView() {
       setLoading(false);
       return;
     }
-    const data = (await res.json()) as { restaurants: PublicRestaurantItem[] };
-    setRestaurants(data.restaurants);
+    const data = (await res.json()) as { restaurants?: PublicRestaurantItem[] };
+    setRestaurants(Array.isArray(data.restaurants) ? data.restaurants : []);
     setLoading(false);
   }, []);
 
@@ -558,8 +558,7 @@ export function ClientTrackingView() {
 export function ClientAccountView() {
   const searchParams = useSearchParams();
   const claimToken = searchParams.get("claim");
-  const { sessionUser, checkingSession, handleLogout, loggingOut, refreshSession } =
-    useClientPortal();
+  const { sessionUser, checkingSession, handleLogout, refreshSession } = useClientPortal();
   const [orders, setOrders] = useState<ClaimedOrderItem[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [claimMessage, setClaimMessage] = useState("");
@@ -582,8 +581,8 @@ export function ClientAccountView() {
     }
     const res = await fetch("/api/proxy/client/orders", { cache: "no-store" });
     if (res.ok) {
-      const data = (await res.json()) as { orders: ClaimedOrderItem[] };
-      setOrders(data.orders);
+      const data = (await res.json()) as { orders?: ClaimedOrderItem[] };
+      setOrders(Array.isArray(data.orders) ? data.orders : []);
     }
     setLoadingOrders(false);
   }, [sessionUser, claimToken]);
@@ -617,25 +616,13 @@ export function ClientAccountView() {
       ) : sessionUser ? (
         <>
           <div className="dg-v2-card dg-stack">
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div>
-                <p style={{ margin: 0, fontWeight: 700, color: "#F5F7FA" }}>
-                  {sessionUser.email ?? sessionUser.phoneE164 ?? "Cuenta activa"}
-                </p>
-                <p style={{ margin: "2px 0 0", fontSize: "0.84rem", color: "#79D5D0" }}>
-                  Sesión iniciada
-                </p>
-              </div>
-              <button
-                type="button"
-                className="dg-btn dg-btn--secondary"
-                disabled={loggingOut}
-                onClick={() => {
-                  void handleLogout();
-                }}
-              >
-                {loggingOut ? "Cerrando..." : "Cerrar sesión"}
-              </button>
+            <div>
+              <p style={{ margin: 0, fontWeight: 700, color: "#F5F7FA", overflowWrap: "anywhere" }}>
+                {sessionUser.email ?? sessionUser.phoneE164 ?? "Cuenta activa"}
+              </p>
+              <p style={{ margin: "2px 0 0", fontSize: "0.84rem", color: "#79D5D0" }}>
+                Sesión iniciada
+              </p>
             </div>
           </div>
 

@@ -2090,8 +2090,7 @@ export function RestaurantHistorialScreen() {
 }
 
 export function RestaurantCuentaScreen() {
-  const { sessionUser, geoConsentId, handleRevokeGeoConsent, handleLogout, loggingOut } =
-    useRestaurantPortal();
+  const { sessionUser, geoConsentId, handleRevokeGeoConsent } = useRestaurantPortal();
 
   return (
     <div className="dg-stack" data-testid="restaurante-cuenta-screen">
@@ -2122,17 +2121,6 @@ export function RestaurantCuentaScreen() {
           <Link href="/legal/privacidad" className="dg-btn dg-btn--secondary">
             Política de Privacidad
           </Link>
-        </div>
-
-        <div className="dg-btn-row" style={{ marginTop: "16px" }}>
-          <button
-            type="button"
-            className="dg-btn dg-btn--danger"
-            onClick={() => void handleLogout()}
-            disabled={loggingOut}
-          >
-            {loggingOut ? "Cerrando sesión..." : "Cerrar sesión"}
-          </button>
         </div>
       </section>
     </div>

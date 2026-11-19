@@ -244,16 +244,27 @@ describe("M53 pantallas v2: directorio público, recepción, ofertas con distanc
     expect(items[0]?.["isOpen"]).toBe(true);
 
     // 5. Domiciliario disponible + ubicación con consentimiento
-    await request(server())
-      .post("/v1/couriers/me/availability")
-      .set("authorization", `Bearer ${courierToken}`)
-      .send({ state: "AVAILABLE" })
+    const geoDocRes = await request(server())
+      .post("/v1/legal-documents")
+      .set("authorization", `Bearer ${adminToken}`)
+      .send({
+        kind: "GEOLOCATION_CONSENT",
+        version: "2026-m53-gps",
+        content: "Consentimiento de geolocalización para pruebas M53",
+      })
       .expect(201);
+    const geoDocId = String(record(geoDocRes.body)["id"]);
 
     await request(server())
       .post("/v1/consents")
       .set("authorization", `Bearer ${courierToken}`)
-      .send({ purpose: "GEOLOCATION_CONSENT", granted: true })
+      .send({ legalDocumentId: geoDocId, purpose: "GEOLOCATION", channel: "MOBILE" })
+      .expect(201);
+
+    await request(server())
+      .post("/v1/couriers/me/availability")
+      .set("authorization", `Bearer ${courierToken}`)
+      .send({ state: "AVAILABLE" })
       .expect(201);
 
     await request(server())
