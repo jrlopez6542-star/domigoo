@@ -541,54 +541,56 @@ export function AdminPortal({ appName }: { appName: string }) {
                   </div>
                 </form>
               </section>
-
-              <section id="admin-suscripciones" className="adm-card">
-                <h2 className="adm-card-title">
-                  <CreditCard size={20} aria-hidden="true" />
-                  Reconocimiento de declaración de suscripción
-                </h2>
-                <p style={{ color: "#C0C6D4", fontSize: "0.9rem", marginTop: 0 }}>
-                  DOMIGOO no procesa pagos electrónicos desde este panel. Aquí únicamente se
-                  reconoce una declaración de transferencia o pago reportada por el restaurante.
-                </p>
-                <form
-                  onSubmit={(e) => {
-                    void handleAcknowledgeDeclaration(e);
-                  }}
-                  className="adm-form"
-                >
-                  <label className="adm-field">
-                    ID de declaración
-                    <input
-                      className="adm-input"
-                      name="declarationId"
-                      value={declarationId}
-                      onChange={(e) => {
-                        setDeclarationId(e.target.value);
-                      }}
-                      required
-                    />
-                  </label>
-                  <label className="adm-field">
-                    Referencia o nota de verificación
-                    <input
-                      className="adm-input"
-                      name="ackReference"
-                      value={ackReference}
-                      onChange={(e) => {
-                        setAckReference(e.target.value);
-                      }}
-                      required
-                    />
-                  </label>
-                  <div>
-                    <button type="submit" className="adm-btn">
-                      Reconocer declaración de pago
-                    </button>
-                  </div>
-                </form>
-              </section>
             </>
+          ) : null}
+
+          {activeSection === "dashboard" || activeSection === "verificaciones" ? (
+            <section id="admin-suscripciones" className="adm-card">
+              <h2 className="adm-card-title">
+                <CreditCard size={20} aria-hidden="true" />
+                Reconocimiento de declaración de suscripción
+              </h2>
+              <p style={{ color: "#C0C6D4", fontSize: "0.9rem", marginTop: 0 }}>
+                DOMIGOO no procesa pagos electrónicos desde este panel. Aquí únicamente se reconoce
+                una declaración de transferencia o pago reportada por el restaurante.
+              </p>
+              <form
+                onSubmit={(e) => {
+                  void handleAcknowledgeDeclaration(e);
+                }}
+                className="adm-form"
+              >
+                <label className="adm-field">
+                  ID de declaración
+                  <input
+                    className="adm-input"
+                    name="declarationId"
+                    value={declarationId}
+                    onChange={(e) => {
+                      setDeclarationId(e.target.value);
+                    }}
+                    required
+                  />
+                </label>
+                <label className="adm-field">
+                  Referencia o nota de verificación
+                  <input
+                    className="adm-input"
+                    name="ackReference"
+                    value={ackReference}
+                    onChange={(e) => {
+                      setAckReference(e.target.value);
+                    }}
+                    required
+                  />
+                </label>
+                <div>
+                  <button type="submit" className="adm-btn">
+                    Reconocer declaración de pago
+                  </button>
+                </div>
+              </form>
+            </section>
           ) : null}
 
           {activeSection === "restaurantes" ||
