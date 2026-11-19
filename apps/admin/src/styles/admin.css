@@ -110,6 +110,7 @@ h3 {
 .adm-nav-item {
   display: inline-flex;
   align-items: center;
+  min-height: 44px;
   gap: 8px;
   padding: 10px 12px;
   border-radius: 10px;
