@@ -6,6 +6,9 @@ async function forward(
   context: { params: Promise<{ path: string[] }> },
 ): Promise<NextResponse> {
   const { path } = await context.params;
+  if (path.some((segment) => segment === "." || segment === ".." || segment.includes("\\"))) {
+    return NextResponse.json({ message: "Ruta inválida" }, { status: 400 });
+  }
   const { apiBaseUrl } = getWebServerConfig();
   const targetUrl = `${apiBaseUrl}/v1/${path.join("/")}${request.nextUrl.search}`;
 
@@ -42,14 +45,22 @@ async function forward(
   }
 
   const hasBody = request.method !== "GET" && request.method !== "HEAD";
-  const body = hasBody ? await request.text() : undefined;
+  const body = hasBody ? await request.arrayBuffer() : undefined;
 
-  const upstream = await fetch(targetUrl, {
-    method: request.method,
-    headers,
-    ...(body !== undefined ? { body } : {}),
-    cache: "no-store",
-  });
+  let upstream: Response;
+  try {
+    upstream = await fetch(targetUrl, {
+      method: request.method,
+      headers,
+      ...(body !== undefined ? { body } : {}),
+      cache: "no-store",
+    });
+  } catch {
+    return NextResponse.json(
+      { message: "No se pudo conectar con el servicio de API" },
+      { status: 502 },
+    );
+  }
 
   const responseText = await upstream.text();
   const response = new NextResponse(responseText, {

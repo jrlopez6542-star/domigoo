@@ -165,4 +165,53 @@ describe("JourneyRepository y proyecciones de OrderRepository (M24)", () => {
       expect(view.order.events).toHaveLength(1);
     }
   });
+
+  it("limpia pickupPinCiphertext y deliveryPinCiphertext al cancelar un pedido", async () => {
+    const executedSql: string[] = [];
+    const client = {
+      query: (sql: string) => {
+        executedSql.push(sql);
+        if (sql === "BEGIN" || sql === "COMMIT" || sql === "ROLLBACK") {
+          return Promise.resolve({ rows: [] });
+        }
+        if (sql.includes("FROM orders")) {
+          return Promise.resolve({
+            rows: [
+              {
+                id: "ord-1",
+                restaurantId: "rest-1",
+                status: "ACCEPTED",
+                assignedCourierId: "cour-1",
+              },
+            ],
+          });
+        }
+        if (sql.includes("FROM restaurant_memberships")) {
+          return Promise.resolve({ rows: [{ id: "mem-1" }] });
+        }
+        return Promise.resolve({ rows: [], rowCount: 1 });
+      },
+      release: () => {},
+    };
+    const db = {
+      pool: { connect: () => Promise.resolve(client) },
+    } as unknown as Database;
+
+    const repo = new JourneyRepository(db);
+    const res = await repo.cancelOrder({
+      orderId: "ord-1",
+      userId: "user-1",
+      reason: "Cliente canceló",
+    });
+
+    expect(res).toEqual({
+      id: "ord-1",
+      fromStatus: "ACCEPTED",
+      toStatus: "CANCELLED_RESTAURANT",
+      status: "CANCELLED_RESTAURANT",
+    });
+    const updateSql = executedSql.find((s) => s.includes("UPDATE orders"));
+    expect(updateSql).toContain('"pickupPinCiphertext" = NULL');
+    expect(updateSql).toContain('"deliveryPinCiphertext" = NULL');
+  });
 });

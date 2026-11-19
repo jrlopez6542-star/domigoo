@@ -40,7 +40,8 @@ export class AuthController {
     @Res({ passthrough: true }) response: Response,
   ): Promise<Record<string, unknown>> {
     const registration = this.registration(body);
-    const ip = typeof request.ip === "string" ? request.ip.slice(0, 45) : undefined;
+    const extractedIp = extractClientIp(request);
+    const ip = extractedIp !== "unknown" ? extractedIp.slice(0, 45) : undefined;
     const rawUa = request.headers["user-agent"];
     const userAgent = typeof rawUa === "string" ? rawUa.slice(0, 255) : undefined;
     const result = await this.run(() =>
