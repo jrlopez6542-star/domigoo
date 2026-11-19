@@ -227,7 +227,7 @@ export function ClientRestaurantsView() {
           <Link
             href="/"
             className="dg-btn dg-btn--secondary"
-            style={{ minHeight: 40, padding: "6px 10px" }}
+            style={{ minHeight: 44, minWidth: 44, padding: "6px 10px" }}
             aria-label="Volver al inicio"
           >
             <ArrowLeft size={18} />
