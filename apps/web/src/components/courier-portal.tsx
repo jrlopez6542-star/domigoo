@@ -138,6 +138,13 @@ const COURIER_NAV_ITEMS: RoleNavItem[] = [
     testId: "nav-domiciliario-ofertas",
   },
   {
+    href: "/domiciliario/entrega",
+    label: "Entrega",
+    shortLabel: "Entrega",
+    icon: <Navigation size={18} />,
+    testId: "nav-domiciliario-entrega",
+  },
+  {
     href: "/domiciliario/servicios",
     label: "Servicios",
     shortLabel: "Servicios",
@@ -746,7 +753,7 @@ function CourierAvailableOffersSection() {
           data-testid="courier-no-offers"
           style={{ margin: 0 }}
         >
-          No hay ofertas disponibles por ahora. Activa tu disponibilidad para recibir solicitudes.
+          No hay ofertas por ahora.
         </div>
       ) : (
         <div className="dg-stack" style={{ gap: "12px" }}>

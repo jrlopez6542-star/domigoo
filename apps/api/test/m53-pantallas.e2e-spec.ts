@@ -152,14 +152,33 @@ describe("M53 pantallas v2: directorio público, recepción, ofertas con distanc
          SELECT id, 'Operaciones M53', 'OPERATIONS', now(), now()
          FROM users WHERE email = 'admin-m53@ejemplo.com'`,
       );
-      await db.query(
+      const courierDb = await db.query<{ id: string }>(
         `INSERT INTO couriers (
            id, "userId", "documentType", "documentNumber", "firstName", "lastName",
            status, "registrationSource", "createdAt", "updatedAt"
          )
          SELECT gen_random_uuid(), id, 'CC', '80053001', 'Andrés', 'Domicilios',
                 'APPROVED', 'OPEN', now(), now()
-         FROM users WHERE email = 'domiciliario-m53@ejemplo.com'`,
+         FROM users WHERE email = 'domiciliario-m53@ejemplo.com'
+         RETURNING id`,
+      );
+      const courierDbId = courierDb.rows[0]?.id;
+      await db.query(
+        `INSERT INTO vehicles (
+           id, "courierId", type, plate, "soatExpiresOn", "techExpiresOn", status, "createdAt", "updatedAt"
+         ) VALUES (
+           gen_random_uuid(), $1, 'MOTORCYCLE', 'M53ABC', '2027-04-01', '2027-08-01', 'ACTIVE', now(), now()
+         )`,
+        [courierDbId],
+      );
+      await db.query(
+        `INSERT INTO courier_documents (
+           id, "courierId", type, "storageKey", sha256, "mimeType", "byteSize", status, "createdAt", "updatedAt"
+         )
+         SELECT gen_random_uuid(), $1, doc_type::"CourierDocumentType",
+                'm53/' || doc_type || '.pdf', repeat('a', 64), 'application/pdf', 1024, 'ACCEPTED', now(), now()
+         FROM unnest(ARRAY['NATIONAL_ID', 'DRIVER_LICENSE', 'SOAT', 'TECH_INSPECTION', 'VEHICLE_PHOTO', 'PROFILE_PHOTO']) AS doc_type`,
+        [courierDbId],
       );
     } finally {
       await db.end();
@@ -184,6 +203,54 @@ describe("M53 pantallas v2: directorio público, recepción, ofertas con distanc
       .expect(201);
     const restaurantId = String(record(restRes.body)["id"]);
     const branchId = String(record(restRes.body)["branchId"]);
+
+    const setupPool = new Pool({ connectionString: databaseUrl });
+    try {
+      await setupPool.query(
+        `UPDATE tariff_versions SET status = 'RETIRED' WHERE status = 'PUBLISHED'`,
+      );
+      const tariffVer = await setupPool.query<{ id: string }>(
+        `INSERT INTO tariff_versions (id, name, status, "publishedAt", "createdAt")
+         VALUES (gen_random_uuid(), 'Tarifa M53', 'PUBLISHED', now(), now())
+         RETURNING id`,
+      );
+      await setupPool.query(
+        `INSERT INTO tariff_rules (
+           id, "versionId", "zoneId", "baseFeeCop", "perKmCop", "minimumFeeCop",
+           "nightMultiplierBps", "nightStartsMinute", "nightEndsMinute"
+         ) VALUES (gen_random_uuid(), $1, NULL, 6500, 0, 0, 10000, 0, 0)`,
+        [tariffVer.rows[0]?.id],
+      );
+      await setupPool.query(
+        `UPDATE operations_policies SET status = 'RETIRED' WHERE status = 'PUBLISHED'`,
+      );
+      await setupPool.query(
+        `INSERT INTO operations_policies (
+           id, name, status, "offerRadiusMeters", "directOfferTtlSeconds", "openOfferTtlSeconds",
+           "seekingTtlSeconds", "maxOffersPerWave", "locationFreshnessSeconds", "publishedAt", "createdAt"
+         ) VALUES (
+           gen_random_uuid(), 'Politica M53', 'PUBLISHED', 2000, 120, 90, 600, 5, 120, now(), now()
+         )`,
+      );
+      const planRes = await setupPool.query<{ id: string }>(
+        `INSERT INTO subscription_plans (
+           id, code, name, "priceCop", "periodDays", "trialDays", "maxBranches", "maxConcurrentOrders", "createdAt"
+         ) VALUES (gen_random_uuid(), 'm53-plan', 'Plan M53', 45000, 30, 0, 1, 5, now())
+         ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name
+         RETURNING id`,
+      );
+      await setupPool.query(
+        `INSERT INTO restaurant_subscriptions (
+           id, "restaurantId", "planId", "priceCop", status, "isCurrent",
+           "periodStartsAt", "periodEndsAt", "createdAt", "updatedAt"
+         ) VALUES (
+           gen_random_uuid(), $1, $2, 45000, 'ACTIVE', true, now(), now() + interval '30 days', now(), now()
+         )`,
+        [restaurantId, planRes.rows[0]?.id],
+      );
+    } finally {
+      await setupPool.end();
+    }
 
     await request(server())
       .post("/v1/restaurants/not-a-uuid/submit")

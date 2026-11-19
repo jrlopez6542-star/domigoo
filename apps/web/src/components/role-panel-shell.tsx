@@ -112,7 +112,7 @@ export function RolePanelShell({
         className="dg-role-bottom-nav"
         aria-label={navAriaLabel ?? `Barra inferior de ${resolvedBadge}`}
         style={{
-          gridTemplateColumns: `repeat(${String(Math.min(Math.max(navItems.length, 1), 6))}, minmax(0, 1fr))`,
+          gridTemplateColumns: `repeat(${String(Math.min(Math.max(navItems.length, 1), 7))}, minmax(0, 1fr))`,
         }}
       >
         {navItems.map((item) => {
