@@ -1,12 +1,49 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getAdminServerConfig } from "../../../../lib/env";
 
+const ALLOWED_EXACT_ROUTES = new Set(["auth/me", "auth/login", "auth/logout", "admin/stats"]);
+
+const ALLOWED_PREFIXES = ["admin/verification-cases", "admin/declarations"];
+
+function hasUnsafeSegment(segment: string): boolean {
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(segment);
+  } catch {
+    return true;
+  }
+  return (
+    segment === "." ||
+    segment === ".." ||
+    segment.includes("/") ||
+    segment.includes("\\") ||
+    decoded === "." ||
+    decoded === ".." ||
+    decoded.includes("/") ||
+    decoded.includes("\\")
+  );
+}
+
+function isAllowedAdminProxyPath(segments: string[]): boolean {
+  if (segments.length === 0) {
+    return false;
+  }
+  if (segments.some(hasUnsafeSegment)) {
+    return false;
+  }
+  const joined = segments.join("/");
+  if (ALLOWED_EXACT_ROUTES.has(joined)) {
+    return true;
+  }
+  return ALLOWED_PREFIXES.some((prefix) => joined === prefix || joined.startsWith(`${prefix}/`));
+}
+
 async function forward(
   request: NextRequest,
   context: { params: Promise<{ path: string[] }> },
 ): Promise<NextResponse> {
   const { path } = await context.params;
-  if (path.some((segment) => segment === "." || segment === "..")) {
+  if (!isAllowedAdminProxyPath(path)) {
     return NextResponse.json({ message: "Not Found" }, { status: 404 });
   }
   const { apiBaseUrl } = getAdminServerConfig();
@@ -61,9 +98,17 @@ async function forward(
     },
   });
 
-  const setCookie = upstream.headers.get("set-cookie");
-  if (setCookie) {
-    response.headers.set("set-cookie", setCookie);
+  const setCookies =
+    typeof upstream.headers.getSetCookie === "function" ? upstream.headers.getSetCookie() : [];
+  if (setCookies.length > 0) {
+    for (const setCookie of setCookies) {
+      response.headers.append("set-cookie", setCookie);
+    }
+  } else {
+    const setCookie = upstream.headers.get("set-cookie");
+    if (setCookie) {
+      response.headers.append("set-cookie", setCookie);
+    }
   }
 
   return response;

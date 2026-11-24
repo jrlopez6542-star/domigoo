@@ -77,6 +77,7 @@ h3 {
   padding: 20px 16px 40px;
   display: grid;
   grid-template-columns: 1fr;
+  align-content: start;
   gap: 20px;
 }
 
@@ -111,6 +112,8 @@ h3 {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  min-height: 44px;
+  min-width: 44px;
   padding: 10px 12px;
   border-radius: 10px;
   color: #c0c6d4;
@@ -132,6 +135,7 @@ h3 {
 .adm-content {
   display: grid;
   gap: 16px;
+  min-width: 0;
 }
 
 .adm-card {
@@ -140,6 +144,8 @@ h3 {
   border-radius: var(--dg-radius);
   padding: 22px;
   box-shadow: var(--dg-shadow);
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .adm-card-title {
@@ -237,6 +243,8 @@ h3 {
   border: 1px solid var(--dg-border);
   border-radius: 12px;
   padding: 14px;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .adm-stat-value {
@@ -260,6 +268,19 @@ h3 {
   border: 1px solid var(--dg-border);
   background: var(--dg-bg);
   font-size: 0.88rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 400px) {
+  .adm-layout {
+    padding: 14px 10px 32px;
+    gap: 14px;
+  }
+
+  .adm-card {
+    padding: 16px 12px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
