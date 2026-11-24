@@ -57,4 +57,18 @@ describe("Seguridad y contratos de @domigoo/web (M29/M30/M39/M46)", () => {
     expect(content).toContain("phoneE164");
     expect(content).toContain('"tariffs/quote"');
   });
+
+  it("MOD-01: client-portal.tsx no promete catálogo ni carrito y menciona WhatsApp sin enlaces wa.me", () => {
+    const clientPortalFile = path.resolve(process.cwd(), "src/components/client-portal.tsx");
+    const content = fs.readFileSync(clientPortalFile, "utf8");
+    const lower = content.toLowerCase();
+    expect(lower).not.toContain("carrito");
+    expect(lower).not.toContain("catalogo");
+    expect(lower).not.toContain("catálogo");
+    expect(lower).not.toContain("m50");
+    expect(lower).not.toContain("proximamente");
+    expect(lower).not.toContain("próximamente");
+    expect(lower).not.toContain("wa.me");
+    expect(content).toContain("WhatsApp");
+  });
 });

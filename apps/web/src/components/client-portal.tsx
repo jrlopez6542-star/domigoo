@@ -389,7 +389,7 @@ export function ClientHomeScreen() {
         <Link href="/cliente/pedir" className="dg-card" style={{ textDecoration: "none" }}>
           <h2 style={{ marginBottom: "6px" }}>Pedir comida</h2>
           <p className="dg-muted" style={{ margin: 0 }}>
-            Próximamente (M50): catálogo de restaurantes de Tocancipá y carrito en línea.
+            Pide directamente al restaurante por WhatsApp y DOMIGOO gestiona tu domicilio.
           </p>
         </Link>
 
@@ -423,24 +423,24 @@ export function ClientPedirScreen() {
     <div className="dg-stack" data-testid="cliente-pedir-screen">
       <section className="dg-card" aria-labelledby="client-pedir-title">
         <span className="dg-badge" style={{ marginBottom: "8px" }}>
-          Próximamente · M50
+          Cómo funciona · DOMIGOO
         </span>
         <h1 id="client-pedir-title" style={{ margin: "4px 0 8px" }}>
           Pedir comida en Tocancipá
         </h1>
         <p className="dg-muted">
-          Este espacio alojará el catálogo de restaurantes aliados, menús y carrito de compra en la
-          siguiente etapa (M50).
+          Pides directamente al restaurante por WhatsApp y DOMIGOO gestiona el domicilio hasta tu
+          puerta.
         </p>
         <div className="dg-grid-2">
           <div className="dg-alert dg-alert--soon" style={{ marginBottom: 0 }}>
-            <strong>Próximamente:</strong> Catálogo de restaurantes de Tocancipá y carrito para
-            pedir directamente desde la web (pendiente de endpoints públicos de menú y creación de
-            pedido por cliente en la API).
+            <strong>1. Pide por WhatsApp:</strong> Escribe al restaurante de tu preferencia por
+            WhatsApp para acordar tu comida; el restaurante registra la solicitud de envío en
+            DOMIGOO.
           </div>
           <div className="dg-alert dg-alert--soon" style={{ marginBottom: 0 }}>
-            <strong>Próximamente:</strong> Historial de mis pedidos anteriores (pendiente de
-            endpoint de listado de pedidos por cliente en la API).
+            <strong>2. Sigue tu domicilio:</strong> DOMIGOO gestiona el domicilio y el restaurante
+            te comparte el enlace de seguimiento en vivo para ver el estado de tu entrega.
           </div>
         </div>
         <div className="dg-btn-row" style={{ marginTop: "16px" }}>
