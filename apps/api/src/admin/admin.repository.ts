@@ -28,8 +28,8 @@ export class AdminRepository {
     const client = await this.database.pool.connect();
     try {
       await client.query("BEGIN");
-      const curQ = await client.query<{ status: string; userId: string }>(
-        `SELECT status::text AS status, "userId" FROM couriers WHERE id = $1 FOR UPDATE`,
+      const curQ = await client.query<{ status: string }>(
+        `SELECT status::text AS status FROM couriers WHERE id = $1 FOR UPDATE`,
         [input.courierId],
       );
       const cur = curQ.rows[0];

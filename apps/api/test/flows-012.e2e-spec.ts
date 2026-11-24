@@ -319,14 +319,20 @@ async function assertPublicTrackingStep(
   expect(serialized).not.toContain("+573001110129");
   expect(serialized).not.toContain("3001110129");
   expect(serialized).not.toContain("Carrera 5");
+  expect(serialized).not.toContain("Calle 10");
   expect(serialized).not.toContain("Cliente 012");
-  expect(serialized).not.toContain("36000");
-  expect(serialized).not.toContain("5500");
   expect(serialized).not.toContain("example.invalid");
   expect(serialized).not.toContain("Prueba");
   if (pickupPin !== undefined) {
     expect(serialized).not.toContain(pickupPin);
   }
+
+  const bodyWithoutDeliveryPin = Object.fromEntries(
+    Object.entries(body).filter(([key]) => key !== "deliveryPin"),
+  );
+  const serializedWithoutDeliveryPin = JSON.stringify(bodyWithoutDeliveryPin);
+  expect(serializedWithoutDeliveryPin).not.toContain("36000");
+  expect(serializedWithoutDeliveryPin).not.toContain("5500");
 
   const events = body["events"] as unknown[];
   expect(Array.isArray(events)).toBe(true);

@@ -71,4 +71,31 @@ describe("Seguridad y contratos de @domigoo/web (M29/M30/M39/M46)", () => {
     expect(lower).not.toContain("wa.me");
     expect(content).toContain("WhatsApp");
   });
+
+  it("ORDEN 013: domigoo.css define .dg-alert--info con borde sólido y .dg-badge con contraste Indigo #29243e", () => {
+    const cssFile = path.resolve(process.cwd(), "src/styles/domigoo.css");
+    const css = fs.readFileSync(cssFile, "utf8");
+
+    const infoMatch = /\.dg-alert--info\s*\{([^}]*)\}/.exec(css);
+    expect(infoMatch).not.toBeNull();
+    const infoBlock = infoMatch?.[1] ?? "";
+    expect(infoBlock).toContain("background: var(--dg-brand-soft);");
+    expect(infoBlock).toContain("border: 1px solid var(--domigoo-turquoise);");
+    expect(infoBlock).toContain("color: var(--domigoo-indigo);");
+
+    const badgeMatch = /(?:^|\n)\.dg-badge\s*\{([^}]*)\}/.exec(css);
+    expect(badgeMatch).not.toBeNull();
+    const badgeBlock = badgeMatch?.[1] ?? "";
+    expect(badgeBlock).toContain("background: rgba(121, 213, 208, 0.14);");
+    expect(badgeBlock).toContain("color: #29243e;");
+    expect(badgeBlock).not.toContain("color: #79d5d0;");
+
+    const clientPortalFile = path.resolve(process.cwd(), "src/components/client-portal.tsx");
+    const portal = fs.readFileSync(clientPortalFile, "utf8");
+    const pedirStart = portal.indexOf("export function ClientPedirScreen()");
+    const pedirEnd = portal.indexOf("export function ClientSeguirScreen()");
+    const pedirSection = portal.slice(pedirStart, pedirEnd);
+    expect(pedirSection).toContain("dg-alert dg-alert--info");
+    expect(pedirSection).not.toContain("dg-alert--soon");
+  });
 });

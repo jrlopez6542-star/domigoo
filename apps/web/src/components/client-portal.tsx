@@ -433,12 +433,12 @@ export function ClientPedirScreen() {
           puerta.
         </p>
         <div className="dg-grid-2">
-          <div className="dg-alert dg-alert--soon" style={{ marginBottom: 0 }}>
+          <div className="dg-alert dg-alert--info" style={{ marginBottom: 0 }}>
             <strong>1. Pide por WhatsApp:</strong> Escribe al restaurante de tu preferencia por
             WhatsApp para acordar tu comida; el restaurante registra la solicitud de envío en
             DOMIGOO.
           </div>
-          <div className="dg-alert dg-alert--soon" style={{ marginBottom: 0 }}>
+          <div className="dg-alert dg-alert--info" style={{ marginBottom: 0 }}>
             <strong>2. Sigue tu domicilio:</strong> DOMIGOO gestiona el domicilio y el restaurante
             te comparte el enlace de seguimiento en vivo para ver el estado de tu entrega.
           </div>

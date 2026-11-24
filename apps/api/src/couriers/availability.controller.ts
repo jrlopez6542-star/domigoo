@@ -32,6 +32,12 @@ export class AvailabilityController {
     if (result === "missing") {
       throw new NotFoundException();
     }
+    if (result === "not-approved") {
+      throw new HttpException(
+        { message: "El domiciliario debe estar aprobado para ponerse disponible" },
+        422,
+      );
+    }
     if (result === "needs-consent") {
       throw new HttpException({ message: "Hace falta el consentimiento de geolocalización" }, 422);
     }

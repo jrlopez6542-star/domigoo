@@ -16,9 +16,9 @@ export class GeoRepository {
   async setAvailability(
     userId: string,
     state: "AVAILABLE" | "OFFLINE",
-  ): Promise<"ok" | "missing" | "needs-consent"> {
-    const courierId = await this.courierId(userId);
-    if (courierId === null) {
+  ): Promise<"ok" | "missing" | "not-approved" | "needs-consent"> {
+    const courier = await this.courier(userId);
+    if (courier === null) {
       return "missing";
     }
     if (state === "OFFLINE") {
@@ -26,9 +26,12 @@ export class GeoRepository {
         `INSERT INTO courier_availabilities ("courierId", state, "updatedAt")
          VALUES ($1, 'OFFLINE', now())
          ON CONFLICT ("courierId") DO UPDATE SET state = 'OFFLINE', "updatedAt" = now()`,
-        [courierId],
+        [courier.id],
       );
       return "ok";
+    }
+    if (courier.status !== "APPROVED") {
+      return "not-approved";
     }
     const consentId = await this.geolocationConsent(userId);
     if (consentId === null) {
@@ -39,7 +42,7 @@ export class GeoRepository {
        VALUES ($1, 'AVAILABLE', $2, now())
        ON CONFLICT ("courierId") DO UPDATE
          SET state = 'AVAILABLE', "consentId" = EXCLUDED."consentId", "updatedAt" = now()`,
-      [courierId, consentId],
+      [courier.id, consentId],
     );
     return "ok";
   }
@@ -120,12 +123,17 @@ export class GeoRepository {
     return result.rows.map((row) => row.id);
   }
 
-  private async courierId(userId: string): Promise<string | null> {
-    const result = await this.database.pool.query<{ id: string }>(
-      `SELECT id FROM couriers WHERE "userId" = $1`,
+  private async courier(userId: string): Promise<{ id: string; status: string } | null> {
+    const result = await this.database.pool.query<{ id: string; status: string }>(
+      `SELECT id, status::text AS status FROM couriers WHERE "userId" = $1`,
       [userId],
     );
-    return result.rows[0]?.id ?? null;
+    return result.rows[0] ?? null;
+  }
+
+  private async courierId(userId: string): Promise<string | null> {
+    const found = await this.courier(userId);
+    return found?.id ?? null;
   }
 
   private async geolocationConsent(userId: string): Promise<string | null> {
