@@ -7,6 +7,7 @@ const ALLOWED_EXACT_ROUTES = new Set([
   "auth/register",
   "auth/logout",
   "branches/mine",
+  "legal-documents/current",
   "restaurants",
   "tariffs/quote",
 ]);

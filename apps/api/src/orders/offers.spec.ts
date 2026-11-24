@@ -348,3 +348,48 @@ describe("OffersRepository.accept (transaccionalidad e idempotencia concurrente)
     expect(keyCreated).toBe(true);
   });
 });
+
+describe("OffersRepository.listAvailableForUser (ORDEN 015)", () => {
+  it("retorna forbidden cuando el usuario no tiene fila en couriers y no consulta dispatch_offers", async () => {
+    const queries: string[] = [];
+    const mockDb = {
+      pool: {
+        query: (sql: string) => {
+          queries.push(sql);
+          return Promise.resolve({ rows: [], rowCount: 0 });
+        },
+      },
+    } as unknown as Database;
+
+    const repo = new OffersRepository(mockDb);
+    const result = await repo.listAvailableForUser("user-sin-domi");
+
+    expect(result).toBe("forbidden");
+    expect(queries).toHaveLength(1);
+    expect(queries[0]).toContain("FROM couriers");
+    expect(queries.some((q) => q.includes("dispatch_offers"))).toBe(false);
+  });
+
+  it("filtra por c.status = 'APPROVED' al listar ofertas pendientes del domiciliario", async () => {
+    const queries: string[] = [];
+    const mockDb = {
+      pool: {
+        query: (sql: string) => {
+          queries.push(sql);
+          if (sql.includes("FROM couriers WHERE")) {
+            return Promise.resolve({ rows: [{ id: "cour-1" }], rowCount: 1 });
+          }
+          return Promise.resolve({ rows: [], rowCount: 0 });
+        },
+      },
+    } as unknown as Database;
+
+    const repo = new OffersRepository(mockDb);
+    const result = await repo.listAvailableForUser("user-domi-1");
+
+    expect(result).toEqual([]);
+    expect(queries).toHaveLength(2);
+    expect(queries[1]).toContain("FROM dispatch_offers d");
+    expect(queries[1]).toContain("AND c.status = 'APPROVED'");
+  });
+});

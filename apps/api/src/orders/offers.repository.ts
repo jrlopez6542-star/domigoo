@@ -324,6 +324,7 @@ export class OffersRepository {
        JOIN branches b ON b.id = o."branchId"
        JOIN restaurants r ON r.id = o."restaurantId"
        WHERE c."userId" = $1
+         AND c.status = 'APPROVED'
          AND d.status = 'PENDING'
          AND d."expiresAt" > now()
          AND o.status = 'SEEKING_COURIER'

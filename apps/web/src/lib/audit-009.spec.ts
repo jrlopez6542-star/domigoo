@@ -154,3 +154,66 @@ describe("ORDEN 009 - Web SEC-05, UI-02, UI-03", () => {
     expect(mediaEcoMatch?.index ?? -1).toBeGreaterThan(baseItemIdx);
   });
 });
+
+describe("ORDEN 015 - proxy web y legal-documents/current", () => {
+  test("reenvia GET legal-documents/current a /v1 y bloquea legal-documents y sus otras subrutas sin fetch", async () => {
+    const originalFetch = globalThis.fetch;
+    const originalApiBaseUrl = process.env["NEXT_PUBLIC_API_BASE_URL"];
+    process.env["NEXT_PUBLIC_API_BASE_URL"] = "https://api.domigoo.test";
+    const fetchedUrls: string[] = [];
+    globalThis.fetch = (input: string | URL | Request) => {
+      fetchedUrls.push(
+        typeof input === "string" ? input : input instanceof URL ? input.href : input.url,
+      );
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            documents: [{ id: "doc-gps", kind: "GEOLOCATION_CONSENT", version: "v1" }],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+      );
+    };
+    try {
+      const allowed = await GET(
+        new NextRequest("http://localhost:3000/api/proxy/legal-documents/current", {
+          method: "GET",
+        }),
+        { params: Promise.resolve({ path: ["legal-documents", "current"] }) },
+      );
+      expect(allowed.status).toBe(200);
+      expect(fetchedUrls).toHaveLength(1);
+      expect(fetchedUrls[0]).toMatch(/^https?:\/\/[^/]+\/v1\/legal-documents\/current$/);
+
+      for (const segments of [
+        ["legal-documents"],
+        ["legal-documents", "publish"],
+        ["legal-documents", "current", "extra"],
+      ]) {
+        const blockedGet = await GET(
+          new NextRequest(`http://localhost:3000/api/proxy/${segments.join("/")}`, {
+            method: "GET",
+          }),
+          { params: Promise.resolve({ path: segments }) },
+        );
+        expect(blockedGet.status).toBe(404);
+        const blockedPost = await POST(
+          new NextRequest(`http://localhost:3000/api/proxy/${segments.join("/")}`, {
+            method: "POST",
+            body: JSON.stringify({ kind: "TERMS", version: "x", content: "y" }),
+          }),
+          { params: Promise.resolve({ path: segments }) },
+        );
+        expect(blockedPost.status).toBe(404);
+      }
+      expect(fetchedUrls).toHaveLength(1);
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalApiBaseUrl === undefined) {
+        delete process.env["NEXT_PUBLIC_API_BASE_URL"];
+      } else {
+        process.env["NEXT_PUBLIC_API_BASE_URL"] = originalApiBaseUrl;
+      }
+    }
+  });
+});

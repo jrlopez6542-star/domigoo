@@ -68,10 +68,15 @@ export class SubscriptionAdminController {
   async acknowledge(
     @Param("id") id: string,
     @Req() request: AdminRequest,
+    @Body() body?: unknown,
   ): Promise<{ acknowledged: true }> {
     const actorId = request.auth?.userId;
     if (actorId === undefined) {
       throw new NotFoundException();
+    }
+    const parsedNote = readAcknowledgeNote(body);
+    if (!parsedNote.ok) {
+      throw new HttpException({ message: "La nota debe ser texto de 1 a 200 caracteres" }, 422);
     }
     const ok = await this.subscriptions.acknowledge(id, actorId);
     if (!ok) {
@@ -83,6 +88,7 @@ export class SubscriptionAdminController {
       action: "subscription.payment_acknowledged",
       entityType: "subscription_payment_declaration",
       entityId: id,
+      ...(parsedNote.note !== undefined ? { reason: parsedNote.note } : {}),
     });
     return { acknowledged: true };
   }
@@ -227,4 +233,26 @@ function integerAtLeast(value: unknown, minimum: number): number | null {
     return null;
   }
   return value;
+}
+
+export function readAcknowledgeNote(body: unknown): { ok: true; note?: string } | { ok: false } {
+  if (body === undefined || body === null) {
+    return { ok: true };
+  }
+  if (typeof body !== "object" || Array.isArray(body)) {
+    return { ok: false };
+  }
+  const record = body as Record<string, unknown>;
+  if (!("note" in record) || record["note"] === undefined) {
+    return { ok: true };
+  }
+  const raw = record["note"];
+  if (typeof raw !== "string") {
+    return { ok: false };
+  }
+  const trimmed = raw.trim();
+  if (trimmed.length === 0 || trimmed.length > 200) {
+    return { ok: false };
+  }
+  return { ok: true, note: trimmed };
 }

@@ -433,7 +433,18 @@ export function RestaurantPortalShell({
     }
     try {
       if (sessionUser) {
+        const docs = await callProxy<{
+          documents?: Array<{ id: string; kind: string }>;
+        }>("legal-documents/current", "GET");
+        const geoDoc = docs.documents?.find((doc) => doc.kind === "GEOLOCATION_CONSENT");
+        if (!geoDoc?.id) {
+          setErrorMessage(
+            "No se encontró el documento vigente de consentimiento de geolocalización.",
+          );
+          return;
+        }
         const granted = await callProxy<{ id: string }>("consents", "POST", {
+          legalDocumentId: geoDoc.id,
           purpose: "GEOLOCATION",
           channel: "WEB",
         });

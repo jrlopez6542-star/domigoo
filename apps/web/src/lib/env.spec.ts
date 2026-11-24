@@ -98,4 +98,43 @@ describe("Seguridad y contratos de @domigoo/web (M29/M30/M39/M46)", () => {
     expect(pedirSection).toContain("dg-alert dg-alert--info");
     expect(pedirSection).not.toContain("dg-alert--soon");
   });
+
+  it("ORDEN 015: restaurant-portal consulta legal-documents/current y envía legalDocumentId en POST consents", () => {
+    const portalFile = path.resolve(process.cwd(), "src/components/restaurant-portal.tsx");
+    const portal = fs.readFileSync(portalFile, "utf8");
+    const start = portal.indexOf("async function handleAllowGeoConsent()");
+    const end = portal.indexOf("async function handleRevokeGeoConsent()");
+    const fnBody = portal.slice(start, end);
+
+    expect(fnBody).toContain('"legal-documents/current"');
+    expect(fnBody).toContain('"GEOLOCATION_CONSENT"');
+    expect(fnBody).toContain("legalDocumentId: geoDoc.id");
+    expect(fnBody).toContain('"consents"');
+    const guardIdx = fnBody.indexOf("if (!geoDoc?.id)");
+    const geoReqIdx = fnBody.indexOf('requestBrowserLocation("dropoff")');
+    expect(guardIdx).toBeGreaterThan(-1);
+    expect(geoReqIdx).toBeGreaterThan(guardIdx);
+  });
+
+  it("ORDEN 015: proxy web permite legal-documents/current exacta y rechaza legal-documents", () => {
+    const proxyFile = path.resolve(process.cwd(), "src/app/api/proxy/[...path]/route.ts");
+    const source = fs.readFileSync(proxyFile, "utf8");
+
+    const exactMatch = /ALLOWED_EXACT_ROUTES\s*=\s*new Set\(\[([^\]]*)\]\)/.exec(source);
+    expect(exactMatch).not.toBeNull();
+    const exactRoutes = new Set(
+      Array.from((exactMatch?.[1] ?? "").matchAll(/"([^"]+)"/g), (m) => m[1] ?? ""),
+    );
+
+    const prefixMatch = /ALLOWED_PREFIXES\s*=\s*\[([^\]]*)\]/.exec(source);
+    expect(prefixMatch).not.toBeNull();
+    const prefixes = Array.from((prefixMatch?.[1] ?? "").matchAll(/"([^"]+)"/g), (m) => m[1] ?? "");
+
+    const isAllowed = (route: string): boolean =>
+      exactRoutes.has(route) || prefixes.some((prefix) => route.startsWith(prefix));
+
+    expect(isAllowed("legal-documents/current")).toBe(true);
+    expect(isAllowed("legal-documents")).toBe(false);
+    expect(isAllowed("legal-documents/publish")).toBe(false);
+  });
 });
