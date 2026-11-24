@@ -17,34 +17,60 @@ export class GeoRepository {
     userId: string,
     state: "AVAILABLE" | "OFFLINE",
   ): Promise<"ok" | "missing" | "not-approved" | "needs-consent"> {
-    const courier = await this.courier(userId);
-    if (courier === null) {
-      return "missing";
-    }
-    if (state === "OFFLINE") {
-      await this.database.pool.query(
-        `INSERT INTO courier_availabilities ("courierId", state, "updatedAt")
-         VALUES ($1, 'OFFLINE', now())
-         ON CONFLICT ("courierId") DO UPDATE SET state = 'OFFLINE', "updatedAt" = now()`,
-        [courier.id],
+    const client = await this.database.pool.connect();
+    try {
+      await client.query("BEGIN");
+      // Mismo orden de bloqueo que setCourierSuspension: couriers FOR UPDATE -> courier_availabilities
+      const courierRow = await client.query<{ id: string; status: string }>(
+        `SELECT id, status::text AS status FROM couriers WHERE "userId" = $1 FOR UPDATE`,
+        [userId],
       );
+      const courier = courierRow.rows[0];
+      if (courier === undefined) {
+        await client.query("ROLLBACK");
+        return "missing";
+      }
+      if (state === "OFFLINE") {
+        await client.query(
+          `INSERT INTO courier_availabilities ("courierId", state, "updatedAt")
+           VALUES ($1, 'OFFLINE', now())
+           ON CONFLICT ("courierId") DO UPDATE SET state = 'OFFLINE', "updatedAt" = now()`,
+          [courier.id],
+        );
+        await client.query("COMMIT");
+        return "ok";
+      }
+      if (courier.status !== "APPROVED") {
+        await client.query("ROLLBACK");
+        return "not-approved";
+      }
+      const consentRow = await client.query<{ id: string }>(
+        `SELECT id FROM consent_records
+         WHERE "userId" = $1 AND purpose = 'GEOLOCATION' AND "revokedAt" IS NULL
+         ORDER BY "grantedAt" DESC
+         LIMIT 1`,
+        [userId],
+      );
+      const consentId = consentRow.rows[0]?.id ?? null;
+      if (consentId === null) {
+        await client.query("ROLLBACK");
+        return "needs-consent";
+      }
+      await client.query(
+        `INSERT INTO courier_availabilities ("courierId", state, "consentId", "updatedAt")
+         VALUES ($1, 'AVAILABLE', $2, now())
+         ON CONFLICT ("courierId") DO UPDATE
+           SET state = 'AVAILABLE', "consentId" = EXCLUDED."consentId", "updatedAt" = now()`,
+        [courier.id, consentId],
+      );
+      await client.query("COMMIT");
       return "ok";
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
     }
-    if (courier.status !== "APPROVED") {
-      return "not-approved";
-    }
-    const consentId = await this.geolocationConsent(userId);
-    if (consentId === null) {
-      return "needs-consent";
-    }
-    await this.database.pool.query(
-      `INSERT INTO courier_availabilities ("courierId", state, "consentId", "updatedAt")
-       VALUES ($1, 'AVAILABLE', $2, now())
-       ON CONFLICT ("courierId") DO UPDATE
-         SET state = 'AVAILABLE', "consentId" = EXCLUDED."consentId", "updatedAt" = now()`,
-      [courier.id, consentId],
-    );
-    return "ok";
   }
 
   async recordPing(input: PingInput): Promise<"ok" | "missing" | "needs-consent" | "unavailable"> {

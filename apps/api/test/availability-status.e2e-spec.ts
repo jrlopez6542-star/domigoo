@@ -248,4 +248,24 @@ describe("disponibilidad según couriers.status (ORDEN 013)", () => {
       await pool.end();
     }
   });
+
+  it("devuelve 404 cuando un usuario autenticado sin perfil de domiciliario pide AVAILABLE", async () => {
+    const customerReg = await request(server())
+      .post("/v1/auth/register")
+      .send({
+        email: "cliente-sin-domi-014@example.invalid",
+        password,
+        client: "WEB",
+        consents: { termsAccepted: true, privacyAccepted: true },
+      })
+      .expect(201);
+    const customerCookie = sessionCookie(customerReg.headers);
+
+    const res = await request(server())
+      .post("/v1/couriers/me/availability")
+      .set("Cookie", customerCookie)
+      .send({ state: "AVAILABLE" })
+      .expect(404);
+    expect(record(res.body)["statusCode"]).toBe(404);
+  });
 });
