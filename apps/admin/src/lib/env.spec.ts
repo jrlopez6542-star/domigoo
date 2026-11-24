@@ -1,6 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
-import { buildAdminLoginPayload, buildVerificationDecisionPayload } from "./contracts.js";
+import {
+  buildAdminLoginPayload,
+  buildVerificationDecisionPayload,
+  verificationOutcomeLabel,
+} from "./contracts.js";
 import { getAdminServerConfig } from "./env.js";
 
 describe("Configuración y contratos de @domigoo/admin (M31/M39)", () => {
@@ -55,5 +59,32 @@ describe("Configuración y contratos de @domigoo/admin (M31/M39)", () => {
     const proxyContent = fs.readFileSync(proxyRoute, "utf8");
     expect(proxyContent).toContain("getAdminServerConfig");
     expect(proxyContent).toContain("set-cookie");
+  });
+
+  it("ORDEN 016: admin-portal aplica maxLength 2000/200 y fija el mensaje de decisión en español tras recargar casos", () => {
+    expect(verificationOutcomeLabel("APPROVED")).toBe("Aprobado");
+    expect(verificationOutcomeLabel("REJECTED")).toBe("Rechazado");
+    expect(verificationOutcomeLabel("NEEDS_CHANGES")).toBe("Requiere cambios");
+
+    const clientFile = path.resolve(process.cwd(), "src/components/admin-portal.tsx");
+    const content = fs.readFileSync(clientFile, "utf8");
+
+    const commentIdx = content.indexOf('name="comment"');
+    const commentSlice = content.slice(commentIdx, commentIdx + 300);
+    expect(commentSlice).toContain("maxLength={2000}");
+
+    const ackIdx = content.indexOf('name="ackReference"');
+    const ackSlice = content.slice(ackIdx, ackIdx + 300);
+    expect(ackSlice).toContain("maxLength={200}");
+
+    const decideStart = content.indexOf("async function handleDecideCase(");
+    const decideEnd = content.indexOf("async function handleAcknowledgeDeclaration(");
+    const decideBody = content.slice(decideStart, decideEnd);
+    const reloadIdx = decideBody.indexOf("await handleLoadCases(true);");
+    const statusIdx = decideBody.indexOf(
+      "setStatusMessage(`Decisión registrada: ${verificationOutcomeLabel(payload.outcome)}`);",
+    );
+    expect(reloadIdx).toBeGreaterThan(-1);
+    expect(statusIdx).toBeGreaterThan(reloadIdx);
   });
 });

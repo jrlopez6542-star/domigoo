@@ -13,6 +13,7 @@ import {
 } from "react";
 import { Bike, Home, MapPin, ShieldCheck, UserCheck } from "lucide-react";
 import { callProxy } from "@/lib/api-client";
+import { orderStatusLabel } from "@/lib/order-status";
 import { pickActiveCourierOrder } from "@/lib/portal-helpers";
 import {
   clearStoredActiveRole,
@@ -396,7 +397,9 @@ export function CourierPortalShell({ children }: { children: ReactNode }) {
           });
         }
       }
-      setStatusMessage(`Oferta aceptada (${data.orderStatus ?? data.status ?? "ACCEPTED"}).`);
+      setStatusMessage(
+        `Oferta aceptada (${orderStatusLabel(data.orderStatus ?? data.status ?? "ACCEPTED")}).`,
+      );
       router.push("/domiciliario/entrega");
     });
   }
@@ -427,7 +430,7 @@ export function CourierPortalShell({ children }: { children: ReactNode }) {
         "POST",
         {},
       );
-      setStatusMessage(`Estado actualizado: ${data.status}.`);
+      setStatusMessage(`Estado actualizado: ${orderStatusLabel(data.status)}.`);
       const updated = await callProxy<CourierOrderView>(
         `orders/${encodeURIComponent(orderId.trim())}`,
         "GET",
@@ -447,7 +450,7 @@ export function CourierPortalShell({ children }: { children: ReactNode }) {
         "POST",
         { pin: pin.trim() },
       );
-      setStatusMessage(`PIN verificado. Nuevo estado: ${data.status}.`);
+      setStatusMessage(`PIN verificado. Nuevo estado: ${orderStatusLabel(data.status)}.`);
       const updated = await callProxy<CourierOrderView>(
         `orders/${encodeURIComponent(orderId.trim())}`,
         "GET",
@@ -727,7 +730,7 @@ export function CourierHomeScreen() {
           <span className="dg-pill">Perfil: {courierId ? courierId : "Pendiente por crear"}</span>
           {orderView ? (
             <span className="dg-pill">
-              Entrega activa: {orderView.id} ({orderView.status})
+              Entrega activa: {orderView.id} ({orderStatusLabel(orderView.status)})
             </span>
           ) : null}
         </div>
@@ -1030,7 +1033,8 @@ export function CourierEntregaScreen() {
         <div className="dg-stack">
           {orderView ? (
             <div className="dg-alert dg-alert--success" style={{ marginBottom: 0 }}>
-              Pedido <strong>{orderView.id}</strong> · Estado: <strong>{orderView.status}</strong>
+              Pedido <strong>{orderView.id}</strong> · Estado:{" "}
+              <strong>{orderStatusLabel(orderView.status)}</strong>
               {orderView.dropoffAddress ? ` · Entrega: ${orderView.dropoffAddress}` : ""}
             </div>
           ) : (

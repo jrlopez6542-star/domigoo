@@ -1,4 +1,5 @@
 import { Inject, Injectable, Optional } from "@nestjs/common";
+import type { PoolClient } from "pg";
 import { APP_ENV, type AppEnv } from "../config/env.js";
 import { Database } from "../database.js";
 
@@ -226,9 +227,13 @@ export class SubscriptionRepository {
     return allowed ? "ok" : "blocked";
   }
 
-  async canDispatch(restaurantId: string, at: Date): Promise<boolean> {
+  async canDispatch(
+    restaurantId: string,
+    at: Date,
+    db: Pick<PoolClient, "query"> = this.database.pool,
+  ): Promise<boolean> {
     if (!this.isBillingEnabled()) {
-      const freeResult = await this.database.pool.query<{ status: string }>(
+      const freeResult = await db.query<{ status: string }>(
         `SELECT status::text AS status
          FROM restaurant_subscriptions
          WHERE "restaurantId" = $1 AND "isCurrent"
@@ -237,7 +242,7 @@ export class SubscriptionRepository {
       );
       return (freeResult.rowCount ?? 0) > 0;
     }
-    const result = await this.database.pool.query<{ status: string }>(
+    const result = await db.query<{ status: string }>(
       `SELECT status::text AS status
        FROM restaurant_subscriptions
        WHERE "restaurantId" = $1 AND "isCurrent" AND "periodEndsAt" > $2

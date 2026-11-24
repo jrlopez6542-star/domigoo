@@ -14,6 +14,7 @@ import {
 import { ClipboardList, Home, PlusCircle, ShieldCheck, Store } from "lucide-react";
 import { callProxy } from "@/lib/api-client";
 import type { CreateRestaurantPayload, QuotePayload } from "@/lib/contracts";
+import { orderStatusLabel } from "@/lib/order-status";
 import {
   clearStoredActiveRole,
   getStoredActiveRole,
@@ -579,7 +580,7 @@ export function RestaurantPortalShell({
         payload,
       );
       setOrderView({ id: orderId, status: data.status });
-      setStatusMessage(`Pedido publicado: ${data.status}`);
+      setStatusMessage(`Pedido publicado: ${orderStatusLabel(data.status)}`);
       await loadMyOrders();
     });
   }
@@ -630,7 +631,7 @@ export function RestaurantPortalShell({
         if (orderView?.id === targetOrderId) {
           setOrderView({ ...orderView, status: res.status });
         }
-        setStatusMessage(`Pedido cancelado: ${res.status}`);
+        setStatusMessage(`Pedido cancelado: ${orderStatusLabel(res.status)}`);
         await loadMyOrders();
       } catch (err) {
         const msg = err instanceof Error ? err.message : "No se pudo cancelar el pedido.";
@@ -828,7 +829,10 @@ export function RestaurantHomeScreen() {
             Sucursal: {branchId ? branchId : "Pendiente por configurar"}
           </span>
           <span className="dg-pill">
-            Pedido activo: {orderId ? `${orderId} (${orderView?.status ?? "—"})` : "Ninguno"}
+            Pedido activo:{" "}
+            {orderId
+              ? `${orderId} (${orderView?.status ? orderStatusLabel(orderView.status) : "—"})`
+              : "Ninguno"}
           </span>
         </div>
       </div>
@@ -1080,6 +1084,7 @@ export function RestaurantNuevoDomicilioScreen() {
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const {
     sessionUser,
+    errorMessage,
     busyAction,
     branchId,
     setBranchId,
@@ -1367,11 +1372,20 @@ export function RestaurantNuevoDomicilioScreen() {
                   Usamos tu ubicación únicamente para ubicar el punto de entrega en Tocancipá.
                   Puedes revocar este permiso en cualquier momento o escribir la dirección
                   manualmente. Consulta la{" "}
-                  <Link href="/legal/privacidad" className="dg-footer-link">
+                  <Link href="/legal/privacidad" className="dg-inline-link">
                     Política de Privacidad
                   </Link>
                   .
                 </p>
+                {errorMessage ? (
+                  <div
+                    role="alert"
+                    className="dg-alert dg-alert--error"
+                    style={{ marginBottom: "12px" }}
+                  >
+                    {errorMessage}
+                  </div>
+                ) : null}
                 <label className="dg-check-row" style={{ marginBottom: "12px" }}>
                   <input
                     type="checkbox"
@@ -1622,7 +1636,7 @@ export function RestaurantPedidosScreen() {
                     <strong>
                       Pedido #{item.referenceCode} · {item.branchName}
                     </strong>
-                    <span className="dg-pill">{item.status}</span>
+                    <span className="dg-pill">{orderStatusLabel(item.status)}</span>
                   </div>
                   <p className="dg-muted" style={{ margin: "0 0 8px" }}>
                     {item.customerName ? `Cliente: ${item.customerName} · ` : ""}
@@ -1739,14 +1753,15 @@ export function RestaurantPedidosScreen() {
 
         {orderView ? (
           <div className="dg-alert dg-alert--success">
-            Pedido <strong>{orderView.id}</strong> · Estado: <strong>{orderView.status}</strong>
+            Pedido <strong>{orderView.id}</strong> · Estado:{" "}
+            <strong>{orderStatusLabel(orderView.status)}</strong>
             {orderView.pickupPin ? ` · PIN recogida: ${orderView.pickupPin}` : ""}
           </div>
         ) : null}
         {trackingUrl ? (
           <p>
             Enlace para el cliente:{" "}
-            <a href={trackingUrl} className="dg-footer-link">
+            <a href={trackingUrl} className="dg-inline-link">
               {trackingUrl}
             </a>
           </p>

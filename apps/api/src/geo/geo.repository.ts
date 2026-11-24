@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common";
+import type { PoolClient } from "pg";
 import { Database } from "../database.js";
 import { CANDIDATE_SQL } from "./candidate-query.js";
 
@@ -125,23 +126,37 @@ export class GeoRepository {
     return { ids: await this.idsInRadius(branchId, radiusMeters) };
   }
 
-  async isEligible(branchId: string, courierId: string, radiusMeters: number): Promise<boolean> {
-    const ids = await this.idsInRadius(branchId, radiusMeters);
+  async isEligible(
+    branchId: string,
+    courierId: string,
+    radiusMeters: number,
+    db: Pick<PoolClient, "query"> = this.database.pool,
+  ): Promise<boolean> {
+    const ids = await this.idsInRadius(branchId, radiusMeters, db);
     return ids.includes(courierId);
   }
 
-  async listEligible(branchId: string, radiusMeters: number, limit: number): Promise<string[]> {
-    const ids = await this.idsInRadius(branchId, radiusMeters);
+  async listEligible(
+    branchId: string,
+    radiusMeters: number,
+    limit: number,
+    db: Pick<PoolClient, "query"> = this.database.pool,
+  ): Promise<string[]> {
+    const ids = await this.idsInRadius(branchId, radiusMeters, db);
     return ids.slice(0, limit);
   }
 
-  private async idsInRadius(branchId: string, radiusMeters: number): Promise<string[]> {
-    const policy = await this.database.pool.query<{ seconds: number }>(
+  private async idsInRadius(
+    branchId: string,
+    radiusMeters: number,
+    db: Pick<PoolClient, "query"> = this.database.pool,
+  ): Promise<string[]> {
+    const policy = await db.query<{ seconds: number }>(
       `SELECT "locationFreshnessSeconds" AS seconds
        FROM operations_policies WHERE status = 'PUBLISHED' LIMIT 1`,
     );
     const freshness = policy.rows[0]?.seconds ?? 120;
-    const result = await this.database.pool.query<{ id: string }>(CANDIDATE_SQL, [
+    const result = await db.query<{ id: string }>(CANDIDATE_SQL, [
       branchId,
       freshness,
       radiusMeters,

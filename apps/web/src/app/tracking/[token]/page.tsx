@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { TrackingRefreshButton } from "@/components/tracking-refresh-button";
 import { getWebServerConfig } from "@/lib/env";
+import { orderStatusLabel } from "@/lib/order-status";
 
 export const dynamic = "force-dynamic";
 
@@ -22,23 +23,6 @@ type TrackingPayload = {
   courierFirstName: string | null;
   deliveryPin?: string;
   events?: Array<{ fromStatus: string | null; toStatus: string; createdAt: string }>;
-};
-
-const STATUS_LABELS: Record<string, string> = {
-  DRAFT: "Borrador",
-  SEEKING_COURIER: "Buscando domiciliario",
-  OFFERED: "Oferta enviada",
-  ACCEPTED: "Domiciliario asignado",
-  ARRIVING_PICKUP: "En camino al restaurante",
-  AT_PICKUP: "En el restaurante",
-  PICKED_UP: "Pedido recogido (en camino)",
-  AT_DROPOFF: "En el punto de entrega",
-  DELIVERED: "Entregado",
-  CANCELLED_RESTAURANT: "Cancelado por el restaurante",
-  CANCELLED_COURIER: "Cancelado por el domiciliario",
-  CANCELLED_ADMIN: "Cancelado por operaciones",
-  EXPIRED: "Expirado",
-  FAILED: "Fallido",
 };
 
 async function fetchTracking(token: string): Promise<TrackingPayload | null> {
@@ -89,7 +73,7 @@ export default async function TrackingPage({ params }: { params: Promise<{ token
     );
   }
 
-  const statusLabel = STATUS_LABELS[tracking.status] ?? tracking.status;
+  const statusLabel = orderStatusLabel(tracking.status);
 
   return (
     <main
@@ -173,7 +157,7 @@ export default async function TrackingPage({ params }: { params: Promise<{ token
           <h2 style={{ fontSize: "1.05rem", margin: "0 0 0.75rem" }}>Historial de estado</h2>
           <ol style={{ margin: 0, paddingLeft: "1.25rem", display: "grid", gap: "0.5rem" }}>
             {tracking.events.map((ev, index) => {
-              const label = STATUS_LABELS[ev.toStatus] ?? ev.toStatus;
+              const label = orderStatusLabel(ev.toStatus);
               return (
                 <li key={`${ev.toStatus}-${ev.createdAt}-${String(index)}`}>
                   <strong>{label}</strong>{" "}

@@ -14,6 +14,7 @@ import {
 import { Calculator, Home, MapPin, ShieldCheck, UtensilsCrossed } from "lucide-react";
 import { callProxy, extractTrackingToken } from "@/lib/api-client";
 import type { QuotePayload } from "@/lib/contracts";
+import { orderStatusLabel } from "@/lib/order-status";
 import {
   clearStoredActiveRole,
   getStoredActiveRole,
@@ -518,7 +519,7 @@ export function ClientSeguirScreen() {
 
         {trackingPreview ? (
           <div className="dg-alert dg-alert--success" style={{ marginTop: "12px" }}>
-            Estado actual: <strong>{trackingPreview.status}</strong>
+            Estado actual: <strong>{orderStatusLabel(trackingPreview.status)}</strong>
             {trackingPreview.deliveryPin ? ` · PIN de entrega: ${trackingPreview.deliveryPin}` : ""}
           </div>
         ) : null}

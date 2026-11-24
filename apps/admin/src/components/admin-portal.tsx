@@ -6,6 +6,7 @@ import {
   buildAdminLoginPayload,
   buildVerificationDecisionPayload,
   type VerificationOutcome,
+  verificationOutcomeLabel,
 } from "@/lib/contracts";
 
 type VerificationCase = {
@@ -158,9 +159,11 @@ export function AdminPortal({
     }
   }
 
-  async function handleLoadCases() {
+  async function handleLoadCases(silentStatus = false) {
     setErrorMessage("");
-    setStatusMessage("");
+    if (!silentStatus) {
+      setStatusMessage("");
+    }
     setLoadingAction("cases");
     try {
       const data = await callProxy<{ cases?: VerificationCase[] } | VerificationCase[]>(
@@ -173,7 +176,9 @@ export function AdminPortal({
       if (firstPending) {
         setCaseId(firstPending.id);
       }
-      setStatusMessage(`Casos cargados: ${String(list.length)}`);
+      if (!silentStatus) {
+        setStatusMessage(`Casos cargados: ${String(list.length)}`);
+      }
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : "No se pudieron cargar los casos.");
     } finally {
@@ -197,8 +202,8 @@ export function AdminPortal({
         "POST",
         payload,
       );
-      setStatusMessage(`Decisión registrada: ${payload.outcome}`);
-      await handleLoadCases();
+      await handleLoadCases(true);
+      setStatusMessage(`Decisión registrada: ${verificationOutcomeLabel(payload.outcome)}`);
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : "No se pudo registrar la decisión.");
     } finally {
@@ -465,6 +470,7 @@ export function AdminPortal({
                     <input
                       className="adm-input"
                       name="comment"
+                      maxLength={2000}
                       value={comment}
                       onChange={(e) => {
                         setComment(e.target.value);
@@ -512,6 +518,7 @@ export function AdminPortal({
                     <input
                       className="adm-input"
                       name="ackReference"
+                      maxLength={200}
                       value={ackReference}
                       onChange={(e) => {
                         setAckReference(e.target.value);

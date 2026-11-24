@@ -72,7 +72,7 @@ export class PublishRepository {
         await client.query("ROLLBACK");
         return "missing";
       }
-      const allowed = await this.subscriptions.canDispatch(current.restaurantId, input.at);
+      const allowed = await this.subscriptions.canDispatch(current.restaurantId, input.at, client);
       if (!allowed) {
         await client.query("ROLLBACK");
         return "blocked";
@@ -92,11 +92,14 @@ export class PublishRepository {
         await client.query("ROLLBACK");
         return "unpriced";
       }
-      const quote = await this.tariffs.quote({
-        origin: { longitude: current.longitude, latitude: current.latitude },
-        destination: { longitude: input.longitude, latitude: input.latitude },
-        at: input.at,
-      });
+      const quote = await this.tariffs.quote(
+        {
+          origin: { longitude: current.longitude, latitude: current.latitude },
+          destination: { longitude: input.longitude, latitude: input.latitude },
+          at: input.at,
+        },
+        client,
+      );
       if (quote === null) {
         await client.query("ROLLBACK");
         return "unpriced";
@@ -109,6 +112,7 @@ export class PublishRepository {
         current.branchId,
         input.courierId,
         published.radius,
+        client,
       );
       if (!eligible) {
         await client.query("ROLLBACK");
@@ -264,7 +268,7 @@ export class PublishRepository {
         await client.query("ROLLBACK");
         return "missing";
       }
-      const allowed = await this.subscriptions.canDispatch(current.restaurantId, input.at);
+      const allowed = await this.subscriptions.canDispatch(current.restaurantId, input.at, client);
       if (!allowed) {
         await client.query("ROLLBACK");
         return "blocked";
@@ -285,11 +289,14 @@ export class PublishRepository {
         await client.query("ROLLBACK");
         return "unpriced";
       }
-      const quote = await this.tariffs.quote({
-        origin: { longitude: current.longitude, latitude: current.latitude },
-        destination: { longitude: input.longitude, latitude: input.latitude },
-        at: input.at,
-      });
+      const quote = await this.tariffs.quote(
+        {
+          origin: { longitude: current.longitude, latitude: current.latitude },
+          destination: { longitude: input.longitude, latitude: input.latitude },
+          at: input.at,
+        },
+        client,
+      );
       if (quote === null) {
         await client.query("ROLLBACK");
         return "unpriced";
@@ -302,6 +309,7 @@ export class PublishRepository {
         current.branchId,
         published.radius,
         published.waveCap,
+        client,
       );
       if (courierIds.length === 0) {
         await client.query("ROLLBACK");

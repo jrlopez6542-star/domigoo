@@ -818,7 +818,8 @@ button,
   align-items: center;
   min-height: 44px;
   min-width: 44px;
-  color: var(--domigoo-turquoise-text, #0f5c58);
+  /* #0e7c77 (token) da 4.45:1 sobre #eef1f6; #0f5c58 da 7:1 sobre fondos claros (ORDEN 016) */
+  color: #0f5c58;
   font-weight: 700;
   text-decoration: underline;
   text-underline-offset: 3px;

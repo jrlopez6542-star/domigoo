@@ -3,6 +3,7 @@ import path from "node:path";
 import { extractTrackingToken } from "./api-client.js";
 import { buildLoginPayload } from "./contracts.js";
 import { getWebServerConfig } from "./env.js";
+import { orderStatusLabel } from "./order-status.js";
 
 describe("Seguridad y contratos de @domigoo/web (M29/M30/M39/M46)", () => {
   it("usa APP_NAME y ADMIN_APP_URL en la configuración del servidor", () => {
@@ -136,5 +137,63 @@ describe("Seguridad y contratos de @domigoo/web (M29/M30/M39/M46)", () => {
     expect(isAllowed("legal-documents/current")).toBe(true);
     expect(isAllowed("legal-documents")).toBe(false);
     expect(isAllowed("legal-documents/publish")).toBe(false);
+  });
+
+  it("ORDEN 016: orderStatusLabel traduce estados conocidos al español y devuelve el valor original si no existe", () => {
+    expect(orderStatusLabel("DRAFT")).toBe("Borrador");
+    expect(orderStatusLabel("SEEKING_COURIER")).toBe("Buscando domiciliario");
+    expect(orderStatusLabel("ACCEPTED")).toBe("Domiciliario asignado");
+    expect(orderStatusLabel("ARRIVING_PICKUP")).toBe("En camino al restaurante");
+    expect(orderStatusLabel("AT_PICKUP")).toBe("En el restaurante");
+    expect(orderStatusLabel("PICKED_UP")).toBe("Pedido recogido (en camino)");
+    expect(orderStatusLabel("AT_DROPOFF")).toBe("En el punto de entrega");
+    expect(orderStatusLabel("DELIVERED")).toBe("Entregado");
+    expect(orderStatusLabel("CANCELLED_RESTAURANT")).toBe("Cancelado por el restaurante");
+    expect(orderStatusLabel("EXPIRED")).toBe("Expirado");
+    expect(orderStatusLabel("ESTADO_DESCONOCIDO")).toBe("ESTADO_DESCONOCIDO");
+  });
+
+  it("ORDEN 016: restaurant-portal muestra alerta dentro de geo-consent-screen, usa dg-inline-link y orderStatusLabel en portales y tracking", () => {
+    const restPortal = fs.readFileSync(
+      path.resolve(process.cwd(), "src/components/restaurant-portal.tsx"),
+      "utf8",
+    );
+    const consentStart = restPortal.indexOf('data-testid="geo-consent-screen"');
+    const consentEnd = restPortal.indexOf('data-testid="geo-consent-manual"');
+    const consentBlock = restPortal.slice(consentStart, consentEnd);
+    expect(consentBlock).toContain('role="alert"');
+    expect(consentBlock).toContain("{errorMessage}");
+    expect(consentBlock).toContain('className="dg-inline-link"');
+    expect(restPortal).not.toContain("dg-footer-link");
+    const css = fs.readFileSync(path.resolve(process.cwd(), "src/styles/domigoo.css"), "utf8");
+    const inlineLinkRule = css.slice(
+      css.indexOf(".dg-inline-link {"),
+      css.indexOf(".dg-inline-link:hover"),
+    );
+    expect(inlineLinkRule).toContain("color: #0f5c58;");
+    expect(restPortal).toContain("orderStatusLabel(data.status)");
+    expect(restPortal).toContain("orderStatusLabel(item.status)");
+    expect(restPortal).toContain("orderStatusLabel(orderView.status)");
+
+    const courierPortal = fs.readFileSync(
+      path.resolve(process.cwd(), "src/components/courier-portal.tsx"),
+      "utf8",
+    );
+    expect(courierPortal).toContain(
+      'orderStatusLabel(data.orderStatus ?? data.status ?? "ACCEPTED")',
+    );
+    expect(courierPortal).toContain("Estado actualizado: ${orderStatusLabel(data.status)}.");
+    expect(courierPortal).toContain(
+      "PIN verificado. Nuevo estado: ${orderStatusLabel(data.status)}.",
+    );
+    expect(courierPortal).toContain("orderStatusLabel(orderView.status)");
+
+    const trackingPage = fs.readFileSync(
+      path.resolve(process.cwd(), "src/app/tracking/[token]/page.tsx"),
+      "utf8",
+    );
+    expect(trackingPage).toContain('from "@/lib/order-status"');
+    expect(trackingPage).toContain("orderStatusLabel(tracking.status)");
+    expect(trackingPage).not.toContain("const STATUS_LABELS:");
   });
 });

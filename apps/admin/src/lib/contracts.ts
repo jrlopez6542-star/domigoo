@@ -32,3 +32,13 @@ export function buildVerificationDecisionPayload(input: {
     comment: input.comment.trim(),
   };
 }
+
+export const VERIFICATION_OUTCOME_LABELS: Record<VerificationOutcome, string> = {
+  APPROVED: "Aprobado",
+  REJECTED: "Rechazado",
+  NEEDS_CHANGES: "Requiere cambios",
+};
+
+export function verificationOutcomeLabel(outcome: VerificationOutcome): string {
+  return VERIFICATION_OUTCOME_LABELS[outcome];
+}

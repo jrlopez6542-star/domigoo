@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common";
+import type { PoolClient } from "pg";
 import { Database } from "../database.js";
 import { isNightInBogota } from "./bogota-time.js";
 import { quoteCop } from "./quote.js";
@@ -102,19 +103,22 @@ export class TariffRepository {
     }
   }
 
-  async quote(input: {
-    origin: { longitude: number; latitude: number };
-    destination: { longitude: number; latitude: number };
-    at: Date;
-  }): Promise<TariffQuote | null> {
-    const version = await this.database.pool.query<{ id: string }>(
+  async quote(
+    input: {
+      origin: { longitude: number; latitude: number };
+      destination: { longitude: number; latitude: number };
+      at: Date;
+    },
+    db: Pick<PoolClient, "query"> = this.database.pool,
+  ): Promise<TariffQuote | null> {
+    const version = await db.query<{ id: string }>(
       `SELECT id FROM tariff_versions WHERE status = 'PUBLISHED'`,
     );
     const versionId = version.rows[0]?.id;
     if (versionId === undefined) {
       return null;
     }
-    const distance = await this.database.pool.query<{ meters: number }>(
+    const distance = await db.query<{ meters: number }>(
       `SELECT ST_Distance(
          ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography,
          ST_SetSRID(ST_MakePoint($3, $4), 4326)::geography
@@ -127,7 +131,7 @@ export class TariffRepository {
       ],
     );
     const distanceMeters = Math.round(distance.rows[0]?.meters ?? 0);
-    const zone = await this.database.pool.query<{ id: string; code: string }>(
+    const zone = await db.query<{ id: string; code: string }>(
       `SELECT id, code FROM tariff_zones
        WHERE "versionId" = $1
          AND ST_Covers(area, ST_SetSRID(ST_MakePoint($2, $3), 4326)::geography)
@@ -147,7 +151,7 @@ export class TariffRepository {
            WHERE "versionId" = $1 AND ("zoneId" = $2 OR "zoneId" IS NULL)
            ORDER BY ("zoneId" IS NOT NULL) DESC
            LIMIT 1`;
-    const rule = await this.database.pool.query<{
+    const rule = await db.query<{
       baseFeeCop: number;
       perKmCop: number;
       minimumFeeCop: number;
