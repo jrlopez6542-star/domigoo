@@ -205,14 +205,6 @@ export class PublishRepository {
          VALUES (gen_random_uuid(), $1, 'RESTAURANT', 'order.published', 'order', $2, $3::jsonb, now())`,
         [input.userId, input.orderId, JSON.stringify(diff)],
       );
-      await client.query(
-        `INSERT INTO notification_outbox (
-           id, "userId", template, payload, status, "attemptCount", "availableAt", "createdAt"
-         ) VALUES (
-           gen_random_uuid(), $1, 'direct_offer', $2::jsonb, 'PENDING', 0, now(), now()
-         )`,
-        [courierUserId, JSON.stringify({ offerId, orderId: input.orderId })],
-      );
       await client.query("COMMIT");
       return {
         id: input.orderId,

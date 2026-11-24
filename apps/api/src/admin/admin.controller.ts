@@ -1,5 +1,6 @@
 import {
   Body,
+  ConflictException,
   Controller,
   ForbiddenException,
   Get,
@@ -107,6 +108,9 @@ export class AdminController {
     if (res === "forbidden") {
       throw new ForbiddenException();
     }
+    if (res === "conflict") {
+      throw new ConflictException();
+    }
     return res;
   }
 
@@ -130,6 +134,9 @@ export class AdminController {
     }
     if (res === "forbidden") {
       throw new ForbiddenException();
+    }
+    if (res === "conflict") {
+      throw new ConflictException();
     }
     return res;
   }

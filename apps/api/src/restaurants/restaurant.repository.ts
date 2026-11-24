@@ -264,13 +264,21 @@ export class RestaurantRepository {
     return (result.rowCount ?? 0) > 0;
   }
 
-  async findForMember(restaurantId: string, userId: string): Promise<VisibleRestaurant | null> {
+  async findForMember(
+    restaurantId: string,
+    userId: string,
+    options?: { allowOnboarding?: boolean },
+  ): Promise<VisibleRestaurant | null> {
+    const allowedStatuses = options?.allowOnboarding
+      ? ["ACTIVE", "DRAFT", "PENDING_REVIEW"]
+      : ["ACTIVE"];
     const result = await this.database.pool.query<VisibleRestaurant>(
       `SELECT r.id, r."tradeName"
        FROM restaurants r
        JOIN restaurant_memberships m ON m."restaurantId" = r.id
-       WHERE r.id = $1 AND m."userId" = $2 AND m.status = 'ACTIVE'`,
-      [restaurantId, userId],
+       WHERE r.id = $1 AND m."userId" = $2 AND m.status = 'ACTIVE'
+         AND r.status = ANY($3::"RestaurantStatus"[])`,
+      [restaurantId, userId, allowedStatuses],
     );
     return result.rows[0] ?? null;
   }

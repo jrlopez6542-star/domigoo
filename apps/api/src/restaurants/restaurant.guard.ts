@@ -1,13 +1,20 @@
 import {
   Injectable,
   NotFoundException,
+  Optional,
+  SetMetadata,
   UnauthorizedException,
   type CanActivate,
   type ExecutionContext,
 } from "@nestjs/common";
+import { Reflector } from "@nestjs/core";
 import { IdentityService } from "../identity/identity.service.js";
 import { readHeaders, type AuthenticatedRequest } from "../identity/session.guard.js";
 import { RestaurantRepository, type VisibleRestaurant } from "./restaurant.repository.js";
+
+export const ALLOW_ONBOARDING_RESTAURANT_KEY = "allowOnboardingRestaurant";
+export const AllowOnboardingRestaurant = (): MethodDecorator =>
+  SetMetadata(ALLOW_ONBOARDING_RESTAURANT_KEY, true);
 
 export type RestaurantRequest = AuthenticatedRequest & {
   restaurant?: VisibleRestaurant;
@@ -20,6 +27,7 @@ export class RestaurantMemberGuard implements CanActivate {
   constructor(
     private readonly identity: IdentityService,
     private readonly restaurants: RestaurantRepository,
+    @Optional() private readonly reflector?: Reflector,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -33,7 +41,14 @@ export class RestaurantMemberGuard implements CanActivate {
     if (typeof restaurantId !== "string" || !UUID.test(restaurantId)) {
       throw new NotFoundException();
     }
-    const restaurant = await this.restaurants.findForMember(restaurantId, auth.userId);
+    const allowOnboarding =
+      this.reflector?.getAllAndOverride<boolean>(ALLOW_ONBOARDING_RESTAURANT_KEY, [
+        context.getHandler(),
+        context.getClass(),
+      ]) === true;
+    const restaurant = await this.restaurants.findForMember(restaurantId, auth.userId, {
+      allowOnboarding,
+    });
     if (restaurant === null) {
       throw new NotFoundException();
     }

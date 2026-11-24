@@ -45,6 +45,7 @@ describe("OffersRepository.accept - Concurrencia Determinista en PostgreSQL (M23
             "firstName" text NOT NULL DEFAULT 'Courier',
             "lastName" text NOT NULL DEFAULT 'Race',
             "registrationSource" text NOT NULL DEFAULT 'OPEN',
+            status text NOT NULL DEFAULT 'APPROVED',
             "updatedAt" timestamptz NOT NULL DEFAULT now()
           );
 
@@ -166,8 +167,8 @@ describe("OffersRepository.accept - Concurrencia Determinista en PostgreSQL (M23
     if (user === undefined) throw new Error("Fallo al insertar usuario de prueba");
 
     const courierResult = await setupClient.query<{ id: string }>(
-      `INSERT INTO couriers (id, "userId", "documentType", "documentNumber", "firstName", "lastName", "registrationSource", "updatedAt")
-       VALUES (gen_random_uuid(), $1, 'CC', '80099901', 'Courier', 'Race', 'OPEN', now())
+      `INSERT INTO couriers (id, "userId", "documentType", "documentNumber", "firstName", "lastName", "registrationSource", status, "updatedAt")
+       VALUES (gen_random_uuid(), $1, 'CC', '80099901', 'Courier', 'Race', 'OPEN', 'APPROVED', now())
        RETURNING id`,
       [user.id],
     );

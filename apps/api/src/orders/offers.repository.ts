@@ -71,9 +71,10 @@ export class OffersRepository {
 
       const courierRow = await client.query<{
         courierId: string;
+        courierStatus: string;
         availabilityState: string;
       }>(
-        `SELECT c.id AS "courierId", a.state::text AS "availabilityState"
+        `SELECT c.id AS "courierId", c.status::text AS "courierStatus", a.state::text AS "availabilityState"
          FROM couriers c
          JOIN courier_availabilities a ON a."courierId" = c.id
          WHERE c."userId" = $1
@@ -130,7 +131,7 @@ export class OffersRepository {
         };
       }
 
-      if (courier.availabilityState !== "AVAILABLE") {
+      if (courier.courierStatus !== "APPROVED" || courier.availabilityState !== "AVAILABLE") {
         await client.query("ROLLBACK");
         return "conflict";
       }

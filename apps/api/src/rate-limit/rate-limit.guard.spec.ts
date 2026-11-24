@@ -1,5 +1,5 @@
 import type { Request } from "express";
-import { extractClientIp } from "./rate-limit.guard.js";
+import { extractClientIp, resolvePolicy } from "./rate-limit.guard.js";
 
 function mockRequest(headers: Record<string, string | undefined>, ip = "127.0.0.1"): Request {
   return {
@@ -71,5 +71,55 @@ describe("extractClientIp", () => {
     );
 
     expect(extractClientIp(req)).toBe("192.0.2.15");
+  });
+});
+
+describe("resolvePolicy", () => {
+  const originalTrackingMax = process.env["RATE_LIMIT_TRACKING_MAX"];
+  const originalOrdersMax = process.env["RATE_LIMIT_ORDERS_MAX"];
+
+  afterEach(() => {
+    if (originalTrackingMax === undefined) {
+      delete process.env["RATE_LIMIT_TRACKING_MAX"];
+    } else {
+      process.env["RATE_LIMIT_TRACKING_MAX"] = originalTrackingMax;
+    }
+    if (originalOrdersMax === undefined) {
+      delete process.env["RATE_LIMIT_ORDERS_MAX"];
+    } else {
+      process.env["RATE_LIMIT_ORDERS_MAX"] = originalOrdersMax;
+    }
+  });
+
+  it("aplica rate limit a GET /v1/tracking/:token con bucket tracking y default 120", () => {
+    delete process.env["RATE_LIMIT_TRACKING_MAX"];
+    const policy = resolvePolicy("/v1/tracking/abc123token", "GET");
+    expect(policy).not.toBeNull();
+    expect(policy?.bucket).toBe("tracking");
+    expect(policy?.limit).toBe(120);
+
+    process.env["RATE_LIMIT_TRACKING_MAX"] = "240";
+    expect(resolvePolicy("/v1/tracking/abc123token", "GET")?.limit).toBe(240);
+  });
+
+  it("aplica rate limit a POST /v1/courier-invitations/:token/accept en bucket sensitive", () => {
+    const policy = resolvePolicy("/v1/courier-invitations/inv-tok-1/accept", "POST");
+    expect(policy).not.toBeNull();
+    expect(policy?.bucket).toBe("sensitive");
+    expect(policy?.limit).toBe(30);
+  });
+
+  it("aplica rate limit a creación y publicación de pedidos con bucket orders y default 60", () => {
+    delete process.env["RATE_LIMIT_ORDERS_MAX"];
+    const createPolicy = resolvePolicy("/v1/orders", "POST");
+    const publishPolicy = resolvePolicy("/v1/orders/ord-123/publish", "POST");
+    expect(createPolicy?.bucket).toBe("orders");
+    expect(createPolicy?.limit).toBe(60);
+    expect(publishPolicy?.bucket).toBe("orders");
+    expect(publishPolicy?.limit).toBe(60);
+
+    process.env["RATE_LIMIT_ORDERS_MAX"] = "90";
+    expect(resolvePolicy("/v1/orders", "POST")?.limit).toBe(90);
+    expect(resolvePolicy("/v1/orders/ord-123/publish", "POST")?.limit).toBe(90);
   });
 });

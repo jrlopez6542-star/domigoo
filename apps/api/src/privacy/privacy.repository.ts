@@ -168,11 +168,20 @@ export class PrivacyRepository {
              WHERE "userId" = $1 AND purpose = 'GEOLOCATION' AND "revokedAt" IS NULL`,
             [dsr.userId],
           );
+          await client.query(
+            `UPDATE courier_availabilities
+             SET state = 'OFFLINE', "updatedAt" = now()
+             WHERE "courierId" IN (SELECT id FROM couriers WHERE "userId" = $1)
+               AND state <> 'OFFLINE'`,
+            [dsr.userId],
+          );
         } else if (dsr.type === "DELETION") {
           const anon = await client.query(
             `UPDATE orders
              SET "customerName" = 'ANONIMIZADO',
                  "customerPhoneE164" = NULL,
+                 "dropoffAddress" = NULL,
+                 "dropoffLocation" = NULL,
                  "updatedAt" = now()
              WHERE "createdById" = $1
                AND status IN (

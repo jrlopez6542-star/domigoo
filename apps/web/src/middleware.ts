@@ -8,6 +8,13 @@ const ROLE_PREFIX: Record<string, string> = {
 
 export function middleware(request: NextRequest): NextResponse {
   const { pathname } = request.nextUrl;
+
+  if (pathname.startsWith("/tracking")) {
+    const response = NextResponse.next();
+    response.headers.set("Cache-Control", "no-store, no-cache, must-revalidate, private");
+    return response;
+  }
+
   const activeRole = request.cookies.get("domigoo_role")?.value;
 
   if (activeRole && activeRole in ROLE_PREFIX) {
@@ -26,5 +33,5 @@ export function middleware(request: NextRequest): NextResponse {
 }
 
 export const config = {
-  matcher: ["/cliente/:path*", "/restaurante/:path*", "/domiciliario/:path*"],
+  matcher: ["/cliente/:path*", "/restaurante/:path*", "/domiciliario/:path*", "/tracking/:path*"],
 };

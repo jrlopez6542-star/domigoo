@@ -74,7 +74,9 @@ describe("OffersRepository.accept (transaccionalidad e idempotencia concurrente)
         return { rows: [{ requestHash: expectedHash }] };
       }
       if (sql.includes("FROM couriers c")) {
-        return { rows: [{ courierId, availabilityState: "ON_SERVICE" }] };
+        return {
+          rows: [{ courierId, courierStatus: "APPROVED", availabilityState: "ON_SERVICE" }],
+        };
       }
       if (sql.includes("FROM dispatch_offers d")) {
         return { rows: [{ orderId, orderStatus: "PICKED_UP", offerStatus: "ACCEPTED" }] };
@@ -98,7 +100,9 @@ describe("OffersRepository.accept (transaccionalidad e idempotencia concurrente)
         return { rows: [{ requestHash: expectedHash }] };
       }
       if (sql.includes("FROM couriers c")) {
-        return { rows: [{ courierId, availabilityState: "ON_SERVICE" }] };
+        return {
+          rows: [{ courierId, courierStatus: "APPROVED", availabilityState: "ON_SERVICE" }],
+        };
       }
       if (sql.includes("FROM dispatch_offers d")) {
         return { rows: [{ orderId, orderStatus: "DELIVERED", offerStatus: "ACCEPTED" }] };
@@ -121,7 +125,9 @@ describe("OffersRepository.accept (transaccionalidad e idempotencia concurrente)
         return { rows: [{ requestHash: expectedHash }] };
       }
       if (sql.includes("FROM couriers c")) {
-        return { rows: [{ courierId, availabilityState: "ON_SERVICE" }] };
+        return {
+          rows: [{ courierId, courierStatus: "APPROVED", availabilityState: "ON_SERVICE" }],
+        };
       }
       if (sql.includes("FROM dispatch_offers d")) {
         return {
@@ -153,7 +159,9 @@ describe("OffersRepository.accept (transaccionalidad e idempotencia concurrente)
         return { rows: [{ requestHash: expectedHash }] };
       }
       if (sql.includes("FROM couriers c")) {
-        return { rows: [{ courierId, availabilityState: "ON_SERVICE" }] };
+        return {
+          rows: [{ courierId, courierStatus: "APPROVED", availabilityState: "ON_SERVICE" }],
+        };
       }
       if (sql.includes("FROM dispatch_offers d")) {
         return { rows: [{ orderId, orderStatus: "ACCEPTED", offerStatus: "ACCEPTED" }] };
@@ -182,7 +190,9 @@ describe("OffersRepository.accept (transaccionalidad e idempotencia concurrente)
         return { rows: [{ requestHash: "hash-distinto-por-otro-body-u-oferta" }] };
       }
       if (sql.includes("FROM couriers c")) {
-        return { rows: [{ courierId, availabilityState: "ON_SERVICE" }] };
+        return {
+          rows: [{ courierId, courierStatus: "APPROVED", availabilityState: "ON_SERVICE" }],
+        };
       }
       return { rows: [] };
     });
@@ -197,7 +207,9 @@ describe("OffersRepository.accept (transaccionalidad e idempotencia concurrente)
         return { rows: [] };
       }
       if (sql.includes("FROM couriers c")) {
-        return { rows: [{ courierId, availabilityState: "ON_SERVICE" }] };
+        return {
+          rows: [{ courierId, courierStatus: "APPROVED", availabilityState: "ON_SERVICE" }],
+        };
       }
       return { rows: [] };
     });
@@ -212,7 +224,9 @@ describe("OffersRepository.accept (transaccionalidad e idempotencia concurrente)
         return { rows: [{ requestHash: expectedHash }] };
       }
       if (sql.includes("FROM couriers c")) {
-        return { rows: [{ courierId, availabilityState: "ON_SERVICE" }] };
+        return {
+          rows: [{ courierId, courierStatus: "APPROVED", availabilityState: "ON_SERVICE" }],
+        };
       }
       if (sql.includes("FROM dispatch_offers d")) {
         return { rows: [{ orderId, orderStatus: "CANCELLED_RESTAURANT", offerStatus: "EXPIRED" }] };
@@ -272,7 +286,7 @@ describe("OffersRepository.accept (transaccionalidad e idempotencia concurrente)
                 releaseThisLock = resolveLock;
 
                 const availabilityState = committed ? "ON_SERVICE" : "AVAILABLE";
-                return { rows: [{ courierId, availabilityState }] };
+                return { rows: [{ courierId, courierStatus: "APPROVED", availabilityState }] };
               }
               if (sql.includes("FROM dispatch_offers d") && !sql.includes("FOR UPDATE")) {
                 return {

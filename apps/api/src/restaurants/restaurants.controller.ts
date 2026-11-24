@@ -14,7 +14,11 @@ import { ApiOperation, ApiTags } from "@nestjs/swagger";
 import { AuditRecorder } from "../audit/audit.service.js";
 import { validateTocancipaCoverage } from "../geo/tocancipa-coverage.js";
 import { SessionGuard, type AuthenticatedRequest } from "../identity/session.guard.js";
-import { RestaurantMemberGuard, type RestaurantRequest } from "./restaurant.guard.js";
+import {
+  AllowOnboardingRestaurant,
+  RestaurantMemberGuard,
+  type RestaurantRequest,
+} from "./restaurant.guard.js";
 import { RestaurantRepository } from "./restaurant.repository.js";
 
 @ApiTags("restaurantes")
@@ -80,6 +84,7 @@ export class RestaurantsController {
   }
 
   @Get(":id")
+  @AllowOnboardingRestaurant()
   @UseGuards(RestaurantMemberGuard)
   @ApiOperation({ summary: "Lee un restaurante si la sesión tiene una membresía activa" })
   getOne(@Req() request: RestaurantRequest): { id: string; tradeName: string } {

@@ -95,6 +95,15 @@ export class IncidentsRepository {
           await client.query("ROLLBACK");
           return "forbidden";
         }
+      } else {
+        const adminQ = await client.query<{ role: string }>(
+          `SELECT role::text AS role FROM admin_profiles WHERE "userId" = $1`,
+          [input.userId],
+        );
+        if (adminQ.rows[0] === undefined) {
+          await client.query("ROLLBACK");
+          return "forbidden";
+        }
       }
 
       const inserted = await client.query<{ id: string }>(

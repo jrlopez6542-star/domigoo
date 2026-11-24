@@ -6,6 +6,8 @@ import { RateLimitService } from "./rate-limit.service.js";
 const DEFAULT_WINDOW_SECONDS = 60;
 const DEFAULT_AUTH_MAX = 60;
 const DEFAULT_AUTH_SESSION_MAX = 600;
+const DEFAULT_TRACKING_MAX = 120;
+const DEFAULT_ORDERS_MAX = 60;
 const DEFAULT_SENSITIVE_MAX = 30;
 
 @Injectable()
@@ -74,7 +76,7 @@ function safeEquals(a: string, b: string): boolean {
   return timingSafeEqual(bufA, bufB);
 }
 
-function resolvePolicy(
+export function resolvePolicy(
   path: string,
   method: string,
 ): { bucket: string; limit: number; windowMs: number } | null {
@@ -100,10 +102,21 @@ function resolvePolicy(
     return { bucket: "auth_session", limit, windowMs };
   }
 
+  if (method === "GET" && /^\/v1\/tracking\/[^/]+$/.test(path)) {
+    const limit = readPositiveInt(process.env["RATE_LIMIT_TRACKING_MAX"], DEFAULT_TRACKING_MAX);
+    return { bucket: "tracking", limit, windowMs };
+  }
+
+  if (method === "POST" && (path === "/v1/orders" || /^\/v1\/orders\/[^/]+\/publish$/.test(path))) {
+    const limit = readPositiveInt(process.env["RATE_LIMIT_ORDERS_MAX"], DEFAULT_ORDERS_MAX);
+    return { bucket: "orders", limit, windowMs };
+  }
+
   if (
     method === "POST" &&
     (path === "/v1/couriers/me/documents" ||
       path === "/v1/data-subject-requests" ||
+      /^\/v1\/courier-invitations\/[^/]+\/accept$/.test(path) ||
       /^\/v1\/orders\/[^/]+\/(pickup-pin|delivery-pin)$/.test(path))
   ) {
     const limit = readPositiveInt(process.env["RATE_LIMIT_SENSITIVE_MAX"], DEFAULT_SENSITIVE_MAX);

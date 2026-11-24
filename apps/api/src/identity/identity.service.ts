@@ -183,7 +183,8 @@ export class IdentityService {
     if (
       session === null ||
       session.revokedAt !== null ||
-      session.expiresAt.getTime() <= Date.now()
+      session.expiresAt.getTime() <= Date.now() ||
+      session.userStatus !== "ACTIVE"
     ) {
       return null;
     }

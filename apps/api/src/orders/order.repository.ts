@@ -9,7 +9,7 @@ const RESTAURANT_PICKUP_PIN_STATUSES = new Set(["ACCEPTED", "ARRIVING_PICKUP", "
 
 export type DraftOrder = {
   id: string;
-  status: "DRAFT";
+  status: string;
   foodAmountCop: number;
   deliveryFeeCop: number;
   paymentMethod: string;
@@ -63,7 +63,7 @@ export type MyOrderSummary = {
   referenceCode: string;
   status: string;
   branchName: string;
-  foodAmountCop: number;
+  foodAmountCop?: number;
   deliveryFeeCop: number;
   paymentMethod: string | null;
   customerName: string | null;
@@ -158,7 +158,7 @@ export class OrderRepository {
     if (row === undefined) {
       return null;
     }
-    return { ...row, status: "DRAFT" };
+    return row;
   }
 
   async findOrderView(id: string, userId: string): Promise<OrderViewResult> {
@@ -353,7 +353,6 @@ export class OrderRepository {
         referenceCode: string;
         status: string;
         branchName: string;
-        foodAmountCop: number;
         deliveryFeeCop: number;
         paymentMethod: string | null;
         customerName: string | null;
@@ -365,7 +364,6 @@ export class OrderRepository {
            o."referenceCode",
            o.status::text AS status,
            b.name AS "branchName",
-           o."foodAmountCop",
            o."deliveryFeeCop",
            o."paymentMethod"::text AS "paymentMethod",
            o."customerName",
@@ -385,7 +383,6 @@ export class OrderRepository {
           referenceCode: row.referenceCode,
           status: row.status,
           branchName: row.branchName,
-          foodAmountCop: row.foodAmountCop,
           deliveryFeeCop: row.deliveryFeeCop,
           paymentMethod: row.paymentMethod,
           customerName: row.customerName,

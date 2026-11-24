@@ -67,7 +67,7 @@ export class TrackingController {
   ): Promise<PublicTrackingView> {
     response.setHeader("X-Robots-Tag", "noindex, nofollow");
     response.setHeader("Referrer-Policy", "no-referrer");
-    response.setHeader("Cache-Control", "no-store");
+    response.setHeader("Cache-Control", "no-store, private");
 
     const userAgent = request.headers["user-agent"];
     const view = await this.tracking.resolvePublic(token, {

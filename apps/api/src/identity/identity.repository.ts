@@ -19,6 +19,7 @@ export type StoredSession = {
   client: string;
   revokedAt: Date | null;
   expiresAt: Date;
+  userStatus: string;
 };
 
 export type RegistrationConsentInput = {
@@ -197,8 +198,11 @@ export class IdentityRepository {
 
   async findSession(tokenHash: string): Promise<StoredSession | null> {
     const result = await this.pool.query<StoredSession>(
-      `SELECT id, "userId", client, "revokedAt", "expiresAt"
-       FROM sessions WHERE "tokenHash" = $1`,
+      `SELECT s.id, s."userId", s.client, s."revokedAt", s."expiresAt",
+              u.status::text AS "userStatus"
+       FROM sessions s
+       JOIN users u ON u.id = s."userId"
+       WHERE s."tokenHash" = $1`,
       [tokenHash],
     );
     return result.rows[0] ?? null;

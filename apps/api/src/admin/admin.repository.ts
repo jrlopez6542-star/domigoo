@@ -18,7 +18,7 @@ export class AdminRepository {
     userId: string;
     suspend: boolean;
     reason: string;
-  }): Promise<{ id: string; status: string } | "missing" | "forbidden"> {
+  }): Promise<{ id: string; status: string } | "missing" | "forbidden" | "conflict"> {
     if (!(await this.isOpsOrSuperadmin(input.userId))) {
       return "forbidden";
     }
@@ -28,14 +28,18 @@ export class AdminRepository {
     const client = await this.database.pool.connect();
     try {
       await client.query("BEGIN");
-      const curQ = await client.query<{ status: string }>(
-        `SELECT status::text AS status FROM couriers WHERE id = $1 FOR UPDATE`,
+      const curQ = await client.query<{ status: string; userId: string }>(
+        `SELECT status::text AS status, "userId" FROM couriers WHERE id = $1 FOR UPDATE`,
         [input.courierId],
       );
       const cur = curQ.rows[0];
       if (cur === undefined) {
         await client.query("ROLLBACK");
         return "missing";
+      }
+      if (!input.suspend && cur.status !== "SUSPENDED") {
+        await client.query("ROLLBACK");
+        return "conflict";
       }
 
       await client.query(
@@ -73,7 +77,7 @@ export class AdminRepository {
     userId: string;
     suspend: boolean;
     reason: string;
-  }): Promise<{ id: string; status: string } | "missing" | "forbidden"> {
+  }): Promise<{ id: string; status: string } | "missing" | "forbidden" | "conflict"> {
     if (!(await this.isOpsOrSuperadmin(input.userId))) {
       return "forbidden";
     }
@@ -91,6 +95,10 @@ export class AdminRepository {
       if (cur === undefined) {
         await client.query("ROLLBACK");
         return "missing";
+      }
+      if (!input.suspend && cur.status !== "SUSPENDED") {
+        await client.query("ROLLBACK");
+        return "conflict";
       }
 
       await client.query(
