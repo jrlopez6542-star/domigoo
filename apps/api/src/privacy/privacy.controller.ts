@@ -65,20 +65,36 @@ export class PrivacyController {
     @Body() body: unknown,
     @Req() request: AuthenticatedRequest,
   ): Promise<{ id: string; legalDocumentId: string }> {
-    const parsed = readConsent(body);
     const userId = request.auth?.userId;
-    if (parsed === null || userId === undefined) {
+    if (userId === undefined) {
+      throw new NotFoundException();
+    }
+    const parsed = readConsent(body);
+    if (!parsed.ok) {
+      if (parsed.reason === "invalid-document-id") {
+        throw new HttpException(
+          { message: "El identificador del documento legal es inválido" },
+          422,
+        );
+      }
       throw new NotFoundException();
     }
     const ip = typeof request.ip === "string" ? request.ip.slice(0, 45) : undefined;
     const rawUa = request.headers["user-agent"];
     const userAgent = typeof rawUa === "string" ? rawUa.slice(0, 255) : undefined;
-    return this.privacy.insertConsent({
-      ...parsed,
+    const saved = await this.privacy.insertConsent({
+      ...parsed.value,
       userId,
       ...(ip === undefined ? {} : { ip }),
       ...(userAgent === undefined ? {} : { userAgent }),
     });
+    if (saved === "invalid") {
+      throw new HttpException({ message: "El identificador del documento legal es inválido" }, 422);
+    }
+    if (saved === "missing") {
+      throw new NotFoundException();
+    }
+    return saved;
   }
 
   @Post("consents/:id/revoke")
@@ -173,19 +189,30 @@ function readDocument(body: unknown): { kind: string; version: string; content: 
   return { kind: body["kind"], version: body["version"].trim(), content: body["content"] };
 }
 
-function readConsent(
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function readConsent(
   body: unknown,
-): { legalDocumentId: string; purpose: string; channel: string } | null {
-  if (!isRecord(body) || typeof body["legalDocumentId"] !== "string") {
-    return null;
+):
+  | { ok: true; value: { legalDocumentId: string; purpose: string; channel: string } }
+  | { ok: false; reason: "invalid-document-id" | "invalid-payload" } {
+  if (!isRecord(body)) {
+    return { ok: false, reason: "invalid-payload" };
+  }
+  const legalDocumentId = body["legalDocumentId"];
+  if (typeof legalDocumentId !== "string" || !UUID_PATTERN.test(legalDocumentId)) {
+    return { ok: false, reason: "invalid-document-id" };
   }
   if (!isPurpose(body["purpose"]) || !isChannel(body["channel"])) {
-    return null;
+    return { ok: false, reason: "invalid-payload" };
   }
   return {
-    legalDocumentId: body["legalDocumentId"],
-    purpose: body["purpose"],
-    channel: body["channel"],
+    ok: true,
+    value: {
+      legalDocumentId,
+      purpose: body["purpose"],
+      channel: body["channel"],
+    },
   };
 }
 

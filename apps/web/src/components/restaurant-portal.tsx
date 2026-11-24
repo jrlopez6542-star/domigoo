@@ -16,6 +16,11 @@ import { callProxy } from "@/lib/api-client";
 import type { CreateRestaurantPayload, QuotePayload } from "@/lib/contracts";
 import { orderStatusLabel } from "@/lib/order-status";
 import {
+  isRestaurantOrBranchInactive,
+  resolveRestaurantOrderActionError,
+  RESTAURANT_INACTIVE_MESSAGE,
+} from "@/lib/portal-helpers";
+import {
   clearStoredActiveRole,
   getStoredActiveRole,
   ROLE_BASE_PATH,
@@ -47,6 +52,7 @@ export type RestaurantBranchItem = {
   name: string;
   addressLine: string;
   status: string;
+  restaurantStatus?: string;
 };
 
 export type RestaurantOrderSummary = {
@@ -106,6 +112,7 @@ type RestaurantContextValue = {
   setBranchId: (v: string) => void;
   branches: RestaurantBranchItem[];
   loadingBranches: boolean;
+  restaurantNotActive: boolean;
   loadMyBranches: () => Promise<void>;
   handleCreateBranch: (e: FormEvent) => Promise<void>;
   // Order wizard
@@ -533,27 +540,44 @@ export function RestaurantPortalShell({
     });
   }
 
+  const selectedBranch = branches.find((b) => b.id === branchId) ?? branches[0];
+  const restaurantNotActive = isRestaurantOrBranchInactive(selectedBranch);
+
   async function handleCreateDraft(e: FormEvent) {
     e.preventDefault();
     if (!branchId) {
       setErrorMessage("Primero crea o selecciona una sucursal en Mi negocio.");
       return;
     }
+    if (restaurantNotActive) {
+      setErrorMessage(RESTAURANT_INACTIVE_MESSAGE);
+      return;
+    }
     await runAction("draft", async () => {
-      const data = await callProxy<{ id: string; status: string }>("orders", "POST", {
-        branchId,
-        foodAmountCop: Number(foodAmountCop),
-        deliveryFeeCop: Number(deliveryFeeCop),
-        paymentMethod,
-      });
-      setOrderId(data.id);
-      setOrderView({ id: data.id, status: data.status });
-      setStatusMessage(`Borrador creado (${data.id}).`);
+      try {
+        const data = await callProxy<{ id: string; status: string }>("orders", "POST", {
+          branchId,
+          foodAmountCop: Number(foodAmountCop),
+          deliveryFeeCop: Number(deliveryFeeCop),
+          paymentMethod,
+        });
+        setOrderId(data.id);
+        setOrderView({ id: data.id, status: data.status });
+        setStatusMessage(`Borrador creado (${data.id}).`);
+      } catch (err) {
+        throw new Error(resolveRestaurantOrderActionError(err, "No se pudo crear el borrador."), {
+          cause: err,
+        });
+      }
     });
   }
 
   async function handlePublish(e: FormEvent) {
     e.preventDefault();
+    if (restaurantNotActive) {
+      setErrorMessage(RESTAURANT_INACTIVE_MESSAGE);
+      return;
+    }
     await runAction("publish", async () => {
       const payload =
         publishMode === "DIRECT"
@@ -574,14 +598,20 @@ export function RestaurantPortalShell({
               longitude: Number(dropoffLongitude),
               latitude: Number(dropoffLatitude),
             };
-      const data = await callProxy<{ status: string }>(
-        `orders/${encodeURIComponent(orderId)}/publish`,
-        "POST",
-        payload,
-      );
-      setOrderView({ id: orderId, status: data.status });
-      setStatusMessage(`Pedido publicado: ${orderStatusLabel(data.status)}`);
-      await loadMyOrders();
+      try {
+        const data = await callProxy<{ status: string }>(
+          `orders/${encodeURIComponent(orderId)}/publish`,
+          "POST",
+          payload,
+        );
+        setOrderView({ id: orderId, status: data.status });
+        setStatusMessage(`Pedido publicado: ${orderStatusLabel(data.status)}`);
+        await loadMyOrders();
+      } catch (err) {
+        throw new Error(resolveRestaurantOrderActionError(err, "No se pudo publicar el pedido."), {
+          cause: err,
+        });
+      }
     });
   }
 
@@ -731,6 +761,7 @@ export function RestaurantPortalShell({
         setBranchId,
         branches,
         loadingBranches,
+        restaurantNotActive,
         loadMyBranches,
         handleCreateBranch,
         foodAmountCop,
@@ -809,10 +840,21 @@ function useRestaurantPortal() {
 }
 
 export function RestaurantHomeScreen() {
-  const { branchId, orderId, orderView } = useRestaurantPortal();
+  const { branchId, orderId, orderView, restaurantNotActive } = useRestaurantPortal();
 
   return (
     <div className="dg-stack" data-testid="restaurante-home-screen">
+      {restaurantNotActive ? (
+        <div
+          role="status"
+          className="dg-alert dg-alert--info"
+          data-testid="restaurante-inactivo-banner"
+          style={{ marginBottom: 0 }}
+        >
+          {RESTAURANT_INACTIVE_MESSAGE}
+        </div>
+      ) : null}
+
       <div className="dg-card">
         <span className="dg-badge" style={{ marginBottom: "8px" }}>
           Inicio · Restaurante
@@ -1090,6 +1132,7 @@ export function RestaurantNuevoDomicilioScreen() {
     setBranchId,
     branches,
     loadingBranches,
+    restaurantNotActive,
     foodAmountCop,
     setFoodAmountCop,
     deliveryFeeCop,
@@ -1150,6 +1193,17 @@ export function RestaurantNuevoDomicilioScreen() {
                 </Link>
               </div>
             </div>
+          </div>
+        ) : null}
+
+        {restaurantNotActive ? (
+          <div
+            role="alert"
+            className="dg-alert dg-alert--info"
+            data-testid="restaurante-inactivo-banner"
+            style={{ marginBottom: "16px" }}
+          >
+            {RESTAURANT_INACTIVE_MESSAGE}
           </div>
         ) : null}
 
@@ -1316,7 +1370,9 @@ export function RestaurantNuevoDomicilioScreen() {
               <button
                 type="submit"
                 className="dg-btn"
-                disabled={!sessionUser || busyAction === "draft" || hasNoBranches}
+                disabled={
+                  !sessionUser || busyAction === "draft" || hasNoBranches || restaurantNotActive
+                }
               >
                 {busyAction === "draft" ? "Creando borrador..." : "Crear borrador"}
               </button>
@@ -1533,7 +1589,9 @@ export function RestaurantNuevoDomicilioScreen() {
                 <button
                   type="submit"
                   className="dg-btn"
-                  disabled={!sessionUser || !orderId || busyAction === "publish"}
+                  disabled={
+                    !sessionUser || !orderId || busyAction === "publish" || restaurantNotActive
+                  }
                 >
                   {busyAction === "publish" ? "Publicando..." : "Publicar domicilio"}
                 </button>
@@ -1770,7 +1828,8 @@ export function RestaurantPedidosScreen() {
           <ul style={{ margin: "8px 0 0", paddingLeft: "20px" }}>
             {events.map((ev) => (
               <li key={ev.id}>
-                {ev.fromStatus ?? "INICIO"} → <strong>{ev.toStatus}</strong> ({ev.createdAt})
+                {ev.fromStatus ? orderStatusLabel(ev.fromStatus) : "Inicio"} →{" "}
+                <strong>{orderStatusLabel(ev.toStatus)}</strong> ({ev.createdAt})
               </li>
             ))}
           </ul>

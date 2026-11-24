@@ -34,3 +34,28 @@ export function sanitizeMarkdownHref(raw: string): string | null {
     return null;
   }
 }
+
+export const RESTAURANT_INACTIVE_MESSAGE =
+  "Tu restaurante aún no está activo. Podrás crear domicilios cuando DOMIGOO apruebe tu registro.";
+
+export function isRestaurantOrBranchInactive(
+  branch: { status: string; restaurantStatus?: string } | undefined,
+): boolean {
+  if (!branch) {
+    return false;
+  }
+  if (branch.status !== "ACTIVE") {
+    return true;
+  }
+  if (branch.restaurantStatus !== undefined && branch.restaurantStatus !== "ACTIVE") {
+    return true;
+  }
+  return false;
+}
+
+export function resolveRestaurantOrderActionError(err: unknown, fallbackMessage: string): string {
+  if (err instanceof Error && "status" in err && (err as { status?: unknown }).status === 404) {
+    return RESTAURANT_INACTIVE_MESSAGE;
+  }
+  return err instanceof Error ? err.message : fallbackMessage;
+}

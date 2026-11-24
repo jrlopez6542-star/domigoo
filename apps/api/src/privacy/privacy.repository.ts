@@ -48,27 +48,38 @@ export class PrivacyRepository {
     channel: string;
     ip?: string;
     userAgent?: string;
-  }): Promise<{ id: string; legalDocumentId: string }> {
-    const result = await this.database.pool.query<{ id: string; legalDocumentId: string }>(
-      `INSERT INTO consent_records (
-         id, "userId", "legalDocumentId", purpose, channel, "grantedAt", ip, "userAgent"
-       )
-       VALUES (gen_random_uuid(), $1, $2, $3::"ConsentPurpose", $4::"ConsentChannel", now(), $5, $6)
-       RETURNING id, "legalDocumentId"`,
-      [
-        input.userId,
-        input.legalDocumentId,
-        input.purpose,
-        input.channel,
-        input.ip ?? null,
-        input.userAgent ?? null,
-      ],
-    );
-    const row = result.rows[0];
-    if (row === undefined) {
-      throw new Error("No se pudo registrar el consentimiento");
+  }): Promise<{ id: string; legalDocumentId: string } | "missing" | "invalid"> {
+    try {
+      const result = await this.database.pool.query<{ id: string; legalDocumentId: string }>(
+        `INSERT INTO consent_records (
+           id, "userId", "legalDocumentId", purpose, channel, "grantedAt", ip, "userAgent"
+         )
+         VALUES (gen_random_uuid(), $1, $2, $3::"ConsentPurpose", $4::"ConsentChannel", now(), $5, $6)
+         RETURNING id, "legalDocumentId"`,
+        [
+          input.userId,
+          input.legalDocumentId,
+          input.purpose,
+          input.channel,
+          input.ip ?? null,
+          input.userAgent ?? null,
+        ],
+      );
+      const row = result.rows[0];
+      if (row === undefined) {
+        throw new Error("No se pudo registrar el consentimiento");
+      }
+      return row;
+    } catch (error) {
+      const code = pgCode(error);
+      if (code === "22P02") {
+        return "invalid";
+      }
+      if (code === "23503") {
+        return "missing";
+      }
+      throw error;
     }
-    return row;
   }
 
   async revoke(id: string, userId: string): Promise<boolean> {
@@ -222,4 +233,12 @@ export class PrivacyRepository {
       client.release();
     }
   }
+}
+
+function pgCode(error: unknown): string | undefined {
+  if (typeof error === "object" && error !== null && "code" in error) {
+    const code = (error as { code?: unknown }).code;
+    return typeof code === "string" ? code : undefined;
+  }
+  return undefined;
 }

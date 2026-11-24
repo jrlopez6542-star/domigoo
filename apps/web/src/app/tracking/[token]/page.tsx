@@ -112,7 +112,7 @@ export default async function TrackingPage({ params }: { params: Promise<{ token
       >
         <div style={{ fontSize: "0.875rem", color: "#475569" }}>Estado actual</div>
         <div style={{ fontSize: "1.125rem", fontWeight: 700, marginTop: "0.25rem" }}>
-          {statusLabel} ({tracking.status})
+          {statusLabel}
         </div>
       </div>
 
@@ -162,7 +162,7 @@ export default async function TrackingPage({ params }: { params: Promise<{ token
                 <li key={`${ev.toStatus}-${ev.createdAt}-${String(index)}`}>
                   <strong>{label}</strong>{" "}
                   <span style={{ color: "#475569", fontSize: "0.85rem" }}>
-                    ({ev.toStatus}) ·{" "}
+                    ·{" "}
                     {new Date(ev.createdAt).toLocaleString("es-CO", {
                       timeZone: "America/Bogota",
                     })}

@@ -6,8 +6,11 @@ import {
   buildAdminLoginPayload,
   buildVerificationDecisionPayload,
   type VerificationOutcome,
+  verificationCaseStatusLabel,
+  verificationOutcomeActionLabel,
   verificationOutcomeLabel,
 } from "@/lib/contracts";
+import { orderStatusLabel } from "@/lib/order-status";
 
 type VerificationCase = {
   id: string;
@@ -411,7 +414,7 @@ export function AdminPortal({
                     {cases.map((c) => (
                       <li key={c.id} className="adm-case-item">
                         <code>{c.id}</code> — Domiciliario <code>{c.courierId}</code> — Estado:{" "}
-                        <strong>{c.status}</strong>
+                        <strong>{verificationCaseStatusLabel(c.status)}</strong>
                         {c.reason ? <span> — Motivo: {c.reason}</span> : null}
                       </li>
                     ))}
@@ -438,7 +441,7 @@ export function AdminPortal({
                     />
                   </label>
                   <label className="adm-field">
-                    Resultado (outcome)
+                    Resultado
                     <select
                       className="adm-select"
                       name="outcome"
@@ -447,13 +450,15 @@ export function AdminPortal({
                         setOutcome(e.target.value as VerificationOutcome);
                       }}
                     >
-                      <option value="APPROVED">Aprobar (APPROVED)</option>
-                      <option value="REJECTED">Rechazar (REJECTED)</option>
-                      <option value="NEEDS_CHANGES">Solicitar cambios (NEEDS_CHANGES)</option>
+                      <option value="APPROVED">{verificationOutcomeActionLabel("APPROVED")}</option>
+                      <option value="REJECTED">{verificationOutcomeActionLabel("REJECTED")}</option>
+                      <option value="NEEDS_CHANGES">
+                        {verificationOutcomeActionLabel("NEEDS_CHANGES")}
+                      </option>
                     </select>
                   </label>
                   <label className="adm-field">
-                    Código de motivo (reasonCode)
+                    Código de motivo
                     <input
                       className="adm-input"
                       name="reasonCode"
@@ -466,7 +471,7 @@ export function AdminPortal({
                     />
                   </label>
                   <label className="adm-field">
-                    Comentario (comment)
+                    Comentario
                     <input
                       className="adm-input"
                       name="comment"
@@ -576,7 +581,7 @@ export function AdminPortal({
                       <ul className="adm-case-list">
                         {Object.entries(stats.ordersByStatus).map(([statusKey, count]) => (
                           <li key={statusKey} className="adm-case-item">
-                            <strong>{statusKey}</strong>: {count}
+                            <strong>{orderStatusLabel(statusKey)}</strong>: {count}
                           </li>
                         ))}
                       </ul>

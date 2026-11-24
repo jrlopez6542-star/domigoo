@@ -42,3 +42,27 @@ export const VERIFICATION_OUTCOME_LABELS: Record<VerificationOutcome, string> = 
 export function verificationOutcomeLabel(outcome: VerificationOutcome): string {
   return VERIFICATION_OUTCOME_LABELS[outcome];
 }
+
+export const VERIFICATION_OUTCOME_ACTION_LABELS: Record<VerificationOutcome, string> = {
+  APPROVED: "Aprobar",
+  REJECTED: "Rechazar",
+  NEEDS_CHANGES: "Solicitar cambios",
+};
+
+export function verificationOutcomeActionLabel(outcome: VerificationOutcome): string {
+  return VERIFICATION_OUTCOME_ACTION_LABELS[outcome];
+}
+
+export const VERIFICATION_STATUS_LABELS: Record<string, string> = {
+  COLLECTING: "Recolectando documentos",
+  SUBMITTED: "Enviado",
+  AUTO_IN_PROGRESS: "En validación automática",
+  PENDING_HUMAN: "Pendiente de revisión",
+  NEEDS_CHANGES: "Requiere cambios",
+  APPROVED: "Aprobado",
+  REJECTED: "Rechazado",
+};
+
+export function verificationCaseStatusLabel(status: string): string {
+  return VERIFICATION_STATUS_LABELS[status] ?? status;
+}
