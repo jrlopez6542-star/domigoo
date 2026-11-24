@@ -1,4 +1,5 @@
 import type { INestApplication } from "@nestjs/common";
+import { SafeHttpExceptionFilter } from "./http-exception.filter.js";
 
 type SecurityRequest = {
   method?: string;
@@ -30,6 +31,7 @@ export function applyHttpSecurity(
   app: INestApplication,
   corsOriginsRaw = process.env["CORS_ORIGINS"],
 ): void {
+  app.useGlobalFilters(new SafeHttpExceptionFilter());
   const adapter = app.getHttpAdapter() as { getInstance?: () => ExpressInstanceLike } | undefined;
   const instance = adapter?.getInstance?.();
   instance?.disable?.("x-powered-by");

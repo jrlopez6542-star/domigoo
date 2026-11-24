@@ -1,7 +1,9 @@
 import pg from "pg";
+import { readEnv } from "./env.js";
 import {
   assertPreviewBuildDatabases,
   assertPreviewDatabaseAuthorized,
+  isPreviewDatabaseGuardActive,
   parsePostgresTarget,
 } from "./preview-db-guard.js";
 import { validateSeedEnv } from "../staging/seed-guard.js";
@@ -343,5 +345,43 @@ describe("preview-db-guard adversarial (PREVIEW-DB-ISOLATION-003)", () => {
         expect(effective.options).toBeUndefined();
       });
     }
+  });
+
+  describe("ORDEN 005 PARTE B: fail-closed con VERCEL=1 sin VERCEL_ENV", () => {
+    it("VERCEL=1 sin VERCEL_ENV activa el guard y falla cerrado en readEnv", () => {
+      expect(isPreviewDatabaseGuardActive({ VERCEL: "1" })).toBe(true);
+      expect(isPreviewDatabaseGuardActive({ VERCEL: "1", VERCEL_ENV: "" })).toBe(true);
+      expect(() => {
+        readEnv({
+          VERCEL: "1",
+          NODE_ENV: "production",
+          PIN_PEPPER: "pepper-seguro-de-32-bytes-ejemplo",
+          APP_ENCRYPTION_KEY: "clave-segura-de-32-bytes-ejemplo",
+          DATABASE_URL: POOLED,
+        });
+      }).toThrow(/PREVIEW_DB_GUARD: VERCEL_ENV/);
+    });
+
+    it("VERCEL=1 con VERCEL_ENV=production mantiene el comportamiento de producción intacto", () => {
+      expect(isPreviewDatabaseGuardActive({ VERCEL: "1", VERCEL_ENV: "production" })).toBe(false);
+      const env = readEnv({
+        VERCEL: "1",
+        VERCEL_ENV: "production",
+        NODE_ENV: "production",
+        PIN_PEPPER: "pepper-seguro-de-32-bytes-ejemplo",
+        APP_ENCRYPTION_KEY: "clave-segura-de-32-bytes-ejemplo",
+        DATABASE_URL: `postgresql://prod_user:${SECRET}@${PROD_HOST}/domigoo`,
+      });
+      expect(env.cookieSecure).toBe(true);
+    });
+
+    it("desarrollo local sin VERCEL mantiene el comportamiento intacto", () => {
+      expect(isPreviewDatabaseGuardActive({})).toBe(false);
+      expect(isPreviewDatabaseGuardActive({ VERCEL_ENV: "" })).toBe(false);
+      const env = readEnv({
+        DATABASE_URL: "postgresql://domigoo:domigoo@127.0.0.1:5432/domigoo",
+      });
+      expect(env.databaseUrl).toBe("postgresql://domigoo:domigoo@127.0.0.1:5432/domigoo");
+    });
   });
 });

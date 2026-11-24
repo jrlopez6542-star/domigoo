@@ -185,12 +185,17 @@ function parseEndpointList(raw: string | undefined, varName: string): string[] {
 }
 
 // El guard estricto se aplica cuando VERCEL_ENV es preview (con cualquier mayúscula o
-// espacio) y también ante cualquier valor no canónico. Solo "production", "development",
-// vacío o ausente conservan exactamente el comportamiento anterior.
+// espacio), ante cualquier valor no canónico, y cuando corre en Vercel (VERCEL=1/true)
+// con VERCEL_ENV ausente o vacío (fail-closed). Solo "production", "development", o
+// ausente/vacío fuera de Vercel conservan el comportamiento sin guard de Preview.
 export function isPreviewDatabaseGuardActive(env: NodeJS.ProcessEnv): boolean {
   const raw = env["VERCEL_ENV"];
-  if (raw === undefined || raw === "" || raw === "production" || raw === "development") {
+  if (raw === "production" || raw === "development") {
     return false;
+  }
+  if (raw === undefined || raw === "") {
+    const vercelFlag = env["VERCEL"]?.trim().toLowerCase();
+    return vercelFlag === "1" || vercelFlag === "true";
   }
   return true;
 }

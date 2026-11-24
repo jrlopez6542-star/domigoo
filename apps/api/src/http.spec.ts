@@ -28,6 +28,7 @@ describe("applyHttpSecurity", () => {
       use: (fn: typeof middleware) => {
         middleware = fn;
       },
+      useGlobalFilters: () => {},
     } as unknown as INestApplication;
 
     applyHttpSecurity(fakeApp, "https://web.domigoo.co, https://admin.domigoo.co");

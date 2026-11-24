@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { createVercelHandler } from "../apps/api/dist/vercel.js";
 import { vercelBuildMeta } from "../apps/api/dist/vercel-build-meta.js";
 
@@ -25,9 +26,22 @@ export default async function handler(request, response) {
     server(request, response);
   } catch (error) {
     pending = undefined;
-    const message = error instanceof Error ? error.message : "Error interno al iniciar la API";
+    const rawVercelId = request?.headers?.["x-vercel-id"];
+    const headerVercelId = Array.isArray(rawVercelId) ? rawVercelId[0] : rawVercelId;
+    const requestId =
+      typeof headerVercelId === "string" && /^[A-Za-z0-9:._-]{1,128}$/.test(headerVercelId)
+        ? headerVercelId
+        : randomUUID();
+    console.error(`[api/index] requestId=${requestId}`, error);
     response.statusCode = 500;
     response.setHeader("content-type", "application/json; charset=utf-8");
-    response.end(JSON.stringify({ status: "error", message }));
+    response.setHeader("x-request-id", requestId);
+    response.end(
+      JSON.stringify({
+        status: "error",
+        message: "Error interno del servidor",
+        requestId,
+      }),
+    );
   }
 }
