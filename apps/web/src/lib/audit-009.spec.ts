@@ -60,6 +60,7 @@ describe("ORDEN 009 - Web SEC-05, UI-02, UI-03", () => {
       });
       const res = await GET(req, { params: Promise.resolve({ path: ["auth", "me"] }) });
       expect(res.status).toBe(502);
+      expect(res.headers.get("cache-control")).toBe("no-store");
       const text = await res.text();
       expect(JSON.parse(text)).toEqual({
         message: "No se pudo conectar con el servicio de API",

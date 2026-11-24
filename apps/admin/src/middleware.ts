@@ -1,8 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-
-export const SESSION_COOKIE = "domigoo_session";
-
-export const ADMIN_SESSION_HEADER = "x-domigoo-admin-session";
+import { ADMIN_SESSION_HEADER, SESSION_COOKIE } from "./lib/session-constants";
 
 export function middleware(request: NextRequest) {
   const sessionCookie = request.cookies.get(SESSION_COOKIE)?.value;

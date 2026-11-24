@@ -1,7 +1,7 @@
 import { cookies, headers } from "next/headers";
 import { AdminPortal } from "@/components/admin-portal";
 import { getAdminServerConfig } from "@/lib/env";
-import { ADMIN_SESSION_HEADER, SESSION_COOKIE } from "@/middleware";
+import { ADMIN_SESSION_HEADER, SESSION_COOKIE } from "@/lib/session-constants";
 
 export const dynamic = "force-dynamic";
 

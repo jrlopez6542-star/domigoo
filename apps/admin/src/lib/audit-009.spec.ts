@@ -3,7 +3,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { NextRequest } from "next/server";
 import { GET, POST } from "../app/api/proxy/[...path]/route.js";
-import { ADMIN_SESSION_HEADER, SESSION_COOKIE, middleware } from "../middleware.js";
+import { ADMIN_SESSION_HEADER, SESSION_COOKIE } from "../lib/session-constants.js";
+import { middleware } from "../middleware.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const adminCssPath = path.resolve(__dirname, "../styles/admin.css");

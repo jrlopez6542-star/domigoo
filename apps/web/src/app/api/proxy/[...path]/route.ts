@@ -106,7 +106,7 @@ async function forward(
   } catch {
     return NextResponse.json(
       { message: "No se pudo conectar con el servicio de API" },
-      { status: 502 },
+      { status: 502, headers: { "cache-control": "no-store" } },
     );
   }
 
