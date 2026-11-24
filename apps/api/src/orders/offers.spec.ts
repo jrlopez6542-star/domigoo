@@ -393,3 +393,111 @@ describe("OffersRepository.listAvailableForUser (ORDEN 015)", () => {
     expect(queries[1]).toContain("AND c.status = 'APPROVED'");
   });
 });
+
+describe("OffersRepository.accept y decline (ORDEN 017)", () => {
+  const offerId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const userId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+  const courierId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+  const orderId = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+
+  function makeRepo(
+    queryHandler: (sql: string, params?: unknown[]) => { rows: unknown[]; rowCount?: number },
+  ) {
+    const queries: string[] = [];
+    let released = false;
+    const client = {
+      query: (sql: string, params?: unknown[]) => {
+        queries.push(sql);
+        return Promise.resolve(queryHandler(sql, params));
+      },
+      release: () => {
+        released = true;
+      },
+    };
+    const mockDb = {
+      pool: {
+        connect: () => Promise.resolve(client),
+      },
+    } as unknown as Database;
+
+    return {
+      repo: new OffersRepository(mockDb),
+      queries,
+      isReleased: () => released,
+    };
+  }
+
+  it.each(["DRAFT", "PENDING_REVIEW", "SUSPENDED", "REJECTED"])(
+    "accept devuelve conflict sin tocar dispatch_offers cuando el domiciliario está en estado %s",
+    async (courierStatus) => {
+      const { repo, queries, isReleased } = makeRepo((sql) => {
+        if (sql.includes("FROM idempotency_keys")) {
+          return { rows: [] };
+        }
+        if (sql.includes("FROM couriers c")) {
+          return { rows: [{ courierId, courierStatus, availabilityState: "AVAILABLE" }] };
+        }
+        return { rows: [] };
+      });
+
+      const result = await repo.accept(offerId, userId, "key-017-non-approved", { ack: true });
+
+      expect(result).toBe("conflict");
+      expect(queries).toContain("ROLLBACK");
+      expect(queries).not.toContain("COMMIT");
+      expect(queries.some((q) => q.includes("dispatch_offers"))).toBe(false);
+      expect(queries.some((q) => q.includes("UPDATE orders"))).toBe(false);
+      expect(isReleased()).toBe(true);
+    },
+  );
+
+  it("accept devuelve conflict sin mutar si la oferta ya está CANCELLED", async () => {
+    const { repo, queries, isReleased } = makeRepo((sql) => {
+      if (sql.includes("FROM idempotency_keys")) {
+        return { rows: [] };
+      }
+      if (sql.includes("FROM couriers c")) {
+        return { rows: [{ courierId, courierStatus: "APPROVED", availabilityState: "AVAILABLE" }] };
+      }
+      if (sql.includes("FOR UPDATE OF o, d")) {
+        return {
+          rows: [
+            {
+              orderId,
+              orderStatus: "SEEKING_COURIER",
+              offerStatus: "CANCELLED",
+              expiresAt: new Date(Date.now() + 600_000),
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    });
+
+    const result = await repo.accept(offerId, userId, "key-017-cancelled", { ack: true });
+
+    expect(result).toBe("conflict");
+    expect(queries).toContain("ROLLBACK");
+    expect(queries).not.toContain("COMMIT");
+    expect(queries.some((q) => q.includes("UPDATE dispatch_offers"))).toBe(false);
+    expect(queries.some((q) => q.includes("UPDATE orders"))).toBe(false);
+    expect(isReleased()).toBe(true);
+  });
+
+  it("decline devuelve conflict sin actualizar dispatch_offers cuando la oferta está CANCELLED", async () => {
+    const { repo, queries, isReleased } = makeRepo((sql) => {
+      if (sql.includes("FROM dispatch_offers d")) {
+        return { rows: [{ status: "CANCELLED" }] };
+      }
+      return { rows: [] };
+    });
+
+    const result = await repo.decline(offerId, userId);
+
+    expect(result).toBe("conflict");
+    expect(queries).toContain("ROLLBACK");
+    expect(queries).not.toContain("COMMIT");
+    expect(queries.some((q) => q.includes("UPDATE dispatch_offers"))).toBe(false);
+    expect(isReleased()).toBe(true);
+  });
+});

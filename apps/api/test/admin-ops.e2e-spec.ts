@@ -7,6 +7,7 @@ import { APP_ENV, readEnv, type AppEnv } from "../src/config/env.js";
 import { applyHttpSecurity } from "../src/http.js";
 import { resetLoginThrottle } from "../src/identity/login-throttle.js";
 import { setupOpenApi } from "../src/openapi.js";
+import { activateRestaurantForTest } from "./activate-restaurant.js";
 import { migrateDatabase } from "./migrate.js";
 import { resetDatabase } from "./reset-db.js";
 const databaseUrl =
@@ -138,6 +139,8 @@ describe("suspensión y estadísticas operativas (M35 y M36)", () => {
          VALUES ($1, 'AVAILABLE', now())`,
         [courierId],
       );
+      await activateRestaurantForTest(db, restaurantId, branchId);
+
       // M35: Suspender sin motivo -> 422
       await request(server())
         .post(`/v1/admin/couriers/${courierId}/suspend`)

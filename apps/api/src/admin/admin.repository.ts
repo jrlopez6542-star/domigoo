@@ -46,15 +46,27 @@ export class AdminRepository {
         `UPDATE couriers SET status = $2::"CourierStatus", "updatedAt" = now() WHERE id = $1`,
         [input.courierId, target],
       );
+      let offersCancelled = 0;
       if (input.suspend) {
         await client.query(
           `UPDATE courier_availabilities SET state = 'OFFLINE', "updatedAt" = now()
            WHERE "courierId" = $1`,
           [input.courierId],
         );
+        const cancelledOffers = await client.query(
+          `UPDATE dispatch_offers
+           SET status = 'CANCELLED', "respondedAt" = now()
+           WHERE "courierId" = $1 AND status = 'PENDING'`,
+          [input.courierId],
+        );
+        offersCancelled = cancelledOffers.rowCount ?? 0;
       }
 
-      const diff = redactDiff({ from: cur.status, to: target, reason: input.reason });
+      const diff = redactDiff(
+        input.suspend
+          ? { from: cur.status, to: target, reason: input.reason, offersCancelled }
+          : { from: cur.status, to: target, reason: input.reason },
+      );
       await client.query(
         `INSERT INTO audit_logs
           (id, "actorId", "actorKind", action, "entityType", "entityId", reason, diff, "createdAt")

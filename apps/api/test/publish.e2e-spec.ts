@@ -8,6 +8,7 @@ import { testEnv } from "./test-env.js";
 import { applyHttpSecurity } from "../src/http.js";
 import { resetLoginThrottle } from "../src/identity/login-throttle.js";
 import { setupOpenApi } from "../src/openapi.js";
+import { activateRestaurantForTest } from "./activate-restaurant.js";
 import { migrateDatabase } from "./migrate.js";
 import { resetDatabase } from "./reset-db.js";
 
@@ -271,6 +272,7 @@ describe("publicación directa", () => {
        )`,
       [restaurantId, plan.rows[0]?.id],
     );
+    await activateRestaurantForTest(billing, restaurantId, branchId);
     await billing.end();
 
     const draft = await request(server())

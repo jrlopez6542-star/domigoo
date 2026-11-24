@@ -7,6 +7,7 @@ import { APP_ENV, readEnv, type AppEnv } from "../src/config/env.js";
 import { applyHttpSecurity } from "../src/http.js";
 import { resetLoginThrottle } from "../src/identity/login-throttle.js";
 import { setupOpenApi } from "../src/openapi.js";
+import { activateRestaurantForTest } from "./activate-restaurant.js";
 import { migrateDatabase } from "./migrate.js";
 import { resetDatabase } from "./reset-db.js";
 const databaseUrl =
@@ -74,6 +75,7 @@ async function seedStaleSeekingOrder(params: {
   const branchId = String(record(site.body)["branchId"]);
   const restaurantId = String(record(site.body)["id"]);
   await params.pool.query(`UPDATE restaurants SET status = 'ACTIVE' WHERE id = $1`, [restaurantId]);
+  await activateRestaurantForTest(params.pool, restaurantId, branchId);
   const draft = await request(server())
     .post("/v1/orders")
     .set("Authorization", `Bearer ${ownerToken}`)

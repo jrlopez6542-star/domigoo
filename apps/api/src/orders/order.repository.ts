@@ -106,7 +106,9 @@ export class OrderRepository {
        JOIN restaurant_memberships m ON m."restaurantId" = e."restaurantId"
        WHERE b.id = $1 AND m."userId" = $2 AND m.status = 'ACTIVE'
          AND r.status NOT IN ('SUSPENDED', 'CLOSED')
-         AND m.role IN ('OWNER', 'MANAGER', 'OPERATOR')`,
+         AND m.role IN ('OWNER', 'MANAGER', 'OPERATOR')
+         AND r.status = 'ACTIVE'
+         AND b.status = 'ACTIVE'`,
       [input.branchId, input.userId],
     );
     const restaurantId = branch.rows[0]?.restaurantId;

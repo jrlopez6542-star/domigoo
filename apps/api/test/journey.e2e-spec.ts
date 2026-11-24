@@ -7,6 +7,7 @@ import { APP_ENV, readEnv, type AppEnv } from "../src/config/env.js";
 import { applyHttpSecurity } from "../src/http.js";
 import { resetLoginThrottle } from "../src/identity/login-throttle.js";
 import { setupOpenApi } from "../src/openapi.js";
+import { activateRestaurantForTest } from "./activate-restaurant.js";
 import { migrateDatabase } from "./migrate.js";
 import { resetDatabase } from "./reset-db.js";
 
@@ -118,6 +119,16 @@ describe("recorrido del pedido (M24)", () => {
         latitude: 4.9655,
       })
       .expect(201);
+    const siteDb = new Pool({ connectionString: databaseUrl });
+    try {
+      await activateRestaurantForTest(
+        siteDb,
+        String(record(site.body)["id"]),
+        String(record(site.body)["branchId"]),
+      );
+    } finally {
+      await siteDb.end();
+    }
 
     const draft = await request(server())
       .post("/v1/orders")

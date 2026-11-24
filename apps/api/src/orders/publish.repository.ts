@@ -64,6 +64,8 @@ export class PublishRepository {
          WHERE o.id = $1 AND o.status = 'DRAFT' AND m."userId" = $2 AND m.status = 'ACTIVE'
            AND r.status NOT IN ('SUSPENDED', 'CLOSED')
            AND m.role IN ('OWNER', 'MANAGER', 'OPERATOR')
+           AND r.status = 'ACTIVE'
+           AND b.status = 'ACTIVE'
          FOR UPDATE OF o`,
         [input.orderId, input.userId],
       );
@@ -260,6 +262,7 @@ export class PublishRepository {
          WHERE o.id = $1 AND o.status = 'DRAFT' AND m."userId" = $2 AND m.status = 'ACTIVE'
            AND r.status NOT IN ('SUSPENDED', 'CLOSED')
            AND m.role IN ('OWNER', 'MANAGER', 'OPERATOR')
+           AND r.status = 'ACTIVE' AND b.status = 'ACTIVE'
          FOR UPDATE OF o`,
         [input.orderId, input.userId],
       );

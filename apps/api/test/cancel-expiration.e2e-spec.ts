@@ -8,6 +8,7 @@ import { applyHttpSecurity } from "../src/http.js";
 import { resetLoginThrottle } from "../src/identity/login-throttle.js";
 import { setupOpenApi } from "../src/openapi.js";
 import { ExpirationRepository } from "../src/orders/expiration.repository.js";
+import { activateRestaurantForTest } from "./activate-restaurant.js";
 import { migrateDatabase } from "./migrate.js";
 import { resetDatabase } from "./reset-db.js";
 
@@ -116,6 +117,16 @@ describe("cancelación y vencimiento (M26)", () => {
         latitude: 4.9655,
       })
       .expect(201);
+    const siteDb = new Pool({ connectionString: databaseUrl });
+    try {
+      await activateRestaurantForTest(
+        siteDb,
+        String(record(site.body)["id"]),
+        String(record(site.body)["branchId"]),
+      );
+    } finally {
+      await siteDb.end();
+    }
 
     const order1Res = await request(server())
       .post("/v1/orders")

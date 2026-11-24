@@ -1,5 +1,6 @@
 import type { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
+import { Pool } from "pg";
 import request from "supertest";
 import { AppModule } from "../src/app.module.js";
 import { APP_ENV, type AppEnv } from "../src/config/env.js";
@@ -7,6 +8,7 @@ import { testEnv } from "./test-env.js";
 import { applyHttpSecurity } from "../src/http.js";
 import { resetLoginThrottle } from "../src/identity/login-throttle.js";
 import { setupOpenApi } from "../src/openapi.js";
+import { activateRestaurantForTest } from "./activate-restaurant.js";
 import { migrateDatabase } from "./migrate.js";
 import { resetDatabase } from "./reset-db.js";
 
@@ -95,6 +97,16 @@ describe("borrador del pedido", () => {
         latitude: 4.9655,
       })
       .expect(201);
+    const db = new Pool({ connectionString: databaseUrl });
+    try {
+      await activateRestaurantForTest(
+        db,
+        String(record(site.body)["id"]),
+        String(record(site.body)["branchId"]),
+      );
+    } finally {
+      await db.end();
+    }
     const created = await request(server())
       .post("/v1/orders")
       .set("Authorization", `Bearer ${ownerToken}`)
