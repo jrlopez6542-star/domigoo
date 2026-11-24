@@ -407,6 +407,7 @@ export function AdminPortal({
                       <li key={c.id} className="adm-case-item">
                         <code>{c.id}</code> — Domiciliario <code>{c.courierId}</code> — Estado:{" "}
                         <strong>{c.status}</strong>
+                        {c.reason ? <span> — Motivo: {c.reason}</span> : null}
                       </li>
                     ))}
                   </ul>
@@ -544,22 +545,34 @@ export function AdminPortal({
                   {loadingAction === "stats" ? "Consultando..." : "Consultar estadísticas"}
                 </button>
                 {stats ? (
-                  <div data-testid="admin-stats" className="adm-stats-grid">
-                    <div className="adm-stat-box">
-                      <div className="adm-stat-value">{stats.eligibleCouriers}</div>
-                      <div>Domiciliarios aprobados y disponibles</div>
-                    </div>
-                    <div className="adm-stat-box">
-                      <div className="adm-stat-value">{stats.openIncidents}</div>
-                      <div>Incidentes abiertos</div>
-                    </div>
-                    <div className="adm-stat-box">
-                      <div className="adm-stat-value">
-                        {stats.medianAcceptSeconds !== null
-                          ? `${String(stats.medianAcceptSeconds)} s`
-                          : "—"}
+                  <div data-testid="admin-stats">
+                    <div className="adm-stats-grid">
+                      <div className="adm-stat-box">
+                        <div className="adm-stat-value">{stats.eligibleCouriers}</div>
+                        <div>Domiciliarios aprobados y disponibles</div>
                       </div>
-                      <div>Mediana de aceptación</div>
+                      <div className="adm-stat-box">
+                        <div className="adm-stat-value">{stats.openIncidents}</div>
+                        <div>Incidentes abiertos</div>
+                      </div>
+                      <div className="adm-stat-box">
+                        <div className="adm-stat-value">
+                          {stats.medianAcceptSeconds !== null
+                            ? `${String(stats.medianAcceptSeconds)} s`
+                            : "—"}
+                        </div>
+                        <div>Mediana de aceptación</div>
+                      </div>
+                    </div>
+                    <div style={{ marginTop: "14px" }} data-testid="admin-stats-by-status">
+                      <h3 style={{ margin: "0 0 8px", fontSize: "0.95rem" }}>Pedidos por estado</h3>
+                      <ul className="adm-case-list">
+                        {Object.entries(stats.ordersByStatus).map(([statusKey, count]) => (
+                          <li key={statusKey} className="adm-case-item">
+                            <strong>{statusKey}</strong>: {count}
+                          </li>
+                        ))}
+                      </ul>
                     </div>
                   </div>
                 ) : null}

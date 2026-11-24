@@ -1,7 +1,9 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Optional } from "@nestjs/common";
 import { Database } from "../database.js";
+import { ExpirationRepository } from "../orders/expiration.repository.js";
 
 export type MaintenanceSummary = {
+  expiredOrders: number;
   expiredOffers: number;
   expiredCourierInvitations: number;
   purgedAccessInvites: number;
@@ -15,15 +17,23 @@ export type MaintenanceSummary = {
 
 @Injectable()
 export class MaintenanceService {
-  constructor(private readonly database: Database) {}
+  constructor(
+    private readonly database: Database,
+    @Optional() private readonly expiration?: ExpirationRepository,
+  ) {}
 
   async runMaintenance(now = new Date()): Promise<MaintenanceSummary> {
-    const expiredOffers = await this.execCount(
+    const staleResult = this.expiration
+      ? await this.expiration.expireStale(now)
+      : { expiredOrders: 0, expiredOffers: 0 };
+
+    const remainingExpiredOffers = await this.execCount(
       `UPDATE dispatch_offers
        SET status = 'EXPIRED'
        WHERE status = 'PENDING' AND "expiresAt" < $1`,
       [now],
     );
+    const expiredOffers = staleResult.expiredOffers + remainingExpiredOffers;
 
     const expiredCourierInvitations = await this.execCount(
       `UPDATE courier_invitations
@@ -87,6 +97,7 @@ export class MaintenanceService {
     );
 
     return {
+      expiredOrders: staleResult.expiredOrders,
       expiredOffers,
       expiredCourierInvitations,
       purgedAccessInvites,

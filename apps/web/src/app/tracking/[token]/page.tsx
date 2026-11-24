@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { TrackingRefreshButton } from "@/components/tracking-refresh-button";
 import { getWebServerConfig } from "@/lib/env";
 
 export const dynamic = "force-dynamic";
@@ -102,7 +103,19 @@ export default async function TrackingPage({ params }: { params: Promise<{ token
       }}
     >
       <p style={{ fontSize: "0.875rem", color: "#475569", margin: 0 }}>{appName}</p>
-      <h1 style={{ fontSize: "1.5rem", marginTop: "0.5rem" }}>Seguimiento de tu pedido</h1>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: "12px",
+          flexWrap: "wrap",
+          marginTop: "0.5rem",
+        }}
+      >
+        <h1 style={{ fontSize: "1.5rem", margin: 0 }}>Seguimiento de tu pedido</h1>
+        <TrackingRefreshButton />
+      </div>
 
       <div
         data-testid="tracking-status"
@@ -152,6 +165,28 @@ export default async function TrackingPage({ params }: { params: Promise<{ token
           <p style={{ fontSize: "0.875rem", color: "#134e4a", marginBottom: 0 }}>
             Entrega este PIN únicamente al domiciliario cuando recibas tu pedido.
           </p>
+        </section>
+      ) : null}
+
+      {tracking.events && tracking.events.length > 0 ? (
+        <section data-testid="tracking-timeline" style={{ marginTop: "1.5rem" }}>
+          <h2 style={{ fontSize: "1.05rem", margin: "0 0 0.75rem" }}>Historial de estado</h2>
+          <ol style={{ margin: 0, paddingLeft: "1.25rem", display: "grid", gap: "0.5rem" }}>
+            {tracking.events.map((ev, index) => {
+              const label = STATUS_LABELS[ev.toStatus] ?? ev.toStatus;
+              return (
+                <li key={`${ev.toStatus}-${ev.createdAt}-${String(index)}`}>
+                  <strong>{label}</strong>{" "}
+                  <span style={{ color: "#475569", fontSize: "0.85rem" }}>
+                    ({ev.toStatus}) ·{" "}
+                    {new Date(ev.createdAt).toLocaleString("es-CO", {
+                      timeZone: "America/Bogota",
+                    })}
+                  </span>
+                </li>
+              );
+            })}
+          </ol>
         </section>
       ) : null}
     </main>

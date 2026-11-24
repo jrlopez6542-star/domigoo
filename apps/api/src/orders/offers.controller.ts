@@ -5,7 +5,9 @@ import {
   Get,
   Headers,
   HttpException,
+  Logger,
   NotFoundException,
+  Optional,
   Param,
   Post,
   Req,
@@ -13,6 +15,7 @@ import {
 } from "@nestjs/common";
 import { ApiOperation, ApiTags } from "@nestjs/swagger";
 import { SessionGuard, type AuthenticatedRequest } from "../identity/session.guard.js";
+import { ExpirationRepository } from "./expiration.repository.js";
 import {
   OffersRepository,
   type AcceptResult,
@@ -23,7 +26,12 @@ import {
 @Controller("v1/offers")
 @UseGuards(SessionGuard)
 export class OffersController {
-  constructor(private readonly offers: OffersRepository) {}
+  private readonly logger = new Logger(OffersController.name);
+
+  constructor(
+    private readonly offers: OffersRepository,
+    @Optional() private readonly expiration?: ExpirationRepository,
+  ) {}
 
   @Get("available")
   @ApiOperation({
@@ -33,6 +41,14 @@ export class OffersController {
     const userId = request.auth?.userId;
     if (userId === undefined) {
       throw new NotFoundException();
+    }
+    if (this.expiration) {
+      try {
+        await this.expiration.expireStale(new Date());
+      } catch (error) {
+        const name = error instanceof Error ? error.name : "UnknownError";
+        this.logger.warn(`Expiración perezosa omitida (${name})`);
+      }
     }
     const offers = await this.offers.listAvailableForUser(userId);
     if (offers === "forbidden") {

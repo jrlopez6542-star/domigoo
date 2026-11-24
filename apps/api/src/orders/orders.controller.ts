@@ -4,7 +4,9 @@ import {
   ForbiddenException,
   Get,
   HttpException,
+  Logger,
   NotFoundException,
+  Optional,
   Param,
   Post,
   Req,
@@ -13,6 +15,7 @@ import {
 import { ApiOperation, ApiTags } from "@nestjs/swagger";
 import { validateTocancipaCoverage } from "../geo/tocancipa-coverage.js";
 import { SessionGuard, type AuthenticatedRequest } from "../identity/session.guard.js";
+import { ExpirationRepository } from "./expiration.repository.js";
 import {
   JourneyRepository,
   type JourneyStatus,
@@ -32,11 +35,24 @@ import { PublishRepository, type OpenWave, type PublishedOrder } from "./publish
 @Controller("v1/orders")
 @UseGuards(SessionGuard)
 export class OrdersController {
+  private readonly logger = new Logger(OrdersController.name);
+
   constructor(
     private readonly orders: OrderRepository,
     private readonly publisher: PublishRepository,
     private readonly journey: JourneyRepository,
+    @Optional() private readonly expiration?: ExpirationRepository,
   ) {}
+
+  private async expireStaleSafely(): Promise<void> {
+    if (!this.expiration) return;
+    try {
+      await this.expiration.expireStale(new Date());
+    } catch (error) {
+      const name = error instanceof Error ? error.name : "UnknownError";
+      this.logger.warn(`Expiración perezosa omitida (${name})`);
+    }
+  }
 
   @Post()
   @ApiOperation({ summary: "Crea un borrador con comida y domicilio separados" })
@@ -127,6 +143,7 @@ export class OrdersController {
     if (userId === undefined) {
       throw new NotFoundException();
     }
+    await this.expireStaleSafely();
     const result = await this.orders.listMine(userId);
     if (result === "forbidden") {
       throw new ForbiddenException();
@@ -146,6 +163,7 @@ export class OrdersController {
     if (userId === undefined) {
       throw new NotFoundException();
     }
+    await this.expireStaleSafely();
     const view = await this.orders.findOrderView(id, userId);
     if (view.kind === "missing") {
       throw new NotFoundException();

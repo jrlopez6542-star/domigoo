@@ -142,7 +142,21 @@ type RestaurantContextValue = {
   trackingUrl: string;
   handleRefreshOrder: (targetOrderId?: string) => Promise<void>;
   handleCreateTrackingLink: (targetOrderId?: string) => Promise<void>;
+  confirmCancelOrderId: string | null;
+  setConfirmCancelOrderId: (v: string | null) => void;
+  cancelReason: string;
+  setCancelReason: (v: string) => void;
+  cancelError: string;
+  setCancelError: (v: string) => void;
+  handleCancelOrder: (targetOrderId: string) => Promise<void>;
 };
+
+export const RESTAURANT_CANCELLABLE_STATUSES = new Set([
+  "SEEKING_COURIER",
+  "ACCEPTED",
+  "ARRIVING_PICKUP",
+  "AT_PICKUP",
+]);
 
 const RestaurantContext = createContext<RestaurantContextValue | null>(null);
 
@@ -249,6 +263,9 @@ export function RestaurantPortalShell({
   const [orderView, setOrderView] = useState<OrderView | null>(null);
   const [events, setEvents] = useState<OrderEvent[]>([]);
   const [trackingUrl, setTrackingUrl] = useState<string>("");
+  const [confirmCancelOrderId, setConfirmCancelOrderId] = useState<string | null>(null);
+  const [cancelReason, setCancelReason] = useState<string>("");
+  const [cancelError, setCancelError] = useState<string>("");
 
   useEffect(() => {
     let active = true;
@@ -585,6 +602,33 @@ export function RestaurantPortalShell({
     });
   }
 
+  async function handleCancelOrder(targetOrderId: string) {
+    const trimmedReason = cancelReason.trim();
+    if (!targetOrderId || !trimmedReason) return;
+    setCancelError("");
+    await runAction("cancel", async () => {
+      try {
+        const res = await callProxy<{ status: string }>(
+          `orders/${encodeURIComponent(targetOrderId)}/cancel`,
+          "POST",
+          { reason: trimmedReason },
+        );
+        setConfirmCancelOrderId(null);
+        setCancelReason("");
+        setCancelError("");
+        if (orderView?.id === targetOrderId) {
+          setOrderView({ ...orderView, status: res.status });
+        }
+        setStatusMessage(`Pedido cancelado: ${res.status}`);
+        await loadMyOrders();
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "No se pudo cancelar el pedido.";
+        setCancelError(msg);
+        throw err;
+      }
+    });
+  }
+
   if (checkingSession) {
     return (
       <div className="dg-card">
@@ -709,6 +753,13 @@ export function RestaurantPortalShell({
         trackingUrl,
         handleRefreshOrder,
         handleCreateTrackingLink,
+        confirmCancelOrderId,
+        setConfirmCancelOrderId,
+        cancelReason,
+        setCancelReason,
+        cancelError,
+        setCancelError,
+        handleCancelOrder,
       }}
     >
       <RolePanelShell
@@ -1483,6 +1534,13 @@ export function RestaurantPedidosScreen() {
     trackingUrl,
     handleRefreshOrder,
     handleCreateTrackingLink,
+    confirmCancelOrderId,
+    setConfirmCancelOrderId,
+    cancelReason,
+    setCancelReason,
+    cancelError,
+    setCancelError,
+    handleCancelOrder,
   } = useRestaurantPortal();
 
   return (
@@ -1527,6 +1585,8 @@ export function RestaurantPedidosScreen() {
           >
             {myOrders.map((item) => {
               const isSelected = item.id === orderId;
+              const isCancellable = RESTAURANT_CANCELLABLE_STATUSES.has(item.status);
+              const isConfirmingCancel = confirmCancelOrderId === item.id;
               return (
                 <article
                   key={item.id}
@@ -1580,7 +1640,86 @@ export function RestaurantPedidosScreen() {
                     >
                       Generar enlace público
                     </button>
+                    {isCancellable && !isConfirmingCancel ? (
+                      <button
+                        type="button"
+                        data-testid={`cancel-order-btn-${item.id}`}
+                        className="dg-btn dg-btn--secondary"
+                        style={{ minHeight: "44px", minWidth: "44px" }}
+                        disabled={!sessionUser || busyAction === "cancel"}
+                        onClick={() => {
+                          setConfirmCancelOrderId(item.id);
+                          setCancelReason("");
+                          setCancelError("");
+                        }}
+                      >
+                        Cancelar pedido
+                      </button>
+                    ) : null}
                   </div>
+                  {isCancellable && isConfirmingCancel ? (
+                    <div
+                      data-testid={`cancel-confirm-${item.id}`}
+                      style={{
+                        marginTop: "10px",
+                        padding: "12px",
+                        border: "1px solid var(--dg-border)",
+                        borderRadius: "var(--dg-radius-sm)",
+                        display: "grid",
+                        gap: "8px",
+                        minWidth: 0,
+                      }}
+                    >
+                      {cancelError ? (
+                        <div role="alert" className="dg-alert dg-alert--error">
+                          {cancelError}
+                        </div>
+                      ) : null}
+                      <label className="dg-field" htmlFor={`cancel-reason-${item.id}`}>
+                        <span>Motivo de cancelación</span>
+                        <input
+                          id={`cancel-reason-${item.id}`}
+                          className="dg-input"
+                          type="text"
+                          value={cancelReason}
+                          maxLength={200}
+                          onChange={(e) => {
+                            setCancelReason(e.target.value);
+                          }}
+                          placeholder="Ej: Cliente solicitó cancelar"
+                          disabled={busyAction === "cancel"}
+                          required
+                        />
+                      </label>
+                      <div className="dg-btn-row">
+                        <button
+                          type="button"
+                          data-testid={`confirm-cancel-btn-${item.id}`}
+                          className="dg-btn"
+                          style={{ minHeight: "44px", minWidth: "44px" }}
+                          disabled={!sessionUser || busyAction === "cancel" || !cancelReason.trim()}
+                          onClick={() => {
+                            void handleCancelOrder(item.id);
+                          }}
+                        >
+                          {busyAction === "cancel" ? "Cancelando..." : "Confirmar cancelación"}
+                        </button>
+                        <button
+                          type="button"
+                          className="dg-btn dg-btn--secondary"
+                          style={{ minHeight: "44px", minWidth: "44px" }}
+                          disabled={busyAction === "cancel"}
+                          onClick={() => {
+                            setConfirmCancelOrderId(null);
+                            setCancelReason("");
+                            setCancelError("");
+                          }}
+                        >
+                          Volver
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
                 </article>
               );
             })}
