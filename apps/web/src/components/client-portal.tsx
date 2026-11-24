@@ -13,8 +13,9 @@ import {
 } from "react";
 import { Calculator, Home, MapPin, ShieldCheck, UtensilsCrossed } from "lucide-react";
 import { callProxy, extractTrackingToken } from "@/lib/api-client";
-import type { QuotePayload } from "@/lib/contracts";
+import type { QuotePayload, TariffQuoteResponse } from "@/lib/contracts";
 import { orderStatusLabel } from "@/lib/order-status";
+import { formatQuote, formatQuoteError, QUOTE_UNAVAILABLE_TEXT } from "@/lib/quote-display";
 import {
   clearStoredActiveRole,
   getStoredActiveRole,
@@ -257,17 +258,12 @@ export function ClientPortalShell({ children }: { children: ReactNode }) {
         destination: { longitude: Number(destLng), latitude: Number(destLat) },
         at: new Date().toISOString(),
       };
-      const data = await callProxy<{
-        distanceKm?: number;
-        totalCop?: number;
-        deliveryFeeCop?: number;
-      }>("tariffs/quote", "POST", payload);
-      const fee = data.totalCop ?? data.deliveryFeeCop;
-      setQuoteText(
-        `Distancia estimada: ${String(data.distanceKm ?? "?")} km · Domicilio estimado: $${String(fee ?? "?")} COP`,
-      );
+      const data = await callProxy<TariffQuoteResponse>("tariffs/quote", "POST", payload);
+      setQuoteText(formatQuote(data));
     } catch (err) {
-      setQuoteError(err instanceof Error ? err.message : "No se pudo calcular la tarifa.");
+      const fallback = formatQuoteError(err);
+      setQuoteText(fallback.quoteText);
+      setQuoteError(fallback.quoteError);
     } finally {
       setQuoteLoading(false);
     }
@@ -628,7 +624,15 @@ export function ClientTarifaScreen() {
           </div>
         ) : null}
         {quoteText ? (
-          <div role="status" className="dg-alert dg-alert--success" style={{ marginTop: "12px" }}>
+          <div
+            role="status"
+            className={
+              quoteText === QUOTE_UNAVAILABLE_TEXT
+                ? "dg-alert dg-alert--info"
+                : "dg-alert dg-alert--success"
+            }
+            style={{ marginTop: "12px" }}
+          >
             {quoteText}
           </div>
         ) : null}

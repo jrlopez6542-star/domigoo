@@ -65,7 +65,7 @@ async function reviewer(): Promise<string> {
   );
   await pool.query(
     `INSERT INTO admin_profiles ("userId", "displayName", role, "createdAt", "updatedAt")
-     VALUES ($1, 'Revisor', 'REVIEWER', now(), now())`,
+     VALUES ($1, 'Revisor', 'SUPERADMIN', now(), now())`,
     [user.rows[0]?.id],
   );
   await pool.end();

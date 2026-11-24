@@ -13,6 +13,7 @@ import { ApiOperation, ApiTags } from "@nestjs/swagger";
 import { AuditRecorder } from "../audit/audit.service.js";
 import { Database } from "../database.js";
 import { RestaurantRepository } from "../restaurants/restaurant.repository.js";
+import { denyReviewer } from "./admin-roles.js";
 import { AdminGuard, type AdminRequest } from "./admin.guard.js";
 
 const PLATFORM_ROLES = ["SUPERADMIN", "REVIEWER", "OPERATIONS", "SECURITY"] as const;
@@ -82,6 +83,7 @@ export class AdminController {
     @Param("id") restaurantId: string,
     @Req() request: AdminRequest,
   ): Promise<{ status: "ACTIVE" }> {
+    denyReviewer(request.adminRole);
     if (request.auth === undefined) {
       throw new NotFoundException();
     }

@@ -11,6 +11,7 @@ import { setupOpenApi } from "../src/openapi.js";
 import { activateRestaurantForTest } from "./activate-restaurant.js";
 import { migrateDatabase } from "./migrate.js";
 import { resetDatabase } from "./reset-db.js";
+import { registerSetupSuperadmin } from "./setup-superadmin.js";
 
 const databaseUrl =
   process.env["DATABASE_URL"] ?? "postgresql://domigoo:domigoo@127.0.0.1:5432/domigoo";
@@ -181,9 +182,14 @@ describe("oferta abierta", () => {
     );
     await pool.end();
 
+    const setupSuperadmin = await registerSetupSuperadmin(
+      server(),
+      databaseUrl,
+      "superadmin-preparacion-open-offer-1@example.invalid",
+    );
     const documents = await request(server())
       .post("/v1/legal-documents")
-      .set("Authorization", `Bearer ${reviewer}`)
+      .set("Authorization", `Bearer ${setupSuperadmin}`)
       .send({
         kind: "DOCUMENT_PROCESSING",
         version: "2026-abierta-docs",
@@ -192,7 +198,7 @@ describe("oferta abierta", () => {
       .expect(201);
     const geolocation = await request(server())
       .post("/v1/legal-documents")
-      .set("Authorization", `Bearer ${reviewer}`)
+      .set("Authorization", `Bearer ${setupSuperadmin}`)
       .send({
         kind: "GEOLOCATION_CONSENT",
         version: "2026-abierta-gps",
@@ -580,9 +586,14 @@ describe("oferta abierta", () => {
     );
     await pool.end();
 
+    const setupSuperadmin = await registerSetupSuperadmin(
+      server(),
+      databaseUrl,
+      "superadmin-preparacion-open-offer-2@example.invalid",
+    );
     const documents = await request(server())
       .post("/v1/legal-documents")
-      .set("Authorization", `Bearer ${reviewer}`)
+      .set("Authorization", `Bearer ${setupSuperadmin}`)
       .send({
         kind: "DOCUMENT_PROCESSING",
         version: "2026-conc-docs",
@@ -591,7 +602,7 @@ describe("oferta abierta", () => {
       .expect(201);
     const geolocation = await request(server())
       .post("/v1/legal-documents")
-      .set("Authorization", `Bearer ${reviewer}`)
+      .set("Authorization", `Bearer ${setupSuperadmin}`)
       .send({
         kind: "GEOLOCATION_CONSENT",
         version: "2026-conc-gps",

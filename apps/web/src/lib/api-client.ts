@@ -1,3 +1,17 @@
+export class ProxyError extends Error {
+  readonly status: number;
+  readonly code?: string;
+
+  constructor(message: string, status: number, code?: string) {
+    super(message);
+    this.name = "ProxyError";
+    this.status = status;
+    if (code !== undefined) {
+      this.code = code;
+    }
+  }
+}
+
 export async function callProxy<T>(path: string, method: string, body?: unknown): Promise<T> {
   const res = await fetch(`/api/proxy/${path}`, {
     method,
@@ -23,7 +37,14 @@ export async function callProxy<T>(path: string, method: string, body?: unknown)
       typeof parsed.message === "string"
         ? (parsed as { message: string }).message
         : `Error ${String(res.status)}`;
-    throw new Error(msg);
+    const code =
+      typeof parsed === "object" &&
+      parsed !== null &&
+      "code" in parsed &&
+      typeof parsed.code === "string"
+        ? (parsed as { code: string }).code
+        : undefined;
+    throw new ProxyError(msg, res.status, code);
   }
   return parsed as T;
 }

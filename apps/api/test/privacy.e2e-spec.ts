@@ -89,7 +89,7 @@ describe("consentimiento", () => {
     }
     await pool.query(
       `INSERT INTO admin_profiles ("userId", "displayName", role, "createdAt", "updatedAt")
-       VALUES ($1, 'Aviso', 'REVIEWER', now(), now())`,
+       VALUES ($1, 'Aviso', 'SUPERADMIN', now(), now())`,
       [adminId],
     );
     await pool.end();

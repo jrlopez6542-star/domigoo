@@ -13,6 +13,7 @@ import { resetLoginThrottle } from "../src/identity/login-throttle.js";
 import { setupOpenApi } from "../src/openapi.js";
 import { migrateDatabase } from "./migrate.js";
 import { resetDatabase } from "./reset-db.js";
+import { registerSetupSuperadmin } from "./setup-superadmin.js";
 
 const databaseUrl =
   process.env["DATABASE_URL"] ?? "postgresql://domigoo:domigoo@127.0.0.1:5432/domigoo";
@@ -177,9 +178,14 @@ describe("disponibilidad y radio", () => {
     );
     await pool.end();
 
+    const setupSuperadmin = await registerSetupSuperadmin(
+      server(),
+      databaseUrl,
+      "superadmin-preparacion-availability-1@example.invalid",
+    );
     const documents = await request(server())
       .post("/v1/legal-documents")
-      .set("Authorization", `Bearer ${reviewer}`)
+      .set("Authorization", `Bearer ${setupSuperadmin}`)
       .send({
         kind: "DOCUMENT_PROCESSING",
         version: "2026-radio-docs",
@@ -188,7 +194,7 @@ describe("disponibilidad y radio", () => {
       .expect(201);
     const geolocation = await request(server())
       .post("/v1/legal-documents")
-      .set("Authorization", `Bearer ${reviewer}`)
+      .set("Authorization", `Bearer ${setupSuperadmin}`)
       .send({
         kind: "GEOLOCATION_CONSENT",
         version: "2026-radio-gps",

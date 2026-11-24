@@ -37,3 +37,10 @@ export type QuotePayload = {
   destination: { longitude: number; latitude: number };
   at: string;
 };
+
+export type TariffQuoteResponse = {
+  versionId: string;
+  zoneCode: string | null;
+  distanceMeters: number;
+  deliveryFeeCop: number;
+};

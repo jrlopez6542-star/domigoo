@@ -11,6 +11,7 @@ import { PUSH_SENDER, RecordingPushSender } from "../src/notifications/push-send
 import { setupOpenApi } from "../src/openapi.js";
 import { migrateDatabase } from "./migrate.js";
 import { resetDatabase } from "./reset-db.js";
+import { registerSetupSuperadmin } from "./setup-superadmin.js";
 
 const databaseUrl =
   process.env["DATABASE_URL"] ?? "postgresql://domigoo:domigoo@127.0.0.1:5432/domigoo";
@@ -108,7 +109,7 @@ async function seedTariffAndPolicy(pool: Pool): Promise<void> {
 
 async function registerAndVerifyRestaurant(
   pool: Pool,
-  adminCookie: string,
+  activatorToken: string,
   ownerEmail: string,
   nit: string,
 ): Promise<{ ownerCookie: string; restaurantId: string; branchId: string }> {
@@ -165,7 +166,7 @@ async function registerAndVerifyRestaurant(
   // Admin verifica y activa el restaurante
   const activated = await request(server())
     .post(`/v1/admin/restaurants/${restaurantId}/activate`)
-    .set("Cookie", adminCookie)
+    .set("Authorization", `Bearer ${activatorToken}`)
     .expect(201);
   expect(record(activated.body)["status"]).toBe("ACTIVE");
 
@@ -330,14 +331,19 @@ describe("flujo completo de punta a punta, casos negativos y concurrencia (M40)"
       await seedTariffAndPolicy(pool);
       const adminCookie = await registerAdmin(pool, "admin-m40@example.invalid");
 
+      const setupSuperadmin = await registerSetupSuperadmin(
+        server(),
+        databaseUrl,
+        "superadmin-preparacion-flujo-completo-1@example.invalid",
+      );
       const docLegal = await request(server())
         .post("/v1/legal-documents")
-        .set("Cookie", adminCookie)
+        .set("Authorization", `Bearer ${setupSuperadmin}`)
         .send({ kind: "DOCUMENT_PROCESSING", version: "2026-m40-doc", content: "Doc M40" })
         .expect(201);
       const gpsLegal = await request(server())
         .post("/v1/legal-documents")
-        .set("Cookie", adminCookie)
+        .set("Authorization", `Bearer ${setupSuperadmin}`)
         .send({ kind: "GEOLOCATION_CONSENT", version: "2026-m40-gps", content: "GPS M40" })
         .expect(201);
       const docLegalId = String(record(docLegal.body)["id"]);
@@ -346,7 +352,7 @@ describe("flujo completo de punta a punta, casos negativos y concurrencia (M40)"
       // 1-2. Restaurante se registra y admin lo verifica
       const { ownerCookie, branchId } = await registerAndVerifyRestaurant(
         pool,
-        adminCookie,
+        setupSuperadmin,
         "owner-m40@example.invalid",
         "900000401",
       );
@@ -569,20 +575,25 @@ describe("flujo completo de punta a punta, casos negativos y concurrencia (M40)"
       await seedTariffAndPolicy(pool);
       const adminCookie = await registerAdmin(pool, "admin-lock-m40@example.invalid");
 
+      const setupSuperadmin = await registerSetupSuperadmin(
+        server(),
+        databaseUrl,
+        "superadmin-preparacion-flujo-completo-2@example.invalid",
+      );
       const docLegal = await request(server())
         .post("/v1/legal-documents")
-        .set("Cookie", adminCookie)
+        .set("Authorization", `Bearer ${setupSuperadmin}`)
         .send({ kind: "DOCUMENT_PROCESSING", version: "2026-m40-lock-doc", content: "Doc" })
         .expect(201);
       const gpsLegal = await request(server())
         .post("/v1/legal-documents")
-        .set("Cookie", adminCookie)
+        .set("Authorization", `Bearer ${setupSuperadmin}`)
         .send({ kind: "GEOLOCATION_CONSENT", version: "2026-m40-lock-gps", content: "GPS" })
         .expect(201);
 
       const { ownerCookie, branchId } = await registerAndVerifyRestaurant(
         pool,
-        adminCookie,
+        setupSuperadmin,
         "owner-lock-m40@example.invalid",
         "900000402",
       );
@@ -702,14 +713,19 @@ describe("flujo completo de punta a punta, casos negativos y concurrencia (M40)"
       await seedTariffAndPolicy(pool);
       const adminCookie = await registerAdmin(pool, "admin-race-m40@example.invalid");
 
+      const setupSuperadmin = await registerSetupSuperadmin(
+        server(),
+        databaseUrl,
+        "superadmin-preparacion-flujo-completo-3@example.invalid",
+      );
       const docLegal = await request(server())
         .post("/v1/legal-documents")
-        .set("Cookie", adminCookie)
+        .set("Authorization", `Bearer ${setupSuperadmin}`)
         .send({ kind: "DOCUMENT_PROCESSING", version: "2026-m40-race-doc", content: "Doc" })
         .expect(201);
       const gpsLegal = await request(server())
         .post("/v1/legal-documents")
-        .set("Cookie", adminCookie)
+        .set("Authorization", `Bearer ${setupSuperadmin}`)
         .send({ kind: "GEOLOCATION_CONSENT", version: "2026-m40-race-gps", content: "GPS" })
         .expect(201);
       const docLegalId = String(record(docLegal.body)["id"]);
@@ -717,7 +733,7 @@ describe("flujo completo de punta a punta, casos negativos y concurrencia (M40)"
 
       const { ownerCookie, branchId } = await registerAndVerifyRestaurant(
         pool,
-        adminCookie,
+        setupSuperadmin,
         "owner-race-m40@example.invalid",
         "900000403",
       );

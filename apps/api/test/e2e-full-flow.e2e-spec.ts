@@ -11,6 +11,7 @@ import { PUSH_SENDER, RecordingPushSender } from "../src/notifications/push-send
 import { setupOpenApi } from "../src/openapi.js";
 import { migrateDatabase } from "./migrate.js";
 import { resetDatabase } from "./reset-db.js";
+import { registerSetupSuperadmin } from "./setup-superadmin.js";
 
 const databaseUrl =
   process.env["DATABASE_URL"] ?? "postgresql://domigoo:domigoo@127.0.0.1:5432/domigoo";
@@ -139,14 +140,19 @@ describe("recorrido de punta a punta (M38)", () => {
       );
 
       // Documentos legales y aprobación del domiciliario
+      const setupSuperadmin = await registerSetupSuperadmin(
+        server(),
+        databaseUrl,
+        "superadmin-preparacion-e2e-full-flow-1@example.invalid",
+      );
       const docLegal = await request(server())
         .post("/v1/legal-documents")
-        .set("Authorization", `Bearer ${reviewer}`)
+        .set("Authorization", `Bearer ${setupSuperadmin}`)
         .send({ kind: "DOCUMENT_PROCESSING", version: "2026-m38-doc", content: "Doc M38" })
         .expect(201);
       const gpsLegal = await request(server())
         .post("/v1/legal-documents")
-        .set("Authorization", `Bearer ${reviewer}`)
+        .set("Authorization", `Bearer ${setupSuperadmin}`)
         .send({ kind: "GEOLOCATION_CONSENT", version: "2026-m38-gps", content: "GPS M38" })
         .expect(201);
 

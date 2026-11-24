@@ -4,11 +4,13 @@ import {
   HttpException,
   NotFoundException,
   Post,
+  Req,
   UseGuards,
 } from "@nestjs/common";
 import { ApiOperation, ApiTags } from "@nestjs/swagger";
 import { validateTocancipaCoverage } from "../geo/tocancipa-coverage.js";
-import { AdminGuard } from "../identity/admin.guard.js";
+import { denyReviewer } from "../identity/admin-roles.js";
+import { AdminGuard, type AdminRequest } from "../identity/admin.guard.js";
 import { SessionGuard } from "../identity/session.guard.js";
 import { TariffRepository, type TariffQuote } from "./tariff.repository.js";
 
@@ -52,7 +54,11 @@ export class TariffsController {
 
   @Post("versions")
   @ApiOperation({ summary: "Crea una versión de tarifa en borrador" })
-  async createVersion(@Body() body: unknown): Promise<{ id: string }> {
+  async createVersion(
+    @Body() body: unknown,
+    @Req() request: AdminRequest,
+  ): Promise<{ id: string }> {
+    denyReviewer(request.adminRole);
     const name = readName(body);
     if (name === null) {
       throw new NotFoundException();
@@ -62,7 +68,8 @@ export class TariffsController {
 
   @Post("zones")
   @ApiOperation({ summary: "Agrega un polígono a una versión" })
-  async addZone(@Body() body: unknown): Promise<{ id: string }> {
+  async addZone(@Body() body: unknown, @Req() request: AdminRequest): Promise<{ id: string }> {
+    denyReviewer(request.adminRole);
     const parsed = readZone(body);
     if (parsed === null) {
       throw new NotFoundException();
@@ -72,7 +79,8 @@ export class TariffsController {
 
   @Post("rules")
   @ApiOperation({ summary: "Agrega una regla en pesos enteros" })
-  async addRule(@Body() body: unknown): Promise<{ created: true }> {
+  async addRule(@Body() body: unknown, @Req() request: AdminRequest): Promise<{ created: true }> {
+    denyReviewer(request.adminRole);
     const parsed = readRule(body);
     if (parsed === null) {
       throw new NotFoundException();
@@ -83,7 +91,8 @@ export class TariffsController {
 
   @Post("publish")
   @ApiOperation({ summary: "Publica una versión y retira la anterior" })
-  async publish(@Body() body: unknown): Promise<{ published: true }> {
+  async publish(@Body() body: unknown, @Req() request: AdminRequest): Promise<{ published: true }> {
+    denyReviewer(request.adminRole);
     const versionId = readId(body, "versionId");
     if (versionId === null || !(await this.tariffs.publish(versionId))) {
       throw new NotFoundException();
@@ -93,7 +102,8 @@ export class TariffsController {
 
   @Post("quote")
   @ApiOperation({ summary: "Cotiza el domicilio con la tarifa publicada" })
-  async quote(@Body() body: unknown): Promise<TariffQuote> {
+  async quote(@Body() body: unknown, @Req() request: AdminRequest): Promise<TariffQuote> {
+    denyReviewer(request.adminRole);
     const parsed = readQuote(body);
     if (parsed === null) {
       throw new NotFoundException();

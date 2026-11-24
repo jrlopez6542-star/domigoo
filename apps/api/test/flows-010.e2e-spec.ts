@@ -9,6 +9,7 @@ import { resetLoginThrottle } from "../src/identity/login-throttle.js";
 import { setupOpenApi } from "../src/openapi.js";
 import { migrateDatabase } from "./migrate.js";
 import { resetDatabase } from "./reset-db.js";
+import { registerSetupSuperadmin } from "./setup-superadmin.js";
 const databaseUrl =
   process.env["DATABASE_URL"] ?? "postgresql://domigoo:domigoo@127.0.0.1:5432/domigoo";
 const password = "clave-de-prueba-12";
@@ -236,14 +237,19 @@ describe("ORDEN 010 - flujos E2E completos e aislamiento", () => {
          RETURNING id`,
       );
       const planId = String(plan.rows[0]?.id);
+      const setupSuperadmin = await registerSetupSuperadmin(
+        server(),
+        databaseUrl,
+        "superadmin-preparacion-flows-010-1@example.invalid",
+      );
       const docLegal = await request(server())
         .post("/v1/legal-documents")
-        .set("Authorization", `Bearer ${reviewerToken}`)
+        .set("Authorization", `Bearer ${setupSuperadmin}`)
         .send({ kind: "DOCUMENT_PROCESSING", version: "2026-010-doc", content: "Doc 010" })
         .expect(201);
       const gpsLegal = await request(server())
         .post("/v1/legal-documents")
-        .set("Authorization", `Bearer ${reviewerToken}`)
+        .set("Authorization", `Bearer ${setupSuperadmin}`)
         .send({ kind: "GEOLOCATION_CONSENT", version: "2026-010-gps", content: "GPS 010" })
         .expect(201);
       const docLegalId = String(record(docLegal.body)["id"]);

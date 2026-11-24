@@ -12,7 +12,8 @@ import {
   UseGuards,
 } from "@nestjs/common";
 import { ApiOperation, ApiTags } from "@nestjs/swagger";
-import { AdminGuard } from "../identity/admin.guard.js";
+import { denyReviewer } from "../identity/admin-roles.js";
+import { AdminGuard, type AdminRequest } from "../identity/admin.guard.js";
 import { SessionGuard, type AuthenticatedRequest } from "../identity/session.guard.js";
 import { PrivacyRepository } from "./privacy.repository.js";
 
@@ -46,7 +47,9 @@ export class PrivacyController {
   @ApiOperation({ summary: "Publica una versión de un documento legal" })
   async publish(
     @Body() body: unknown,
+    @Req() request: AdminRequest,
   ): Promise<{ id: string; contentHash: string; version: string }> {
+    denyReviewer(request.adminRole);
     const parsed = readDocument(body);
     if (parsed === null) {
       throw new NotFoundException();

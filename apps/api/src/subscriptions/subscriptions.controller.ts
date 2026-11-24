@@ -11,6 +11,7 @@ import {
 } from "@nestjs/common";
 import { ApiOperation, ApiTags } from "@nestjs/swagger";
 import { AuditRecorder } from "../audit/audit.service.js";
+import { denyReviewer } from "../identity/admin-roles.js";
 import { AdminGuard, type AdminRequest } from "../identity/admin.guard.js";
 import { SessionGuard, type AuthenticatedRequest } from "../identity/session.guard.js";
 import { SubscriptionRepository, type PlanInput } from "./subscription.repository.js";
@@ -26,7 +27,8 @@ export class SubscriptionAdminController {
 
   @Post("plans")
   @ApiOperation({ summary: "Crea un plan de suscripción" })
-  async createPlan(@Body() body: unknown): Promise<{ id: string }> {
+  async createPlan(@Body() body: unknown, @Req() request: AdminRequest): Promise<{ id: string }> {
+    denyReviewer(request.adminRole);
     const plan = readPlan(body);
     if (plan === null) {
       throw new NotFoundException();
@@ -44,6 +46,7 @@ export class SubscriptionAdminController {
     @Body() body: unknown,
     @Req() request: AdminRequest,
   ): Promise<{ id: string; priceCop: number; status: string }> {
+    denyReviewer(request.adminRole);
     const actorId = request.auth?.userId;
     const parsed = readOpen(body);
     if (actorId === undefined || parsed === null) {
@@ -95,7 +98,8 @@ export class SubscriptionAdminController {
 
   @Post("subscriptions/advance")
   @ApiOperation({ summary: "Avanza las suscripciones con periodo vencido" })
-  async advance(): Promise<{ changed: number }> {
+  async advance(@Req() request: AdminRequest): Promise<{ changed: number }> {
+    denyReviewer(request.adminRole);
     return { changed: await this.subscriptions.advance(new Date()) };
   }
 }
