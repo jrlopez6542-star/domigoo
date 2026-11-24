@@ -29,31 +29,26 @@ if [ "${VERCEL_ENV:-}" = "production" ]; then
     SEED_ADMIN_STATUS="omitido"
   fi
 elif [ "${VERCEL_ENV:-}" = "preview" ]; then
-  case "${DATABASE_URL_UNPOOLED:-}" in
-    postgres://*|postgresql://*) ;;
-    *)
-      echo "[vercel-build] Error: en Preview hace falta DATABASE_URL_UNPOOLED con una URL de Postgres" >&2
-      exit 1
-      ;;
-  esac
+  echo "[vercel-build] preview db guard: inicio"
+  pnpm --filter @domigoo/api exec tsx src/config/preview-db-guard-cli.ts
+  echo "[vercel-build] preview db guard: ok"
+
   echo "[vercel-build] migrate deploy: inicio"
   DATABASE_URL="$DATABASE_URL_UNPOOLED" pnpm --filter @domigoo/api exec prisma migrate deploy
   echo "[vercel-build] migrate deploy: ok"
   MIGRATE_STATUS="ok"
 
   if [ -n "${STAGING_SEED_PASSWORD:-}" ]; then
-    DB_HOST="$(node -e 'process.stdout.write(new URL(process.env.DATABASE_URL_UNPOOLED).hostname)')"
+    pnpm --filter @domigoo/api exec tsx src/config/preview-db-guard-cli.ts
     DOMIGOO_ENV=staging \
       STAGING_SEED_CONFIRM=yes \
       NODE_ENV=development \
       DATABASE_URL="$DATABASE_URL_UNPOOLED" \
-      STAGING_ALLOWED_DB_HOSTS="${STAGING_ALLOWED_DB_HOSTS:-$DB_HOST}" \
       pnpm --filter @domigoo/api seed:staging
     DOMIGOO_ENV=staging \
       STAGING_SEED_CONFIRM=yes \
       NODE_ENV=development \
       DATABASE_URL="$DATABASE_URL_UNPOOLED" \
-      STAGING_ALLOWED_DB_HOSTS="${STAGING_ALLOWED_DB_HOSTS:-$DB_HOST}" \
       pnpm --filter @domigoo/api seed:staging
     echo "[vercel-build] seed:staging: ejecutado"
     SEED_STATUS="ejecutado"

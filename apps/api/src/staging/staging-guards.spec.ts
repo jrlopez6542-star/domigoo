@@ -4,9 +4,15 @@ import { validateSeedEnv } from "./seed-guard.js";
 
 const validSeedEnv: NodeJS.ProcessEnv = {
   NODE_ENV: "development",
+  VERCEL_ENV: "preview",
   DOMIGOO_ENV: "staging",
   STAGING_SEED_CONFIRM: "yes",
-  DATABASE_URL: "postgresql://user:pass@ep-staging.example.neon.tech/domigoo-staging",
+  DATABASE_URL:
+    "postgresql://preview_user:pass@ep-preview-123-pooler.example.neon.tech/domigoo-preview",
+  DATABASE_URL_UNPOOLED:
+    "postgresql://preview_user:pass@ep-preview-123.example.neon.tech/domigoo-preview",
+  PREVIEW_DB_ALLOWED_ENDPOINTS: "ep-preview-123",
+  PREVIEW_DB_EXPECTED_NAME: "domigoo-preview",
   STAGING_SEED_PASSWORD: "clave-staging-segura-123",
 };
 
@@ -14,9 +20,9 @@ const smokeScriptPath = resolve(process.cwd(), "..", "..", "scripts", "smoke-sta
 
 describe("guardas de seguridad de staging (M41-FIX-SEED-GUARD)", () => {
   describe("validateSeedEnv", () => {
-    it("acepta una configuración válida de staging", () => {
+    it("acepta una configuración válida de staging en Preview con autorización explícita", () => {
       const cfg = validateSeedEnv(validSeedEnv);
-      expect(cfg.databaseUrl).toContain("domigoo-staging");
+      expect(cfg.databaseUrl).toContain("domigoo-preview");
       expect(cfg.seedPassword).toBe("clave-staging-segura-123");
       expect(cfg.adminEmail).toBe("reviewer-staging@example.com");
     });
@@ -24,6 +30,12 @@ describe("guardas de seguridad de staging (M41-FIX-SEED-GUARD)", () => {
     it("aborta si NODE_ENV es production", () => {
       expect(() => validateSeedEnv({ ...validSeedEnv, NODE_ENV: "production" })).toThrow(
         /NODE_ENV=production/,
+      );
+    });
+
+    it("aborta si VERCEL_ENV es production", () => {
+      expect(() => validateSeedEnv({ ...validSeedEnv, VERCEL_ENV: "production" })).toThrow(
+        /VERCEL_ENV=production/,
       );
     });
 
@@ -45,18 +57,26 @@ describe("guardas de seguridad de staging (M41-FIX-SEED-GUARD)", () => {
       );
     });
 
-    it("aborta si DATABASE_URL no contiene staging en host ni nombre de BD", () => {
+    it("aborta si DATABASE_URL apunta a un host remoto fuera de Preview aunque contenga 'staging'", () => {
+      const localEnv = { ...validSeedEnv, VERCEL_ENV: undefined, DATABASE_URL_UNPOOLED: undefined };
       expect(() =>
         validateSeedEnv({
-          ...validSeedEnv,
+          ...localEnv,
+          DATABASE_URL: "postgresql://user:pass@ep-staging.example.neon.tech/domigoo-staging",
+        }),
+      ).toThrow(/STAGING_ALLOWED_DB_HOSTS/);
+      expect(() =>
+        validateSeedEnv({
+          ...localEnv,
           DATABASE_URL: "postgresql://user:pass@prod.db.example.com/domigoo",
         }),
       ).toThrow(/STAGING_ALLOWED_DB_HOSTS/);
     });
 
-    it("permite host sin 'staging' únicamente si está en STAGING_ALLOWED_DB_HOSTS", () => {
+    it("permite host loopback únicamente si está en STAGING_ALLOWED_DB_HOSTS fuera de Vercel", () => {
+      const localEnv = { ...validSeedEnv, VERCEL_ENV: undefined, DATABASE_URL_UNPOOLED: undefined };
       const cfg = validateSeedEnv({
-        ...validSeedEnv,
+        ...localEnv,
         DATABASE_URL: "postgresql://user:pass@127.0.0.1:5432/domigoo",
         STAGING_ALLOWED_DB_HOSTS: "127.0.0.1",
       });

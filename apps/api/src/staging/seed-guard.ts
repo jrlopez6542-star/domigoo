@@ -1,3 +1,10 @@
+import {
+  assertPreviewDatabaseAuthorized,
+  isLoopbackHost,
+  isPreviewDatabaseGuardActive,
+  parsePostgresTarget,
+} from "../config/preview-db-guard.js";
+
 export type SeedConfig = {
   readonly databaseUrl: string;
   readonly seedPassword: string;
@@ -10,6 +17,10 @@ export function validateSeedEnv(env: NodeJS.ProcessEnv): SeedConfig {
   if (env["NODE_ENV"]?.trim().toLowerCase() === "production") {
     throw new Error("Abortado: seed-staging nunca debe ejecutarse con NODE_ENV=production");
   }
+  const vercelEnv = env["VERCEL_ENV"]?.trim().toLowerCase() ?? "";
+  if (vercelEnv === "production") {
+    throw new Error("Abortado: seed-staging nunca debe ejecutarse con VERCEL_ENV=production");
+  }
   if (env["DOMIGOO_ENV"]?.trim() !== "staging") {
     throw new Error("Abortado: DOMIGOO_ENV debe ser exactamente 'staging'");
   }
@@ -18,32 +29,21 @@ export function validateSeedEnv(env: NodeJS.ProcessEnv): SeedConfig {
   }
 
   const databaseUrl = env["DATABASE_URL"]?.trim() ?? "";
-  if (!/^postgres(ql)?:\/\//i.test(databaseUrl)) {
-    throw new Error(
-      "Abortado: DATABASE_URL es obligatoria y debe usar esquema postgres/postgresql",
-    );
-  }
+  const parsedTarget = parsePostgresTarget(databaseUrl, "DATABASE_URL");
 
-  let parsedUrl: URL;
-  try {
-    parsedUrl = new URL(databaseUrl);
-  } catch {
-    throw new Error("Abortado: DATABASE_URL no es una URL válida");
-  }
+  if (isPreviewDatabaseGuardActive(env)) {
+    assertPreviewDatabaseAuthorized(env);
+  } else {
+    const allowlist = (env["STAGING_ALLOWED_DB_HOSTS"] ?? "")
+      .split(",")
+      .map((item) => item.trim().toLowerCase())
+      .filter((item) => item !== "");
 
-  const host = parsedUrl.hostname.toLowerCase();
-  const dbName = parsedUrl.pathname.replace(/^\/+/, "").toLowerCase();
-  const allowlist = (env["STAGING_ALLOWED_DB_HOSTS"] ?? "")
-    .split(",")
-    .map((item) => item.trim().toLowerCase())
-    .filter((item) => item !== "");
-
-  const hasStagingMarker = host.includes("staging") || dbName.includes("staging");
-  const isExplicitlyAllowed = allowlist.includes(host);
-  if (!hasStagingMarker && !isExplicitlyAllowed) {
-    throw new Error(
-      `Abortado: DATABASE_URL (host='${host}', db='${dbName}') no contiene 'staging' ni está en STAGING_ALLOWED_DB_HOSTS`,
-    );
+    if (!isLoopbackHost(parsedTarget.host) || !allowlist.includes(parsedTarget.host)) {
+      throw new Error(
+        "Abortado: fuera de Vercel Preview, seed-staging solo permite un host loopback listado explícitamente en STAGING_ALLOWED_DB_HOSTS",
+      );
+    }
   }
 
   const seedPassword = env["STAGING_SEED_PASSWORD"] ?? "";

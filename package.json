@@ -7,7 +7,6 @@
   },
   "scripts": {
     "build": "sh scripts/vercel-build.sh",
-    "vercel-build": "sh scripts/vercel-build.sh",
     "lint": "eslint . && prettier --check .",
     "typecheck": "pnpm -r --if-present typecheck",
     "smoke:staging": "node scripts/smoke-staging.mjs"

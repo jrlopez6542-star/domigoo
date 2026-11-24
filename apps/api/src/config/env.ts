@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { assertPreviewDatabaseAuthorized } from "./preview-db-guard.js";
 
 export type AppEnv = {
   readonly databaseUrl: string;
@@ -26,6 +27,7 @@ export function readEnv(env: NodeJS.ProcessEnv): AppEnv {
   if (!postgresUrl.test(databaseUrl)) {
     throw new Error("DATABASE_URL debe ser una URL postgres:// o postgresql://");
   }
+  assertPreviewDatabaseAuthorized(env);
 
   const rawName = env["APP_NAME"]?.trim() ?? "";
   const appName = rawName === "" ? "DOMIGOO" : rawName;

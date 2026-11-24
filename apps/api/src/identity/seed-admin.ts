@@ -1,4 +1,5 @@
 import { Pool } from "pg";
+import { assertPreviewDatabaseAuthorized } from "../config/preview-db-guard.js";
 import { ensureTocancipaCoverageConfig } from "../geo/tocancipa-coverage.js";
 import { hashPassword } from "./password.js";
 
@@ -8,6 +9,8 @@ const password = process.env["SEED_ADMIN_PASSWORD"] ?? "";
 if (email === "" || password === "") {
   process.exit(0);
 }
+
+assertPreviewDatabaseAuthorized(process.env);
 
 const databaseUrl = process.env["DATABASE_URL"]?.trim() ?? "";
 if (!databaseUrl.startsWith("postgres")) {
