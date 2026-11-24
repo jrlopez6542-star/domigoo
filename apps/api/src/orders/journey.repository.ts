@@ -341,9 +341,12 @@ export class JourneyRepository {
       let targetStatus: OrderStatus | null = null;
 
       const memberQuery = await client.query<{ id: string }>(
-        `SELECT id FROM restaurant_memberships
-         WHERE "restaurantId" = $1 AND "userId" = $2 AND status = 'ACTIVE'
-           AND role IN ('OWNER', 'MANAGER', 'OPERATOR')`,
+        `SELECT m.id
+         FROM restaurant_memberships m
+         JOIN restaurants r ON r.id = m."restaurantId"
+         WHERE m."restaurantId" = $1 AND m."userId" = $2 AND m.status = 'ACTIVE'
+           AND r.status NOT IN ('SUSPENDED', 'CLOSED')
+           AND m.role IN ('OWNER', 'MANAGER', 'OPERATOR')`,
         [order.restaurantId, input.userId],
       );
       if (memberQuery.rows[0] !== undefined) {

@@ -314,7 +314,6 @@ export function RestaurantPortalShell({
       const data = await callProxy<{ orders?: RestaurantOrderSummary[] }>("orders/mine", "GET");
       const list = Array.isArray(data.orders) ? data.orders : [];
       setMyOrders(list);
-      setOrderId((prev) => prev || list[0]?.id || "");
     } catch {
       // Mantiene el estado actual si aún no hay membresía o falla la consulta.
     } finally {
@@ -435,7 +434,7 @@ export function RestaurantPortalShell({
       return;
     }
     await runAction("revoke-geo", async () => {
-      await callProxy<unknown>(`consents/${geoConsentId}/revoke`, "POST", {});
+      await callProxy<unknown>(`consents/${encodeURIComponent(geoConsentId)}/revoke`, "POST", {});
       setGeoConsentId(null);
       setGeoConsentChecked(false);
       setStatusMessage("Consentimiento de geolocalización revocado.");
@@ -547,7 +546,7 @@ export function RestaurantPortalShell({
               latitude: Number(dropoffLatitude),
             };
       const data = await callProxy<{ status: string }>(
-        `orders/${orderId}/publish`,
+        `orders/${encodeURIComponent(orderId)}/publish`,
         "POST",
         payload,
       );
@@ -563,8 +562,8 @@ export function RestaurantPortalShell({
     setOrderId(id);
     await runAction("refresh", async () => {
       const [view, evs] = await Promise.all([
-        callProxy<OrderView>(`orders/${id}`, "GET"),
-        callProxy<{ events: OrderEvent[] }>(`orders/${id}/events`, "GET"),
+        callProxy<OrderView>(`orders/${encodeURIComponent(id)}`, "GET"),
+        callProxy<{ events: OrderEvent[] }>(`orders/${encodeURIComponent(id)}/events`, "GET"),
       ]);
       setOrderView(view);
       setEvents(evs.events);
@@ -576,8 +575,12 @@ export function RestaurantPortalShell({
     if (!id) return;
     setOrderId(id);
     await runAction("tracking", async () => {
-      const res = await callProxy<{ token: string }>(`orders/${id}/tracking-link`, "POST", {});
-      setTrackingUrl(`/tracking/${res.token}`);
+      const res = await callProxy<{ token: string }>(
+        `orders/${encodeURIComponent(id)}/tracking-link`,
+        "POST",
+        {},
+      );
+      setTrackingUrl(`/tracking/${encodeURIComponent(res.token)}`);
       setStatusMessage("Enlace público de seguimiento generado.");
     });
   }

@@ -32,7 +32,14 @@ export default async function handler(request, response) {
       typeof headerVercelId === "string" && /^[A-Za-z0-9:._-]{1,128}$/.test(headerVercelId)
         ? headerVercelId
         : randomUUID();
-    console.error(`[api/index] requestId=${requestId}`, error);
+    const isProd =
+      process.env["NODE_ENV"] === "production" || process.env["VERCEL_ENV"] === "production";
+    const errorLog = {
+      name: error instanceof Error ? error.name : "UnknownError",
+      message: error instanceof Error ? error.message : String(error),
+      ...(!isProd && error instanceof Error && error.stack ? { stack: error.stack } : {}),
+    };
+    console.error(`[api/index] requestId=${requestId}`, errorLog);
     response.statusCode = 500;
     response.setHeader("content-type", "application/json; charset=utf-8");
     response.setHeader("x-request-id", requestId);

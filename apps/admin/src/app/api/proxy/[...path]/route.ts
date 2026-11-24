@@ -1,13 +1,16 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { getAdminServerConfig } from "@/lib/env";
+import { getAdminServerConfig } from "../../../../lib/env";
 
 async function forward(
   request: NextRequest,
   context: { params: Promise<{ path: string[] }> },
 ): Promise<NextResponse> {
   const { path } = await context.params;
+  if (path.some((segment) => segment === "." || segment === "..")) {
+    return NextResponse.json({ message: "Not Found" }, { status: 404 });
+  }
   const { apiBaseUrl } = getAdminServerConfig();
-  const targetUrl = `${apiBaseUrl}/v1/${path.join("/")}${request.nextUrl.search}`;
+  const targetUrl = `${apiBaseUrl}/v1/${path.map(encodeURIComponent).join("/")}${request.nextUrl.search}`;
 
   const headers = new Headers();
   const contentType = request.headers.get("content-type");

@@ -28,7 +28,10 @@ export class SafeHttpExceptionFilter implements ExceptionFilter {
       if (status !== 500) {
         if (status >= 500) {
           const requestId = resolveRequestId(request);
-          console.error(`[api] requestId=${requestId} status=${String(status)}`, exception);
+          console.error(
+            `[api] requestId=${requestId} status=${String(status)}`,
+            formatSafeErrorLog(exception),
+          );
           response.setHeader("x-request-id", requestId);
         }
         const body = exception.getResponse();
@@ -38,7 +41,10 @@ export class SafeHttpExceptionFilter implements ExceptionFilter {
         return;
       }
       const requestId = resolveRequestId(request);
-      console.error(`[api] requestId=${requestId} status=${String(status)}`, exception);
+      console.error(
+        `[api] requestId=${requestId} status=${String(status)}`,
+        formatSafeErrorLog(exception),
+      );
       response.setHeader("x-request-id", requestId);
       response.status(status).json({
         status: "error",
@@ -48,7 +54,7 @@ export class SafeHttpExceptionFilter implements ExceptionFilter {
       return;
     }
     const requestId = resolveRequestId(request);
-    console.error(`[api] requestId=${requestId} status=500`, exception);
+    console.error(`[api] requestId=${requestId} status=500`, formatSafeErrorLog(exception));
     response.setHeader("x-request-id", requestId);
     response.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
       status: "error",
@@ -56,6 +62,20 @@ export class SafeHttpExceptionFilter implements ExceptionFilter {
       requestId,
     });
   }
+}
+function formatSafeErrorLog(exception: unknown): {
+  name: string;
+  message: string;
+  stack?: string;
+} {
+  const isProd =
+    process.env["NODE_ENV"] === "production" || process.env["VERCEL_ENV"] === "production";
+  const name = exception instanceof Error ? exception.name : "UnknownError";
+  const message = exception instanceof Error ? exception.message : String(exception);
+  if (!isProd && exception instanceof Error && exception.stack) {
+    return { name, message, stack: exception.stack };
+  }
+  return { name, message };
 }
 function resolveRequestId(request: FilterRequest | undefined): string {
   const raw = request?.headers?.["x-vercel-id"];

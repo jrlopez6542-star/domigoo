@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { BarChart3, CreditCard, FileCheck2, LogIn, ShieldCheck } from "lucide-react";
 import {
   buildAdminLoginPayload,
@@ -55,6 +55,8 @@ async function callProxy<T>(path: string, method: string, body?: unknown): Promi
 export function AdminPortal({ appName }: { appName: string }) {
   const [statusMessage, setStatusMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
+  const [checkingSession, setCheckingSession] = useState(true);
+  const [loadingAction, setLoadingAction] = useState<string | null>(null);
 
   // 1. Login admin (correo o teléfono E.164)
   const [identifier, setIdentifier] = useState("");
@@ -75,10 +77,35 @@ export function AdminPortal({ appName }: { appName: string }) {
   // 4. Estadísticas
   const [stats, setStats] = useState<AdminStats | null>(null);
 
+  useEffect(() => {
+    let active = true;
+    async function rehydrate() {
+      try {
+        const me = await callProxy<{ id?: string } | null>("auth/me", "GET");
+        const statsData = await callProxy<AdminStats>("admin/stats", "GET");
+        if (!active) return;
+        setAdminUserId(me?.id ?? "activo");
+        setStats(statsData);
+      } catch {
+        if (!active) return;
+        setAdminUserId(null);
+      } finally {
+        if (active) {
+          setCheckingSession(false);
+        }
+      }
+    }
+    void rehydrate();
+    return () => {
+      active = false;
+    };
+  }, []);
+
   async function handleLogin(e: FormEvent) {
     e.preventDefault();
     setErrorMessage("");
     setStatusMessage("");
+    setLoadingAction("login");
     try {
       const payload = buildAdminLoginPayload(identifier, password);
       const data = await callProxy<{ id?: string; user?: { id: string } }>(
@@ -99,12 +126,15 @@ export function AdminPortal({ appName }: { appName: string }) {
       setStatusMessage("Sesión administrativa iniciada.");
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : "No se pudo iniciar sesión.");
+    } finally {
+      setLoadingAction(null);
     }
   }
 
   async function handleLogout() {
     setErrorMessage("");
     setStatusMessage("");
+    setLoadingAction("logout");
     try {
       await callProxy<unknown>("auth/logout", "POST");
     } catch {
@@ -114,12 +144,14 @@ export function AdminPortal({ appName }: { appName: string }) {
       setCases([]);
       setStats(null);
       setStatusMessage("Sesión administrativa cerrada.");
+      setLoadingAction(null);
     }
   }
 
   async function handleLoadCases() {
     setErrorMessage("");
     setStatusMessage("");
+    setLoadingAction("cases");
     try {
       const data = await callProxy<{ cases?: VerificationCase[] } | VerificationCase[]>(
         "admin/verification-cases",
@@ -134,6 +166,8 @@ export function AdminPortal({ appName }: { appName: string }) {
       setStatusMessage(`Casos cargados: ${String(list.length)}`);
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : "No se pudieron cargar los casos.");
+    } finally {
+      setLoadingAction(null);
     }
   }
 
@@ -141,6 +175,7 @@ export function AdminPortal({ appName }: { appName: string }) {
     e.preventDefault();
     setErrorMessage("");
     setStatusMessage("");
+    setLoadingAction("decide");
     try {
       const payload = buildVerificationDecisionPayload({
         outcome,
@@ -148,7 +183,7 @@ export function AdminPortal({ appName }: { appName: string }) {
         comment,
       });
       await callProxy<{ decided: boolean }>(
-        `admin/verification-cases/${caseId}/decision`,
+        `admin/verification-cases/${encodeURIComponent(caseId.trim())}/decision`,
         "POST",
         payload,
       );
@@ -156,6 +191,8 @@ export function AdminPortal({ appName }: { appName: string }) {
       await handleLoadCases();
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : "No se pudo registrar la decisión.");
+    } finally {
+      setLoadingAction(null);
     }
   }
 
@@ -163,24 +200,28 @@ export function AdminPortal({ appName }: { appName: string }) {
     e.preventDefault();
     setErrorMessage("");
     setStatusMessage("");
+    setLoadingAction("ack");
     try {
-      const res = await callProxy<{ acknowledged?: boolean; status?: string }>(
-        `admin/declarations/${declarationId}/acknowledge`,
+      const res = await callProxy<{ acknowledged?: boolean; status?: string } | null>(
+        `admin/declarations/${encodeURIComponent(declarationId.trim())}/acknowledge`,
         "POST",
         {
           note: ackReference,
         },
       );
       setStatusMessage(
-        res.acknowledged ? "Declaración reconocida." : `Declaración: ${res.status ?? "OK"}`,
+        res?.acknowledged ? "Declaración reconocida." : `Declaración: ${res?.status ?? "OK"}`,
       );
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : "No se pudo reconocer la declaración.");
+    } finally {
+      setLoadingAction(null);
     }
   }
 
   async function handleLoadStats() {
     setErrorMessage("");
+    setLoadingAction("stats");
     try {
       const data = await callProxy<AdminStats>("admin/stats", "GET");
       setStats(data);
@@ -188,6 +229,8 @@ export function AdminPortal({ appName }: { appName: string }) {
       setErrorMessage(
         err instanceof Error ? err.message : "No se pudieron consultar las estadísticas.",
       );
+    } finally {
+      setLoadingAction(null);
     }
   }
 
@@ -252,12 +295,18 @@ export function AdminPortal({ appName }: { appName: string }) {
               <LogIn size={20} aria-hidden="true" />
               1. Ingreso administrativo
             </h1>
+            {checkingSession ? (
+              <p style={{ color: "var(--dg-text-muted)", fontSize: "0.9rem", marginTop: 0 }}>
+                Verificando sesión administrativa...
+              </p>
+            ) : null}
             {adminUserId ? (
               <div
                 data-testid="admin-session"
                 className="adm-alert adm-alert--success"
                 style={{
                   display: "flex",
+                  flexWrap: "wrap",
                   justifyContent: "space-between",
                   alignItems: "center",
                   gap: "12px",
@@ -267,11 +316,12 @@ export function AdminPortal({ appName }: { appName: string }) {
                 <button
                   type="button"
                   className="adm-btn"
+                  disabled={loadingAction !== null}
                   onClick={() => {
                     void handleLogout();
                   }}
                 >
-                  Cerrar sesión
+                  {loadingAction === "logout" ? "Cerrando..." : "Cerrar sesión"}
                 </button>
               </div>
             ) : null}
@@ -308,8 +358,12 @@ export function AdminPortal({ appName }: { appName: string }) {
                 />
               </label>
               <div>
-                <button type="submit" className="adm-btn">
-                  Entrar
+                <button
+                  type="submit"
+                  className="adm-btn"
+                  disabled={checkingSession || loadingAction !== null}
+                >
+                  {loadingAction === "login" ? "Entrando..." : "Entrar"}
                 </button>
               </div>
             </form>
@@ -323,11 +377,12 @@ export function AdminPortal({ appName }: { appName: string }) {
             <button
               type="button"
               className="adm-btn"
+              disabled={loadingAction !== null}
               onClick={() => {
                 void handleLoadCases();
               }}
             >
-              Cargar casos
+              {loadingAction === "cases" ? "Cargando..." : "Cargar casos"}
             </button>
 
             {cases.length > 0 ? (
@@ -401,8 +456,8 @@ export function AdminPortal({ appName }: { appName: string }) {
                 />
               </label>
               <div>
-                <button type="submit" className="adm-btn">
-                  Registrar decisión
+                <button type="submit" className="adm-btn" disabled={loadingAction !== null}>
+                  {loadingAction === "decide" ? "Registrando..." : "Registrar decisión"}
                 </button>
               </div>
             </form>
@@ -413,7 +468,7 @@ export function AdminPortal({ appName }: { appName: string }) {
               <CreditCard size={20} aria-hidden="true" />
               3. Reconocimiento de declaración de suscripción
             </h2>
-            <p style={{ color: "#544E6B", fontSize: "0.9rem", marginTop: 0 }}>
+            <p style={{ color: "var(--dg-text-muted)", fontSize: "0.9rem", marginTop: 0 }}>
               DOMIGOO no procesa pagos electrónicos desde este panel. Aquí únicamente se reconoce
               una declaración de transferencia o pago reportada por el restaurante.
             </p>
@@ -448,8 +503,8 @@ export function AdminPortal({ appName }: { appName: string }) {
                 />
               </label>
               <div>
-                <button type="submit" className="adm-btn">
-                  Reconocer declaración de pago
+                <button type="submit" className="adm-btn" disabled={loadingAction !== null}>
+                  {loadingAction === "ack" ? "Reconociendo..." : "Reconocer declaración de pago"}
                 </button>
               </div>
             </form>
@@ -463,11 +518,12 @@ export function AdminPortal({ appName }: { appName: string }) {
             <button
               type="button"
               className="adm-btn"
+              disabled={loadingAction !== null}
               onClick={() => {
                 void handleLoadStats();
               }}
             >
-              Consultar estadísticas
+              {loadingAction === "stats" ? "Consultando..." : "Consultar estadísticas"}
             </button>
             {stats ? (
               <div data-testid="admin-stats" className="adm-stats-grid">

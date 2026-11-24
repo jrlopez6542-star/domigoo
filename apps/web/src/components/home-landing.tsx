@@ -210,7 +210,7 @@ export function HomeLanding({ appName }: { appName: string }) {
               <ShoppingBag size={20} strokeWidth={1.9} aria-hidden="true" />
               <span>Pedidos</span>
             </Link>
-            <Link href="/cliente#seguimiento" className="dg-ecosystem-item">
+            <Link href="/cliente/seguir" className="dg-ecosystem-item">
               <MapPin size={20} strokeWidth={1.9} aria-hidden="true" />
               <span>Seguimiento</span>
             </Link>

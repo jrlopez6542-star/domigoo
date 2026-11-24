@@ -199,6 +199,14 @@ h3 {
   background: var(--domigoo-indigo-soft);
 }
 
+.adm-btn:disabled,
+.adm-btn:disabled:hover {
+  min-height: 44px;
+  cursor: not-allowed;
+  background: var(--domigoo-indigo-soft);
+  opacity: 0.65;
+}
+
 .adm-alert {
   padding: 12px 14px;
   border-radius: var(--dg-radius-sm);

@@ -13,6 +13,7 @@ import {
 } from "react";
 import { Bike, Home, MapPin, ShieldCheck, UserCheck } from "lucide-react";
 import { callProxy } from "@/lib/api-client";
+import { pickActiveCourierOrder } from "@/lib/portal-helpers";
 import {
   clearStoredActiveRole,
   getStoredActiveRole,
@@ -215,21 +216,13 @@ export function CourierPortalShell({ children }: { children: ReactNode }) {
     try {
       const data = await callProxy<{ orders?: CourierOrderView[] }>("orders/mine", "GET");
       const list = Array.isArray(data.orders) ? data.orders : [];
-      const activeOrder =
-        list.find(
-          (item) =>
-            ![
-              "DELIVERED",
-              "EXPIRED",
-              "CANCELLED_RESTAURANT",
-              "CANCELLED_COURIER",
-              "CANCELLED_ADMIN",
-              "FAILED",
-            ].includes(item.status),
-        ) ?? list[0];
+      const activeOrder = pickActiveCourierOrder(list);
       if (activeOrder) {
         setOrderId(activeOrder.id);
         setOrderView(activeOrder);
+      } else {
+        setOrderId("");
+        setOrderView(null);
       }
     } catch {
       // Mantiene el estado actual si aún no tiene perfil o falla la consulta.

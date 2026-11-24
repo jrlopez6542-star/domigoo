@@ -102,8 +102,10 @@ export class OrderRepository {
       `SELECT e."restaurantId"
        FROM branches b
        JOIN establishments e ON e.id = b."establishmentId"
+       JOIN restaurants r ON r.id = e."restaurantId"
        JOIN restaurant_memberships m ON m."restaurantId" = e."restaurantId"
        WHERE b.id = $1 AND m."userId" = $2 AND m.status = 'ACTIVE'
+         AND r.status NOT IN ('SUSPENDED', 'CLOSED')
          AND m.role IN ('OWNER', 'MANAGER', 'OPERATOR')`,
       [input.branchId, input.userId],
     );

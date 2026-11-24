@@ -8,6 +8,7 @@ import {
   readLegalMarkdown,
   type LegalDocSlug,
 } from "@/lib/legal";
+import { sanitizeMarkdownHref } from "@/lib/portal-helpers";
 
 function mapLegalHref(href: string): string {
   if (href.endsWith("terminos-y-condiciones.md")) return "/legal/terminos";
@@ -50,10 +51,16 @@ function renderInline(text: string): ReactNode[] {
       const linkMatch = /^\[([^\]]+)\]\(([^)]+)\)$/.exec(token);
       if (linkMatch) {
         const label = linkMatch[1] ?? "";
-        const href = mapLegalHref(linkMatch[2] ?? "#");
-        if (href.startsWith("/")) {
+        const safeHref = sanitizeMarkdownHref(mapLegalHref(linkMatch[2] ?? ""));
+        if (safeHref === null) {
+          parts.push(label);
+        } else if (safeHref.startsWith("/") || safeHref.startsWith("#")) {
           parts.push(
-            <Link key={key++} href={href} style={{ color: "#1d4ed8", textDecoration: "underline" }}>
+            <Link
+              key={key++}
+              href={safeHref}
+              style={{ color: "#1d4ed8", textDecoration: "underline" }}
+            >
               {label}
             </Link>,
           );
@@ -61,9 +68,9 @@ function renderInline(text: string): ReactNode[] {
           parts.push(
             <a
               key={key++}
-              href={href}
+              href={safeHref}
               target="_blank"
-              rel="noreferrer"
+              rel="noopener noreferrer"
               style={{ color: "#1d4ed8", textDecoration: "underline" }}
             >
               {label}
