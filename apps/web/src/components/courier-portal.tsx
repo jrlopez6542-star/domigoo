@@ -63,6 +63,7 @@ type CourierContextValue = {
   documentNumber: string;
   setDocumentNumber: (v: string) => void;
   courierId: string;
+  courierStatus: string;
   handleCreateProfile: (e: FormEvent) => Promise<void>;
   // Disponibilidad y ubicación
   availability: "AVAILABLE" | "OFFLINE";
@@ -146,6 +147,7 @@ export function CourierPortalShell({ children }: { children: ReactNode }) {
   const [documentType, setDocumentType] = useState("CC");
   const [documentNumber, setDocumentNumber] = useState("");
   const [courierId, setCourierId] = useState("");
+  const [courierStatus, setCourierStatus] = useState("");
 
   // Disponibilidad y ubicación
   const [availability, setAvailability] = useState<"AVAILABLE" | "OFFLINE">("OFFLINE");
@@ -202,6 +204,26 @@ export function CourierPortalShell({ children }: { children: ReactNode }) {
     }
   }, [checkingSession, sessionUser, pathname, router]);
 
+  const loadMyProfile = useCallback(async () => {
+    try {
+      const data = await callProxy<{
+        id: string;
+        status: string;
+        firstName: string;
+        lastName: string;
+      }>("couriers/me", "GET");
+      setCourierId(data.id);
+      setFirstName(data.firstName);
+      setLastName(data.lastName);
+      setCourierStatus(data.status);
+    } catch (err) {
+      if (err instanceof Error && "status" in err && (err as { status?: unknown }).status === 404) {
+        setCourierId("");
+        setCourierStatus("");
+      }
+    }
+  }, []);
+
   const loadAvailableOffers = useCallback(async () => {
     setLoadingOffers(true);
     try {
@@ -235,6 +257,7 @@ export function CourierPortalShell({ children }: { children: ReactNode }) {
     if (!sessionUser) {
       return;
     }
+    void loadMyProfile();
     void loadAvailableOffers();
     void loadMyActiveOrder();
     const timer = setInterval(() => {
@@ -243,7 +266,7 @@ export function CourierPortalShell({ children }: { children: ReactNode }) {
     return () => {
       clearInterval(timer);
     };
-  }, [sessionUser, loadAvailableOffers, loadMyActiveOrder]);
+  }, [sessionUser, loadMyProfile, loadAvailableOffers, loadMyActiveOrder]);
 
   const handleAuthenticated = useCallback((user: SessionUser) => {
     setStoredActiveRole("COURIER");
@@ -254,6 +277,9 @@ export function CourierPortalShell({ children }: { children: ReactNode }) {
     clearStoredActiveRole();
     setSessionUser(null);
     setCourierId("");
+    setCourierStatus("");
+    setFirstName("");
+    setLastName("");
     setAvailableOffers([]);
     setOrderView(null);
     setAvailability("OFFLINE");
@@ -326,6 +352,7 @@ export function CourierPortalShell({ children }: { children: ReactNode }) {
         documentNumber,
       });
       setCourierId(data.id);
+      setCourierStatus(data.status);
       setStatusMessage(`Perfil de domiciliario creado (${courierStatusLabel(data.status)}).`);
     });
   }
@@ -528,6 +555,7 @@ export function CourierPortalShell({ children }: { children: ReactNode }) {
         documentNumber,
         setDocumentNumber,
         courierId,
+        courierStatus,
         handleCreateProfile,
         availability,
         longitude,
@@ -711,7 +739,8 @@ function CourierAvailableOffersSection() {
 }
 
 export function CourierHomeScreen() {
-  const { availability, courierId, firstName, lastName, orderView } = useCourierPortal();
+  const { availability, courierId, courierStatus, firstName, lastName, orderView } =
+    useCourierPortal();
   const courierFullName = `${firstName.trim()} ${lastName.trim()}`.trim();
 
   return (
@@ -731,8 +760,11 @@ export function CourierHomeScreen() {
           <span className="dg-pill">
             Disponibilidad: {availability === "AVAILABLE" ? "Disponible" : "Desconectado"}
           </span>
-          <span className="dg-pill">
-            Perfil: {courierId ? courierFullName || "Registrado" : "Pendiente por crear"}
+          <span className="dg-pill" data-testid="courier-profile-pill">
+            Perfil:{" "}
+            {courierId
+              ? `${courierFullName || "Registrado"}${courierStatus ? ` · ${courierStatusLabel(courierStatus)}` : ""}`
+              : "Pendiente por crear"}
           </span>
           {orderView ? (
             <span className="dg-pill">
@@ -791,6 +823,7 @@ export function CourierPerfilScreen() {
     documentNumber,
     setDocumentNumber,
     courierId,
+    courierStatus,
     handleCreateProfile,
   } = useCourierPortal();
 
@@ -873,7 +906,12 @@ export function CourierPerfilScreen() {
             >
               {busyAction === "profile" ? "Guardando..." : "Guardar perfil"}
             </button>
-            {courierId ? <span className="dg-pill">Perfil registrado</span> : null}
+            {courierId ? (
+              <span className="dg-pill" data-testid="courier-profile-status">
+                Perfil registrado
+                {courierStatus ? ` · ${courierStatusLabel(courierStatus)}` : ""}
+              </span>
+            ) : null}
           </div>
         </form>
       </section>

@@ -150,35 +150,35 @@ describe("ORDEN 021 - Duplicados PG 23505 -> 409 y hours en listBranchesForUser"
     });
   });
 
-  it("OutboxRepository.registerPushToken devuelve conflict en 23505; DevicesController responde 409", async () => {
-    let call = 0;
+  it("OutboxRepository.registerPushToken reasigna atómicamente con ON CONFLICT (token) y DevicesController devuelve 201", async () => {
+    const executedSql: string[] = [];
     const repo = new OutboxRepository(
       {
         pool: {
-          query: () => {
-            call += 1;
-            if (call === 1) {
-              return Promise.resolve({ rows: [], rowCount: 0 });
-            }
-            return Promise.reject(uniqueError("device_push_tokens_token_key"));
+          query: (sql: string) => {
+            executedSql.push(sql);
+            return Promise.resolve({ rows: [{ id: "tok-1" }], rowCount: 1 });
           },
         },
       } as unknown as Database,
       {} as PushSender,
     );
-    await expect(repo.registerPushToken("user-2", "token-duplicado-123456")).resolves.toBe(
-      "conflict",
-    );
+    await expect(repo.registerPushToken("user-2", "token-duplicado-123456")).resolves.toEqual({
+      id: "tok-1",
+      platform: "ANDROID",
+    });
+    expect(executedSql).toHaveLength(1);
+    expect(executedSql[0]).toContain("ON CONFLICT (token) DO UPDATE");
+    expect(executedSql[0]).toContain('"userId" = EXCLUDED."userId"');
+    expect(executedSql[0]).toContain('"revokedAt" = NULL');
 
     const ctrl = new DevicesController({
-      registerPushToken: () => Promise.resolve("conflict"),
+      registerPushToken: () => Promise.resolve({ id: "tok-1", platform: "ANDROID" as const }),
     } as unknown as OutboxRepository);
     const req = { auth: { userId: "user-2", sessionId: "s-2" } } as AuthenticatedRequest;
-    const ex = await catchHttp(() =>
-      ctrl.registerPushToken({ token: "token-duplicado-123456" }, req),
+    await expect(ctrl.registerPushToken({ token: "token-duplicado-123456" }, req)).resolves.toEqual(
+      { id: "tok-1", platform: "ANDROID" },
     );
-    expect(ex.getStatus()).toBe(409);
-    expect(ex.getResponse()).toEqual({ message: "Ese token push ya está registrado" });
   });
 
   it("RestaurantRepository.listBranchesForUser selecciona hours ordenadas por weekday desde branch_hours", async () => {

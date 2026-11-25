@@ -66,3 +66,38 @@ export const VERIFICATION_STATUS_LABELS: Record<string, string> = {
 export function verificationCaseStatusLabel(status: string): string {
   return VERIFICATION_STATUS_LABELS[status] ?? status;
 }
+
+export type AdminSessionIdentity = {
+  id?: string;
+  email?: string | null;
+  phoneE164?: string | null;
+  displayName?: string | null;
+  name?: string | null;
+};
+
+export function formatAdminSessionLabel(
+  user: AdminSessionIdentity | null | undefined,
+  fallbackIdentifier?: string,
+): string {
+  const candidate =
+    user?.displayName?.trim() ||
+    user?.name?.trim() ||
+    user?.email?.trim() ||
+    user?.phoneE164?.trim() ||
+    fallbackIdentifier?.trim() ||
+    "";
+  return candidate ? `Sesión activa: ${candidate}` : "Sesión activa";
+}
+
+export function formatBogotaDateTime(iso: string | null | undefined): string {
+  if (!iso) {
+    return "Sin fecha";
+  }
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    return iso;
+  }
+  return date.toLocaleString("es-CO", {
+    timeZone: "America/Bogota",
+  });
+}

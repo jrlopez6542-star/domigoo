@@ -12,7 +12,7 @@ import {
 } from "@nestjs/common";
 import { ApiOperation, ApiTags } from "@nestjs/swagger";
 import { SessionGuard, type AuthenticatedRequest } from "../identity/session.guard.js";
-import { VerificationRepository } from "./verification.repository.js";
+import { VerificationRepository, type PendingVerificationCase } from "./verification.repository.js";
 
 const OUTCOMES = ["APPROVED", "REJECTED", "NEEDS_CHANGES"] as const;
 
@@ -26,9 +26,7 @@ export class VerificationAdminController {
 
   @Get()
   @ApiOperation({ summary: "Lista los casos que esperan a una persona" })
-  async list(
-    @Req() request: AuthenticatedRequest,
-  ): Promise<{ id: string; courierId: string; status: "PENDING_HUMAN" }[]> {
+  async list(@Req() request: AuthenticatedRequest): Promise<PendingVerificationCase[]> {
     await this.assertReviewer(request.auth?.userId);
     return this.verification.listPending();
   }

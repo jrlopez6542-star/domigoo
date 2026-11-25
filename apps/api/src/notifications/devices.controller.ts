@@ -31,11 +31,7 @@ export class DevicesController {
     if (token === null) {
       throw new HttpException({ message: "Token push inválido" }, 422);
     }
-    const saved = await this.outbox.registerPushToken(userId, token);
-    if (saved === "conflict") {
-      throw new HttpException({ message: "Ese token push ya está registrado" }, 409);
-    }
-    return saved;
+    return this.outbox.registerPushToken(userId, token);
   }
 }
 

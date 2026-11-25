@@ -17,12 +17,14 @@ import { callProxy } from "@/lib/api-client";
 import type { CreateRestaurantPayload, QuotePayload } from "@/lib/contracts";
 import { orderStatusLabel } from "@/lib/order-status";
 import {
+  branchHoursSignature,
   branchStatusLabel,
   buildBranchHoursSlots,
   formatBogotaDateTime,
   getRestaurantInactiveMessage,
   hydrateBranchHoursForm,
   isRestaurantOrBranchInactive,
+  parseBranchHoursSignature,
   resolveRestaurantOrderActionError,
   RESTAURANT_INACTIVE_MESSAGE,
   restaurantStatusLabel,
@@ -564,7 +566,7 @@ export function RestaurantPortalShell({
 
   const selectedBranch = branches.find((b) => b.id === branchId) ?? branches[0];
   const selectedBranchId = selectedBranch?.id;
-  const selectedBranchHours = selectedBranch?.hours;
+  const selectedBranchHoursSignature = branchHoursSignature(selectedBranch?.hours);
   const restaurantInactiveMessage = getRestaurantInactiveMessage(selectedBranch);
   const restaurantNotActive = isRestaurantOrBranchInactive(selectedBranch);
   const activeOrderReferenceCode =
@@ -576,12 +578,14 @@ export function RestaurantPortalShell({
     if (!selectedBranchId) {
       return;
     }
-    const hydrated = hydrateBranchHoursForm(selectedBranchHours);
+    const hydrated = hydrateBranchHoursForm(
+      parseBranchHoursSignature(selectedBranchHoursSignature),
+    );
     setHoursWeekdays(hydrated.weekdays);
     setOpensTime(hydrated.opensTime);
     setClosesTime(hydrated.closesTime);
     setHoursMixedNotice(hydrated.notice);
-  }, [selectedBranchId, selectedBranchHours]);
+  }, [selectedBranchId, selectedBranchHoursSignature]);
 
   async function handleSaveBranchHours(e: FormEvent) {
     e.preventDefault();

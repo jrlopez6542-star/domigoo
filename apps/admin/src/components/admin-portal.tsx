@@ -5,6 +5,9 @@ import { BarChart3, CreditCard, FileCheck2, LogIn, ShieldCheck } from "lucide-re
 import {
   buildAdminLoginPayload,
   buildVerificationDecisionPayload,
+  formatAdminSessionLabel,
+  formatBogotaDateTime,
+  type AdminSessionIdentity,
   type VerificationOutcome,
   verificationCaseStatusLabel,
   verificationOutcomeActionLabel,
@@ -16,6 +19,8 @@ type VerificationCase = {
   id: string;
   courierId: string;
   status: string;
+  courierName?: string;
+  submittedAt?: string | null;
   reason?: string | null;
 };
 
@@ -72,6 +77,7 @@ export function AdminPortal({
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [adminUserId, setAdminUserId] = useState<string | null>(null);
+  const [adminSessionLabel, setAdminSessionLabel] = useState<string | null>(null);
 
   // 2. Verificación
   const [cases, setCases] = useState<VerificationCase[]>([]);
@@ -99,10 +105,12 @@ export function AdminPortal({
         const statsData = await callProxy<AdminStats>("admin/stats", "GET");
         if (!active) return;
         setAdminUserId(me?.id ?? "activo");
+        setAdminSessionLabel(formatAdminSessionLabel(me));
         setStats(statsData);
       } catch {
         if (!active) return;
         setAdminUserId(null);
+        setAdminSessionLabel(null);
       } finally {
         if (active) {
           setCheckingSession(false);
@@ -122,7 +130,7 @@ export function AdminPortal({
     setLoadingAction("login");
     try {
       const payload = buildAdminLoginPayload(identifier, password);
-      const data = await callProxy<{ id?: string; user?: { id: string } }>(
+      const data = await callProxy<AdminSessionIdentity & { user?: AdminSessionIdentity }>(
         "auth/login",
         "POST",
         payload,
@@ -133,10 +141,12 @@ export function AdminPortal({
       } catch {
         await callProxy<unknown>("auth/logout", "POST").catch(() => undefined);
         setAdminUserId(null);
+        setAdminSessionLabel(null);
         setErrorMessage("Esta cuenta no tiene permisos administrativos.");
         return;
       }
       setAdminUserId(data.id ?? data.user?.id ?? "activo");
+      setAdminSessionLabel(formatAdminSessionLabel(data.user ?? data, identifier));
       setStatusMessage("Sesión administrativa iniciada.");
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : "No se pudo iniciar sesión.");
@@ -155,6 +165,7 @@ export function AdminPortal({
       // Limpiamos el estado local aunque falle el cierre remoto.
     } finally {
       setAdminUserId(null);
+      setAdminSessionLabel(null);
       setCases([]);
       setStats(null);
       setStatusMessage("Sesión administrativa cerrada.");
@@ -334,7 +345,7 @@ export function AdminPortal({
                   gap: "12px",
                 }}
               >
-                <span>Sesión activa: {adminUserId}</span>
+                <span>{adminSessionLabel ?? "Sesión activa"}</span>
                 <button
                   type="button"
                   className="adm-btn"
@@ -411,13 +422,38 @@ export function AdminPortal({
 
                 {cases.length > 0 ? (
                   <ul data-testid="verification-cases-list" className="adm-case-list">
-                    {cases.map((c) => (
-                      <li key={c.id} className="adm-case-item">
-                        <code>{c.id}</code> — Domiciliario <code>{c.courierId}</code> — Estado:{" "}
-                        <strong>{verificationCaseStatusLabel(c.status)}</strong>
-                        {c.reason ? <span> — Motivo: {c.reason}</span> : null}
-                      </li>
-                    ))}
+                    {cases.map((c) => {
+                      const isSelected = caseId === c.id;
+                      return (
+                        <li
+                          key={c.id}
+                          className="adm-case-item"
+                          style={{
+                            display: "flex",
+                            flexWrap: "wrap",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            gap: "10px",
+                          }}
+                        >
+                          <span>
+                            Domiciliario: <strong>{c.courierName?.trim() || "Domiciliario"}</strong>{" "}
+                            · Enviado: {formatBogotaDateTime(c.submittedAt)} — Estado:{" "}
+                            <strong>{verificationCaseStatusLabel(c.status)}</strong>
+                            {c.reason ? <span> — Motivo: {c.reason}</span> : null}
+                          </span>
+                          <button
+                            type="button"
+                            className="adm-btn"
+                            onClick={() => {
+                              setCaseId(c.id);
+                            }}
+                          >
+                            {isSelected ? "Seleccionado" : "Seleccionar"}
+                          </button>
+                        </li>
+                      );
+                    })}
                   </ul>
                 ) : null}
 
@@ -429,16 +465,36 @@ export function AdminPortal({
                   style={{ marginTop: "1rem" }}
                 >
                   <label className="adm-field">
-                    ID del caso
-                    <input
-                      className="adm-input"
-                      name="caseId"
-                      value={caseId}
-                      onChange={(e) => {
-                        setCaseId(e.target.value);
-                      }}
-                      required
-                    />
+                    Caso a decidir
+                    {cases.length > 0 ? (
+                      <select
+                        className="adm-select"
+                        name="caseId"
+                        value={caseId}
+                        onChange={(e) => {
+                          setCaseId(e.target.value);
+                        }}
+                        required
+                      >
+                        {cases.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.courierName?.trim() || "Domiciliario"} ·{" "}
+                            {formatBogotaDateTime(c.submittedAt)}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        className="adm-input"
+                        name="caseId"
+                        value={caseId}
+                        onChange={(e) => {
+                          setCaseId(e.target.value);
+                        }}
+                        placeholder="Carga los casos pendientes arriba"
+                        required
+                      />
+                    )}
                   </label>
                   <label className="adm-field">
                     Resultado

@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Get,
   HttpException,
   NotFoundException,
   Post,
@@ -11,7 +12,7 @@ import { ApiOperation, ApiTags } from "@nestjs/swagger";
 import { SessionGuard, type AuthenticatedRequest } from "../identity/session.guard.js";
 import { PrivacyRepository } from "../privacy/privacy.repository.js";
 import { readCourierProfile } from "./courier-profile.js";
-import { CourierRepository } from "./courier.repository.js";
+import { CourierRepository, type CourierProfile } from "./courier.repository.js";
 
 @ApiTags("domiciliarios")
 @Controller("v1/couriers")
@@ -21,6 +22,20 @@ export class CouriersController {
     private readonly couriers: CourierRepository,
     private readonly privacy: PrivacyRepository,
   ) {}
+
+  @Get("me")
+  @ApiOperation({ summary: "Devuelve el perfil básico del domiciliario de la sesión" })
+  async me(@Req() request: AuthenticatedRequest): Promise<CourierProfile> {
+    const userId = request.auth?.userId;
+    if (userId === undefined) {
+      throw new NotFoundException();
+    }
+    const profile = await this.couriers.findProfileByUserId(userId);
+    if (profile === null) {
+      throw new NotFoundException();
+    }
+    return profile;
+  }
 
   @Post()
   @ApiOperation({ summary: "Abre el registro de un domiciliario" })

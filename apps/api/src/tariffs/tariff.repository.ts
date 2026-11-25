@@ -35,7 +35,7 @@ export class TariffRepository {
     name: string;
     polygonWkt: string;
     priority: number;
-  }): Promise<{ id: string } | "conflict"> {
+  }): Promise<{ id: string } | "conflict" | "not_found"> {
     try {
       const result = await this.database.pool.query<{ id: string }>(
         `INSERT INTO tariff_zones (id, "versionId", code, name, area, priority)
@@ -49,8 +49,12 @@ export class TariffRepository {
       }
       return { id };
     } catch (error) {
-      if (pgCode(error) === "23505") {
+      const code = pgCode(error);
+      if (code === "23505") {
         return "conflict";
+      }
+      if (code === "23503") {
+        return "not_found";
       }
       throw error;
     }
@@ -65,23 +69,31 @@ export class TariffRepository {
     nightMultiplierBps: number;
     nightStartsMinute: number;
     nightEndsMinute: number;
-  }): Promise<void> {
-    await this.database.pool.query(
-      `INSERT INTO tariff_rules (
-         id, "versionId", "zoneId", "baseFeeCop", "perKmCop", "minimumFeeCop",
-         "nightMultiplierBps", "nightStartsMinute", "nightEndsMinute"
-       ) VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8)`,
-      [
-        input.versionId,
-        input.zoneId,
-        input.baseFeeCop,
-        input.perKmCop,
-        input.minimumFeeCop,
-        input.nightMultiplierBps,
-        input.nightStartsMinute,
-        input.nightEndsMinute,
-      ],
-    );
+  }): Promise<"created" | "not_found"> {
+    try {
+      await this.database.pool.query(
+        `INSERT INTO tariff_rules (
+           id, "versionId", "zoneId", "baseFeeCop", "perKmCop", "minimumFeeCop",
+           "nightMultiplierBps", "nightStartsMinute", "nightEndsMinute"
+         ) VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8)`,
+        [
+          input.versionId,
+          input.zoneId,
+          input.baseFeeCop,
+          input.perKmCop,
+          input.minimumFeeCop,
+          input.nightMultiplierBps,
+          input.nightStartsMinute,
+          input.nightEndsMinute,
+        ],
+      );
+      return "created";
+    } catch (error) {
+      if (pgCode(error) === "23503") {
+        return "not_found";
+      }
+      throw error;
+    }
   }
 
   async publish(versionId: string): Promise<boolean> {

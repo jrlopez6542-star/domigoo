@@ -12,6 +12,7 @@ import { validateTocancipaCoverage } from "../geo/tocancipa-coverage.js";
 import { denyReviewer } from "../identity/admin-roles.js";
 import { AdminGuard, type AdminRequest } from "../identity/admin.guard.js";
 import { SessionGuard } from "../identity/session.guard.js";
+import { isValidZonePolygonWkt } from "./polygon-wkt.js";
 import { TariffRepository, type TariffQuote } from "./tariff.repository.js";
 
 @ApiTags("tarifas")
@@ -74,7 +75,13 @@ export class TariffsController {
     if (parsed === null) {
       throw new NotFoundException();
     }
+    if (!isValidZonePolygonWkt(parsed.polygonWkt)) {
+      throw new HttpException({ message: "El polígono de la zona no es válido" }, 422);
+    }
     const zone = await this.tariffs.addZone(parsed);
+    if (zone === "not_found") {
+      throw new NotFoundException();
+    }
     if (zone === "conflict") {
       throw new HttpException(
         { message: "Ya existe una zona con ese código en esta versión" },
@@ -92,7 +99,10 @@ export class TariffsController {
     if (parsed === null) {
       throw new NotFoundException();
     }
-    await this.tariffs.addRule(parsed);
+    const result = await this.tariffs.addRule(parsed);
+    if (result === "not_found") {
+      throw new NotFoundException();
+    }
     return { created: true };
   }
 

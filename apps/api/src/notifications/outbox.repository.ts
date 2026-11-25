@@ -33,40 +33,22 @@ export class OutboxRepository {
   async registerPushToken(
     userId: string,
     token: string,
-  ): Promise<{ id: string; platform: "ANDROID" } | "conflict"> {
-    const existing = await this.database.pool.query<{ id: string }>(
-      `SELECT id FROM device_push_tokens WHERE "userId" = $1 AND token = $2`,
+  ): Promise<{ id: string; platform: "ANDROID" }> {
+    const inserted = await this.database.pool.query<{ id: string }>(
+      `INSERT INTO device_push_tokens (id, "userId", token, platform, "lastSeenAt")
+       VALUES (gen_random_uuid(), $1, $2, 'ANDROID', now())
+       ON CONFLICT (token) DO UPDATE
+         SET "userId" = EXCLUDED."userId",
+             "revokedAt" = NULL,
+             "lastSeenAt" = now()
+       RETURNING id`,
       [userId, token],
     );
-    const current = existing.rows[0];
-    if (current !== undefined) {
-      await this.database.pool.query(
-        `UPDATE device_push_tokens
-         SET "revokedAt" = NULL, "lastSeenAt" = now()
-         WHERE id = $1`,
-        [current.id],
-      );
-      return { id: current.id, platform: "ANDROID" };
+    const id = inserted.rows[0]?.id;
+    if (id === undefined) {
+      throw new Error("No se pudo registrar el token push");
     }
-
-    try {
-      const inserted = await this.database.pool.query<{ id: string }>(
-        `INSERT INTO device_push_tokens (id, "userId", token, platform, "lastSeenAt")
-         VALUES (gen_random_uuid(), $1, $2, 'ANDROID', now())
-         RETURNING id`,
-        [userId, token],
-      );
-      const id = inserted.rows[0]?.id;
-      if (id === undefined) {
-        throw new Error("No se pudo registrar el token push");
-      }
-      return { id, platform: "ANDROID" };
-    } catch (error) {
-      if (pgCode(error) === "23505") {
-        return "conflict";
-      }
-      throw error;
-    }
+    return { id, platform: "ANDROID" };
   }
 
   async enqueue(userId: string, msg: NotificationTemplate, client?: PoolClient): Promise<void> {
@@ -155,12 +137,4 @@ export class OutboxRepository {
       client.release();
     }
   }
-}
-
-function pgCode(error: unknown): string | undefined {
-  if (typeof error === "object" && error !== null && "code" in error) {
-    const code = (error as { code?: unknown }).code;
-    return typeof code === "string" ? code : undefined;
-  }
-  return undefined;
 }

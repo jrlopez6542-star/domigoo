@@ -178,10 +178,11 @@ export function buildBranchHoursSlots(input: {
     return { ok: false, message: "Selecciona al menos un día de atención." };
   }
   const opensMinute = parseTimeToMinutes(input.opensTime);
-  const closesMinute = parseTimeToMinutes(input.closesTime);
-  if (opensMinute === null || closesMinute === null) {
+  const parsedClose = parseTimeToMinutes(input.closesTime);
+  if (opensMinute === null || parsedClose === null) {
     return { ok: false, message: "Ingresa horas válidas de apertura y cierre." };
   }
+  const closesMinute = parsedClose === 0 && opensMinute > 0 ? 1440 : parsedClose;
   if (closesMinute <= opensMinute) {
     return { ok: false, message: "La hora de cierre debe ser posterior a la de apertura." };
   }
@@ -207,11 +208,41 @@ export type HydratedBranchHours = {
   notice: string | null;
 };
 
-export function minutesToTimeString(minutes: number): string {
-  const clamped = Math.max(0, Math.min(1439, Math.trunc(minutes)));
+export function minutesToTimeString(minutes: number, options?: { isClosing?: boolean }): string {
+  const truncated = Math.trunc(minutes);
+  if (options?.isClosing && truncated === 1440) {
+    return "00:00";
+  }
+  const clamped = Math.max(0, Math.min(1439, truncated));
   const hh = String(Math.floor(clamped / 60)).padStart(2, "0");
   const mm = String(clamped % 60).padStart(2, "0");
   return `${hh}:${mm}`;
+}
+
+export function branchHoursSignature(hours: ReadonlyArray<BranchHourSlot> | undefined): string {
+  if (!hours || hours.length === 0) {
+    return "[]";
+  }
+  return JSON.stringify(
+    hours.map((slot) => ({
+      weekday: slot.weekday,
+      opensMinute: slot.opensMinute,
+      closesMinute: slot.closesMinute,
+      closed: slot.closed,
+    })),
+  );
+}
+
+export function parseBranchHoursSignature(signature: string): BranchHourSlot[] | undefined {
+  try {
+    const parsed: unknown = JSON.parse(signature);
+    if (Array.isArray(parsed)) {
+      return parsed as BranchHourSlot[];
+    }
+  } catch {
+    return undefined;
+  }
+  return undefined;
 }
 
 export function hydrateBranchHoursForm(
@@ -251,7 +282,7 @@ export function hydrateBranchHoursForm(
   return {
     weekdays,
     opensTime: minutesToTimeString(first.opensMinute),
-    closesTime: minutesToTimeString(first.closesMinute),
+    closesTime: minutesToTimeString(first.closesMinute, { isClosing: true }),
     hasMixedSchedule,
     notice: hasMixedSchedule ? MIXED_BRANCH_HOURS_NOTICE : null,
   };

@@ -73,9 +73,13 @@ describe("ORDEN 009 - Web SEC-05, UI-02, UI-03", () => {
 
   test("SEC-05: proxy reenvia todas las cookies Set-Cookie con getSetCookie()", async () => {
     const originalFetch = globalThis.fetch;
-    const originalApiBaseUrl = process.env["NEXT_PUBLIC_API_BASE_URL"];
-    process.env["NEXT_PUBLIC_API_BASE_URL"] = "https://api.domigoo.test";
-    globalThis.fetch = () => {
+    const originalApiBaseUrl = process.env["API_BASE_URL"];
+    process.env["API_BASE_URL"] = "https://api.domigoo.test";
+    const fetchedUrls: string[] = [];
+    globalThis.fetch = (input: string | URL | Request) => {
+      fetchedUrls.push(
+        typeof input === "string" ? input : input instanceof URL ? input.href : input.url,
+      );
       const headers = new Headers({
         "content-type": "application/json",
       });
@@ -97,6 +101,7 @@ describe("ORDEN 009 - Web SEC-05, UI-02, UI-03", () => {
         params: Promise.resolve({ path: ["auth", "login"] }),
       });
       expect(res.status).toBe(200);
+      expect(fetchedUrls).toEqual(["https://api.domigoo.test/v1/auth/login"]);
       const cookies = res.headers.getSetCookie();
       expect(cookies).toHaveLength(2);
       expect(cookies).toEqual([
@@ -106,9 +111,9 @@ describe("ORDEN 009 - Web SEC-05, UI-02, UI-03", () => {
     } finally {
       globalThis.fetch = originalFetch;
       if (originalApiBaseUrl === undefined) {
-        delete process.env["NEXT_PUBLIC_API_BASE_URL"];
+        delete process.env["API_BASE_URL"];
       } else {
-        process.env["NEXT_PUBLIC_API_BASE_URL"] = originalApiBaseUrl;
+        process.env["API_BASE_URL"] = originalApiBaseUrl;
       }
     }
   });
@@ -158,8 +163,8 @@ describe("ORDEN 009 - Web SEC-05, UI-02, UI-03", () => {
 describe("ORDEN 015 - proxy web y legal-documents/current", () => {
   test("reenvia GET legal-documents/current a /v1 y bloquea legal-documents y sus otras subrutas sin fetch", async () => {
     const originalFetch = globalThis.fetch;
-    const originalApiBaseUrl = process.env["NEXT_PUBLIC_API_BASE_URL"];
-    process.env["NEXT_PUBLIC_API_BASE_URL"] = "https://api.domigoo.test";
+    const originalApiBaseUrl = process.env["API_BASE_URL"];
+    process.env["API_BASE_URL"] = "https://api.domigoo.test";
     const fetchedUrls: string[] = [];
     globalThis.fetch = (input: string | URL | Request) => {
       fetchedUrls.push(
@@ -183,7 +188,7 @@ describe("ORDEN 015 - proxy web y legal-documents/current", () => {
       );
       expect(allowed.status).toBe(200);
       expect(fetchedUrls).toHaveLength(1);
-      expect(fetchedUrls[0]).toMatch(/^https?:\/\/[^/]+\/v1\/legal-documents\/current$/);
+      expect(fetchedUrls[0]).toBe("https://api.domigoo.test/v1/legal-documents/current");
 
       for (const segments of [
         ["legal-documents"],
@@ -210,9 +215,9 @@ describe("ORDEN 015 - proxy web y legal-documents/current", () => {
     } finally {
       globalThis.fetch = originalFetch;
       if (originalApiBaseUrl === undefined) {
-        delete process.env["NEXT_PUBLIC_API_BASE_URL"];
+        delete process.env["API_BASE_URL"];
       } else {
-        process.env["NEXT_PUBLIC_API_BASE_URL"] = originalApiBaseUrl;
+        process.env["API_BASE_URL"] = originalApiBaseUrl;
       }
     }
   });

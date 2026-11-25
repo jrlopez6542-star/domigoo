@@ -15,9 +15,26 @@ export type RegisteredCourier = {
   status: string;
 };
 
+export type CourierProfile = {
+  id: string;
+  status: string;
+  firstName: string;
+  lastName: string;
+};
+
 @Injectable()
 export class CourierRepository {
   constructor(private readonly database: Database) {}
+
+  async findProfileByUserId(userId: string): Promise<CourierProfile | null> {
+    const result = await this.database.pool.query<CourierProfile>(
+      `SELECT id, status::text AS status, "firstName", "lastName"
+       FROM couriers
+       WHERE "userId" = $1`,
+      [userId],
+    );
+    return result.rows[0] ?? null;
+  }
 
   async registerOpen(input: CourierDraft): Promise<RegisteredCourier | "conflict"> {
     try {

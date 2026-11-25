@@ -627,20 +627,27 @@ describe("flujo completo de punta a punta, ofertas, tracking y admin (ORDEN 012)
       }
       expect(record(statsRes.body)["ordersByStatus"]).toEqual(expectedOrdersByStatus);
 
-      // Admin: verification-cases solo trae id, courierId, status
+      // Admin: verification-cases solo trae id, courierId, status, courierName, submittedAt (sin documentos ni datos sensibles)
       const casesRes = await request(server())
         .get("/v1/admin/verification-cases")
         .set("Cookie", adminCookie)
         .expect(200);
       const cases = casesRes.body as unknown[];
-      expect(cases).toEqual([
-        {
-          id: pendingCourier.caseId,
-          courierId: pendingCourier.courierId,
-          status: "PENDING_HUMAN",
-        },
+      expect(cases).toHaveLength(1);
+      const firstCase = record(cases[0]);
+      expect(firstCase["id"]).toBe(pendingCourier.caseId);
+      expect(firstCase["courierId"]).toBe(pendingCourier.courierId);
+      expect(firstCase["status"]).toBe("PENDING_HUMAN");
+      expect(firstCase["courierName"]).toBe("Camila Prueba");
+      expect(typeof firstCase["submittedAt"]).toBe("string");
+      expect(Number.isNaN(Date.parse(String(firstCase["submittedAt"])))).toBe(false);
+      expect(Object.keys(firstCase).sort()).toEqual([
+        "courierId",
+        "courierName",
+        "id",
+        "status",
+        "submittedAt",
       ]);
-      expect(Object.keys(record(cases[0])).sort()).toEqual(["courierId", "id", "status"]);
     } finally {
       await pool.end();
     }

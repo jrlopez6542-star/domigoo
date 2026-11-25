@@ -218,7 +218,7 @@ describe("ORDEN 021: duplicados -> 409 (nunca 500) y hours en GET /v1/branches/m
     }
   });
 
-  it("POST /v1/legal-documents, POST /v1/admin/tariffs/zones y POST /v1/devices/push-token duplicados responden 409", async () => {
+  it("POST /v1/legal-documents y POST /v1/admin/tariffs/zones duplicados responden 409; POST /v1/devices/push-token compartido se reasigna con 201 (ORDEN 022)", async () => {
     const pool = new Pool({ connectionString: databaseUrl });
     try {
       const adminReg = await request(server())
@@ -276,7 +276,7 @@ describe("ORDEN 021: duplicados -> 409 (nunca 500) y hours en GET /v1/branches/m
         message: "Ya existe una zona con ese código en esta versión",
       });
 
-      // 3) device_push_tokens token duplicado entre usuarios distintos -> 409
+      // 3) device_push_tokens token compartido entre usuarios distintos -> 201 y reasignación atómica (ORDEN 022)
       const user1 = await request(server())
         .post("/v1/auth/register")
         .send({
@@ -297,19 +297,31 @@ describe("ORDEN 021: duplicados -> 409 (nunca 500) y hours en GET /v1/branches/m
         .expect(201);
       const token1 = String(record(user1.body)["token"]);
       const token2 = String(record(user2.body)["token"]);
+      const user2Id = String(record(user2.body)["id"]);
       const sharedPushToken = "fcm-token-compartido-021-abcdef";
 
-      await request(server())
+      const firstPush = await request(server())
         .post("/v1/devices/push-token")
         .set("Authorization", `Bearer ${token1}`)
         .send({ token: sharedPushToken })
         .expect(201);
-      const dupPush = await request(server())
+      const reassignedPush = await request(server())
         .post("/v1/devices/push-token")
         .set("Authorization", `Bearer ${token2}`)
         .send({ token: sharedPushToken })
-        .expect(409);
-      expect(record(dupPush.body)).toEqual({ message: "Ese token push ya está registrado" });
+        .expect(201);
+      expect(record(reassignedPush.body)).toEqual({
+        id: record(firstPush.body)["id"],
+        platform: "ANDROID",
+      });
+
+      const tokenRows = await pool.query<{ userId: string; revokedAt: Date | null }>(
+        `SELECT "userId", "revokedAt" FROM device_push_tokens WHERE token = $1`,
+        [sharedPushToken],
+      );
+      expect(tokenRows.rows).toHaveLength(1);
+      expect(tokenRows.rows[0]?.userId).toBe(user2Id);
+      expect(tokenRows.rows[0]?.revokedAt).toBeNull();
     } finally {
       await pool.end();
     }

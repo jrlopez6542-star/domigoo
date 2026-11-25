@@ -17,6 +17,14 @@ export type VerificationResult = {
   courierStatus: "NEEDS_CHANGES" | "PENDING_VERIFICATION";
 };
 
+export type PendingVerificationCase = {
+  id: string;
+  courierId: string;
+  status: "PENDING_HUMAN";
+  courierName: string;
+  submittedAt: string;
+};
+
 @Injectable()
 export class VerificationRepository {
   constructor(private readonly database: Database) {}
@@ -112,14 +120,33 @@ export class VerificationRepository {
     return result.rows[0]?.role ?? null;
   }
 
-  async listPending(): Promise<{ id: string; courierId: string; status: "PENDING_HUMAN" }[]> {
-    const result = await this.database.pool.query<{ id: string; courierId: string }>(
-      `SELECT id, "courierId"
-       FROM verification_cases
-       WHERE status = 'PENDING_HUMAN'
-       ORDER BY "submittedAt" ASC NULLS LAST`,
+  async listPending(): Promise<PendingVerificationCase[]> {
+    const result = await this.database.pool.query<{
+      id: string;
+      courierId: string;
+      courierName: string;
+      submittedAt: Date | string;
+    }>(
+      `SELECT
+         vc.id,
+         vc."courierId",
+         trim(concat_ws(' ', c."firstName", c."lastName")) AS "courierName",
+         COALESCE(vc."submittedAt", vc."createdAt") AS "submittedAt"
+       FROM verification_cases vc
+       JOIN couriers c ON c.id = vc."courierId"
+       WHERE vc.status = 'PENDING_HUMAN'
+       ORDER BY vc."submittedAt" ASC NULLS LAST`,
     );
-    return result.rows.map((row) => ({ ...row, status: "PENDING_HUMAN" }));
+    return result.rows.map((row) => ({
+      id: row.id,
+      courierId: row.courierId,
+      status: "PENDING_HUMAN",
+      courierName: row.courierName,
+      submittedAt:
+        row.submittedAt instanceof Date
+          ? row.submittedAt.toISOString()
+          : new Date(row.submittedAt).toISOString(),
+    }));
   }
 
   async decide(input: {
