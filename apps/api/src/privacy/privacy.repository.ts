@@ -17,19 +17,26 @@ export class PrivacyRepository {
     kind: string;
     version: string;
     content: string;
-  }): Promise<LegalDocument> {
+  }): Promise<LegalDocument | "conflict"> {
     const contentHash = createHash("sha256").update(input.content).digest("hex");
-    const result = await this.database.pool.query<LegalDocument>(
-      `INSERT INTO legal_documents (id, kind, version, "contentHash", "publishedAt")
-       VALUES (gen_random_uuid(), $1::"LegalDocumentKind", $2, $3, now())
-       RETURNING id, kind::text AS kind, version, "contentHash"`,
-      [input.kind, input.version, contentHash],
-    );
-    const row = result.rows[0];
-    if (row === undefined) {
-      throw new Error("No se pudo publicar el documento");
+    try {
+      const result = await this.database.pool.query<LegalDocument>(
+        `INSERT INTO legal_documents (id, kind, version, "contentHash", "publishedAt")
+         VALUES (gen_random_uuid(), $1::"LegalDocumentKind", $2, $3, now())
+         RETURNING id, kind::text AS kind, version, "contentHash"`,
+        [input.kind, input.version, contentHash],
+      );
+      const row = result.rows[0];
+      if (row === undefined) {
+        throw new Error("No se pudo publicar el documento");
+      }
+      return row;
+    } catch (error) {
+      if (pgCode(error) === "23505") {
+        return "conflict";
+      }
+      throw error;
     }
-    return row;
   }
 
   async listCurrentDocuments(): Promise<LegalDocument[]> {

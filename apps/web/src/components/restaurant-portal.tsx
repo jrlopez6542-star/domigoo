@@ -7,6 +7,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
   type FormEvent,
   type ReactNode,
@@ -20,11 +21,13 @@ import {
   buildBranchHoursSlots,
   formatBogotaDateTime,
   getRestaurantInactiveMessage,
+  hydrateBranchHoursForm,
   isRestaurantOrBranchInactive,
   resolveRestaurantOrderActionError,
   RESTAURANT_INACTIVE_MESSAGE,
   restaurantStatusLabel,
   WEEKDAY_OPTIONS,
+  type BranchHourSlot,
 } from "@/lib/portal-helpers";
 import {
   clearStoredActiveRole,
@@ -37,6 +40,7 @@ import { RolePanelShell, type RoleNavItem } from "./role-panel-shell";
 
 type OrderView = {
   id: string;
+  referenceCode?: string;
   status: string;
   foodAmountCop?: number;
   deliveryFeeCop?: number;
@@ -59,6 +63,7 @@ export type RestaurantBranchItem = {
   addressLine: string;
   status: string;
   restaurantStatus?: string;
+  hours?: BranchHourSlot[];
 };
 
 export type RestaurantOrderSummary = {
@@ -127,6 +132,7 @@ type RestaurantContextValue = {
   setOpensTime: (v: string) => void;
   closesTime: string;
   setClosesTime: (v: string) => void;
+  hoursMixedNotice: string | null;
   loadMyBranches: () => Promise<void>;
   handleCreateBranch: (e: FormEvent) => Promise<void>;
   handleSaveBranchHours: (e: FormEvent) => Promise<void>;
@@ -142,6 +148,7 @@ type RestaurantContextValue = {
   quoteSummary: string;
   orderId: string;
   setOrderId: (v: string) => void;
+  activeOrderReferenceCode: string | null;
   handleQuote: () => Promise<void>;
   handleCreateDraft: (e: FormEvent) => Promise<void>;
   // Publish
@@ -263,11 +270,17 @@ export function RestaurantPortalShell({
   const [branchLatitude, setBranchLatitude] = useState("4.9652");
   const [restaurantId, setRestaurantId] = useState("");
   const [branchId, setBranchId] = useState("");
+  const branchIdRef = useRef(branchId);
   const [branches, setBranches] = useState<RestaurantBranchItem[]>([]);
   const [loadingBranches, setLoadingBranches] = useState(false);
   const [hoursWeekdays, setHoursWeekdays] = useState<number[]>([1, 2, 3, 4, 5, 6, 7]);
   const [opensTime, setOpensTime] = useState("08:00");
   const [closesTime, setClosesTime] = useState("21:00");
+  const [hoursMixedNotice, setHoursMixedNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    branchIdRef.current = branchId;
+  }, [branchId]);
 
   // Borrador y cotización
   const [foodAmountCop, setFoodAmountCop] = useState("25000");
@@ -340,18 +353,15 @@ export function RestaurantPortalShell({
       const data = await callProxy<{ branches?: RestaurantBranchItem[] }>("branches/mine", "GET");
       const list = Array.isArray(data.branches) ? data.branches : [];
       setBranches(list);
-      if (list.length === 1 && list[0]) {
-        setBranchId(list[0].id);
-        setRestaurantId(list[0].restaurantId);
-      } else if (list.length > 1) {
-        setBranchId((prev) => {
-          const nextBranch = list.find((b) => b.id === prev) ?? list[0];
-          if (nextBranch) {
-            setRestaurantId(nextBranch.restaurantId);
-            return nextBranch.id;
-          }
-          return "";
-        });
+      const chosenBranch =
+        list.length === 1
+          ? list[0]
+          : list.length > 1
+            ? (list.find((b) => b.id === branchIdRef.current) ?? list[0])
+            : undefined;
+      if (chosenBranch) {
+        setBranchId(chosenBranch.id);
+        setRestaurantId(chosenBranch.restaurantId);
       }
     } catch {
       // Si el listado no responde en mocks parciales, conservamos el branchId actual.
@@ -553,8 +563,25 @@ export function RestaurantPortalShell({
   }
 
   const selectedBranch = branches.find((b) => b.id === branchId) ?? branches[0];
+  const selectedBranchId = selectedBranch?.id;
+  const selectedBranchHours = selectedBranch?.hours;
   const restaurantInactiveMessage = getRestaurantInactiveMessage(selectedBranch);
   const restaurantNotActive = isRestaurantOrBranchInactive(selectedBranch);
+  const activeOrderReferenceCode =
+    orderView?.referenceCode ??
+    myOrders.find((item) => item.id === (orderView?.id ?? orderId))?.referenceCode ??
+    null;
+
+  useEffect(() => {
+    if (!selectedBranchId) {
+      return;
+    }
+    const hydrated = hydrateBranchHoursForm(selectedBranchHours);
+    setHoursWeekdays(hydrated.weekdays);
+    setOpensTime(hydrated.opensTime);
+    setClosesTime(hydrated.closesTime);
+    setHoursMixedNotice(hydrated.notice);
+  }, [selectedBranchId, selectedBranchHours]);
 
   async function handleSaveBranchHours(e: FormEvent) {
     e.preventDefault();
@@ -578,6 +605,7 @@ export function RestaurantPortalShell({
         "PUT",
         { slots: built.slots },
       );
+      await loadMyBranches();
       setStatusMessage("Horario guardado correctamente.");
     });
   }
@@ -660,7 +688,7 @@ export function RestaurantPortalShell({
         });
         setOrderId(data.id);
         setOrderView({ id: data.id, status: data.status });
-        setStatusMessage(`Borrador creado (${data.id}).`);
+        setStatusMessage("Borrador creado.");
       } catch (err) {
         throw new Error(
           resolveRestaurantOrderActionError(err, "No se pudo crear el borrador.", selectedBranch),
@@ -869,6 +897,7 @@ export function RestaurantPortalShell({
         setOpensTime,
         closesTime,
         setClosesTime,
+        hoursMixedNotice,
         loadMyBranches,
         handleCreateBranch,
         handleSaveBranchHours,
@@ -883,6 +912,7 @@ export function RestaurantPortalShell({
         quoteSummary,
         orderId,
         setOrderId,
+        activeOrderReferenceCode,
         handleQuote,
         handleCreateDraft,
         customerName,
@@ -950,8 +980,14 @@ function useRestaurantPortal() {
 }
 
 export function RestaurantHomeScreen() {
-  const { branchId, orderId, orderView, restaurantNotActive, restaurantInactiveMessage } =
-    useRestaurantPortal();
+  const {
+    selectedBranch,
+    orderId,
+    activeOrderReferenceCode,
+    orderView,
+    restaurantNotActive,
+    restaurantInactiveMessage,
+  } = useRestaurantPortal();
 
   return (
     <div className="dg-stack" data-testid="restaurante-home-screen">
@@ -979,12 +1015,15 @@ export function RestaurantHomeScreen() {
         </p>
         <div className="dg-btn-row" style={{ marginTop: "14px" }}>
           <span className="dg-pill">
-            Sucursal: {branchId ? branchId : "Pendiente por configurar"}
+            Sucursal:{" "}
+            {selectedBranch
+              ? `${selectedBranch.restaurantName} — ${selectedBranch.name}`
+              : "Pendiente por configurar"}
           </span>
           <span className="dg-pill">
             Pedido activo:{" "}
             {orderId
-              ? `${orderId} (${orderView?.status ? orderStatusLabel(orderView.status) : "—"})`
+              ? `${activeOrderReferenceCode ? `#${activeOrderReferenceCode}` : "En curso"} (${orderView?.status ? orderStatusLabel(orderView.status) : "—"})`
               : "Ninguno"}
           </span>
         </div>
@@ -1050,8 +1089,6 @@ export function RestaurantNegocioScreen() {
     branchLongitude,
     branchLatitude,
     branchGeoStatus,
-    restaurantId,
-    branchId,
     setBranchId,
     branches,
     selectedBranch,
@@ -1063,6 +1100,7 @@ export function RestaurantNegocioScreen() {
     setOpensTime,
     closesTime,
     setClosesTime,
+    hoursMixedNotice,
     requestBrowserLocation,
     handleCreateBranch,
     handleSaveBranchHours,
@@ -1135,6 +1173,16 @@ export function RestaurantNegocioScreen() {
             className="dg-stack"
             data-testid="branch-hours-form"
           >
+            {hoursMixedNotice ? (
+              <div
+                role="status"
+                className="dg-alert dg-alert--info"
+                data-testid="branch-hours-mixed-notice"
+                style={{ marginBottom: 0 }}
+              >
+                {hoursMixedNotice}
+              </div>
+            ) : null}
             <fieldset style={{ border: 0, margin: 0, padding: 0, minWidth: 0 }}>
               <legend
                 style={{
@@ -1375,8 +1423,12 @@ export function RestaurantNegocioScreen() {
             >
               {busyAction === "branch" ? "Creando sucursal..." : "Crear restaurante y sucursal"}
             </button>
-            {restaurantId ? <span className="dg-pill">Restaurante: {restaurantId}</span> : null}
-            {branchId ? <span className="dg-pill">Sucursal: {branchId}</span> : null}
+            {activeBranch?.restaurantName ? (
+              <span className="dg-pill">Restaurante: {activeBranch.restaurantName}</span>
+            ) : null}
+            {activeBranch?.name ? (
+              <span className="dg-pill">Sucursal: {activeBranch.name}</span>
+            ) : null}
           </div>
 
           <details className="dg-details">
@@ -1674,7 +1726,7 @@ export function RestaurantNuevoDomicilioScreen() {
               >
                 Siguiente: Publicar domicilio
               </button>
-              {orderId ? <span className="dg-pill">Borrador: {orderId}</span> : null}
+              {orderId ? <span className="dg-pill">Borrador listo para publicar</span> : null}
             </div>
           </form>
         ) : null}
@@ -1898,6 +1950,7 @@ export function RestaurantPedidosScreen() {
     sessionUser,
     busyAction,
     orderId,
+    activeOrderReferenceCode,
     myOrders,
     loadingOrders,
     loadMyOrders,
@@ -2100,8 +2153,14 @@ export function RestaurantPedidosScreen() {
 
         {orderView ? (
           <div className="dg-alert dg-alert--success">
-            Pedido <strong>{orderView.id}</strong> · Estado:{" "}
-            <strong>{orderStatusLabel(orderView.status)}</strong>
+            {activeOrderReferenceCode ? (
+              <>
+                Pedido <strong>#{activeOrderReferenceCode}</strong> ·{" "}
+              </>
+            ) : (
+              "Pedido · "
+            )}
+            Estado: <strong>{orderStatusLabel(orderView.status)}</strong>
             {orderView.pickupPin ? ` · PIN recogida: ${orderView.pickupPin}` : ""}
           </div>
         ) : null}

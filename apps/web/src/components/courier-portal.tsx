@@ -26,6 +26,7 @@ import { RolePanelShell, type RoleNavItem } from "./role-panel-shell";
 
 type CourierOrderView = {
   id: string;
+  referenceCode?: string;
   status: string;
   deliveryFeeCop?: number;
   pickupAddress?: string;
@@ -325,9 +326,7 @@ export function CourierPortalShell({ children }: { children: ReactNode }) {
         documentNumber,
       });
       setCourierId(data.id);
-      setStatusMessage(
-        `Perfil de domiciliario creado (${courierStatusLabel(data.status)}). ID: ${data.id}`,
-      );
+      setStatusMessage(`Perfil de domiciliario creado (${courierStatusLabel(data.status)}).`);
     });
   }
 
@@ -362,6 +361,7 @@ export function CourierPortalShell({ children }: { children: ReactNode }) {
     if (!targetOfferId.trim()) {
       return;
     }
+    const matchedOffer = availableOffers.find((item) => item.offerId === targetOfferId);
     await runAction(`accept-${targetOfferId}`, async () => {
       const res = await fetch(
         `/api/proxy/offers/${encodeURIComponent(targetOfferId.trim())}/accept`,
@@ -395,6 +395,7 @@ export function CourierPortalShell({ children }: { children: ReactNode }) {
         } catch {
           setOrderView({
             id: data.orderId,
+            ...(matchedOffer?.referenceCode ? { referenceCode: matchedOffer.referenceCode } : {}),
             status: data.orderStatus ?? data.status ?? "ACCEPTED",
           });
         }
@@ -710,7 +711,8 @@ function CourierAvailableOffersSection() {
 }
 
 export function CourierHomeScreen() {
-  const { availability, courierId, orderView } = useCourierPortal();
+  const { availability, courierId, firstName, lastName, orderView } = useCourierPortal();
+  const courierFullName = `${firstName.trim()} ${lastName.trim()}`.trim();
 
   return (
     <div className="dg-stack" data-testid="domiciliario-home-screen">
@@ -729,10 +731,13 @@ export function CourierHomeScreen() {
           <span className="dg-pill">
             Disponibilidad: {availability === "AVAILABLE" ? "Disponible" : "Desconectado"}
           </span>
-          <span className="dg-pill">Perfil: {courierId ? courierId : "Pendiente por crear"}</span>
+          <span className="dg-pill">
+            Perfil: {courierId ? courierFullName || "Registrado" : "Pendiente por crear"}
+          </span>
           {orderView ? (
             <span className="dg-pill">
-              Entrega activa: {orderView.id} ({orderStatusLabel(orderView.status)})
+              Entrega activa: {orderView.referenceCode ? `#${orderView.referenceCode}` : "En curso"}{" "}
+              ({orderStatusLabel(orderView.status)})
             </span>
           ) : null}
         </div>
@@ -868,7 +873,7 @@ export function CourierPerfilScreen() {
             >
               {busyAction === "profile" ? "Guardando..." : "Guardar perfil"}
             </button>
-            {courierId ? <span className="dg-pill">ID domiciliario: {courierId}</span> : null}
+            {courierId ? <span className="dg-pill">Perfil registrado</span> : null}
           </div>
         </form>
       </section>
@@ -1035,8 +1040,14 @@ export function CourierEntregaScreen() {
         <div className="dg-stack">
           {orderView ? (
             <div className="dg-alert dg-alert--success" style={{ marginBottom: 0 }}>
-              Pedido <strong>{orderView.id}</strong> · Estado:{" "}
-              <strong>{orderStatusLabel(orderView.status)}</strong>
+              {orderView.referenceCode ? (
+                <>
+                  Pedido <strong>#{orderView.referenceCode}</strong> ·{" "}
+                </>
+              ) : (
+                "Pedido · "
+              )}
+              Estado: <strong>{orderStatusLabel(orderView.status)}</strong>
               {orderView.dropoffAddress ? ` · Entrega: ${orderView.dropoffAddress}` : ""}
             </div>
           ) : (

@@ -35,18 +35,25 @@ export class TariffRepository {
     name: string;
     polygonWkt: string;
     priority: number;
-  }): Promise<string> {
-    const result = await this.database.pool.query<{ id: string }>(
-      `INSERT INTO tariff_zones (id, "versionId", code, name, area, priority)
-       VALUES (gen_random_uuid(), $1, $2, $3, ST_GeogFromText($4), $5)
-       RETURNING id`,
-      [input.versionId, input.code, input.name, input.polygonWkt, input.priority],
-    );
-    const id = result.rows[0]?.id;
-    if (id === undefined) {
-      throw new Error("No se pudo crear la zona");
+  }): Promise<{ id: string } | "conflict"> {
+    try {
+      const result = await this.database.pool.query<{ id: string }>(
+        `INSERT INTO tariff_zones (id, "versionId", code, name, area, priority)
+         VALUES (gen_random_uuid(), $1, $2, $3, ST_GeogFromText($4), $5)
+         RETURNING id`,
+        [input.versionId, input.code, input.name, input.polygonWkt, input.priority],
+      );
+      const id = result.rows[0]?.id;
+      if (id === undefined) {
+        throw new Error("No se pudo crear la zona");
+      }
+      return { id };
+    } catch (error) {
+      if (pgCode(error) === "23505") {
+        return "conflict";
+      }
+      throw error;
     }
-    return id;
   }
 
   async addRule(input: {
@@ -185,4 +192,12 @@ export class TariffRepository {
     );
     return Number(result.rows[0]?.count ?? "0");
   }
+}
+
+function pgCode(error: unknown): string | undefined {
+  if (typeof error === "object" && error !== null && "code" in error) {
+    const code = (error as { code?: unknown }).code;
+    return typeof code === "string" ? code : undefined;
+  }
+  return undefined;
 }

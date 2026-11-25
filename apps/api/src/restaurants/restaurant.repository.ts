@@ -7,6 +7,13 @@ export type VisibleRestaurant = {
   tradeName: string;
 };
 
+export type MyBranchHourItem = {
+  weekday: number;
+  opensMinute: number;
+  closesMinute: number;
+  closed: boolean;
+};
+
 export type MyBranchItem = {
   id: string;
   restaurantId: string;
@@ -16,6 +23,7 @@ export type MyBranchItem = {
   name: string;
   addressLine: string;
   status: string;
+  hours: MyBranchHourItem[];
 };
 
 @Injectable()
@@ -37,13 +45,16 @@ export class RestaurantRepository {
     addressLine: string;
     longitude: number;
     latitude: number;
-  }): Promise<{
-    id: string;
-    establishmentId: string;
-    branchId: string;
-    longitude: number;
-    latitude: number;
-  }> {
+  }): Promise<
+    | {
+        id: string;
+        establishmentId: string;
+        branchId: string;
+        longitude: number;
+        latitude: number;
+      }
+    | "conflict"
+  > {
     const trialDays = this.env?.subscriptionTrialDays ?? 15;
     const client = await this.database.pool.connect();
     try {
@@ -139,6 +150,9 @@ export class RestaurantRepository {
       };
     } catch (error) {
       await client.query("ROLLBACK");
+      if (pgCode(error) === "23505") {
+        return "conflict";
+      }
       throw error;
     } finally {
       client.release();
@@ -331,7 +345,23 @@ export class RestaurantRepository {
          e.name AS "establishmentName",
          b.name,
          b."addressLine",
-         b.status::text AS status
+         b.status::text AS status,
+         COALESCE(
+           (
+             SELECT json_agg(
+               json_build_object(
+                 'weekday', h.weekday,
+                 'opensMinute', h."opensMinute",
+                 'closesMinute', h."closesMinute",
+                 'closed', h.closed
+               )
+               ORDER BY h.weekday ASC, h."opensMinute" ASC
+             )
+             FROM branch_hours h
+             WHERE h."branchId" = b.id
+           ),
+           '[]'::json
+         ) AS hours
        FROM branches b
        JOIN establishments e ON e.id = b."establishmentId"
        JOIN restaurants r ON r.id = e."restaurantId"
@@ -342,4 +372,12 @@ export class RestaurantRepository {
     );
     return result.rows;
   }
+}
+
+function pgCode(error: unknown): string | undefined {
+  if (typeof error === "object" && error !== null && "code" in error) {
+    const code = (error as { code?: unknown }).code;
+    return typeof code === "string" ? code : undefined;
+  }
+  return undefined;
 }

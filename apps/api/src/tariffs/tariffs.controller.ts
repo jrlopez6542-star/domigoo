@@ -74,7 +74,14 @@ export class TariffsController {
     if (parsed === null) {
       throw new NotFoundException();
     }
-    return { id: await this.tariffs.addZone(parsed) };
+    const zone = await this.tariffs.addZone(parsed);
+    if (zone === "conflict") {
+      throw new HttpException(
+        { message: "Ya existe una zona con ese código en esta versión" },
+        409,
+      );
+    }
+    return zone;
   }
 
   @Post("rules")

@@ -55,6 +55,12 @@ export class PrivacyController {
       throw new NotFoundException();
     }
     const document = await this.privacy.insertDocument(parsed);
+    if (document === "conflict") {
+      throw new HttpException(
+        { message: "Ya existe un documento legal con ese tipo y versión" },
+        409,
+      );
+    }
     return { id: document.id, contentHash: document.contentHash, version: document.version };
   }
 

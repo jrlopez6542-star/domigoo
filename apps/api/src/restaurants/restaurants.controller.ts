@@ -56,6 +56,9 @@ export class RestaurantsController {
       throw new HttpException({ code: coverage.code, message: coverage.message }, 422);
     }
     const created = await this.restaurants.createSite({ ...parsed, ownerId });
+    if (created === "conflict") {
+      throw new HttpException({ message: "Ya existe un restaurante con ese NIT" }, 409);
+    }
     return { ...created, status: "DRAFT" };
   }
 

@@ -195,3 +195,64 @@ export function buildBranchHoursSlots(input: {
     })),
   };
 }
+
+export const MIXED_BRANCH_HOURS_NOTICE =
+  "Esta sucursal tiene horarios distintos por día. Se muestra el del primer día abierto y al guardar se aplicará un solo horario a todos los días marcados.";
+
+export type HydratedBranchHours = {
+  weekdays: number[];
+  opensTime: string;
+  closesTime: string;
+  hasMixedSchedule: boolean;
+  notice: string | null;
+};
+
+export function minutesToTimeString(minutes: number): string {
+  const clamped = Math.max(0, Math.min(1439, Math.trunc(minutes)));
+  const hh = String(Math.floor(clamped / 60)).padStart(2, "0");
+  const mm = String(clamped % 60).padStart(2, "0");
+  return `${hh}:${mm}`;
+}
+
+export function hydrateBranchHoursForm(
+  hours: ReadonlyArray<BranchHourSlot> | undefined,
+): HydratedBranchHours {
+  if (!hours || hours.length === 0) {
+    return {
+      weekdays: [1, 2, 3, 4, 5, 6, 7],
+      opensTime: "08:00",
+      closesTime: "21:00",
+      hasMixedSchedule: false,
+      notice: null,
+    };
+  }
+  const openSlots = hours
+    .filter(
+      (slot) =>
+        !slot.closed && Number.isInteger(slot.weekday) && slot.weekday >= 1 && slot.weekday <= 7,
+    )
+    .sort((a, b) => a.weekday - b.weekday || a.opensMinute - b.opensMinute);
+
+  const first = openSlots[0];
+  if (!first) {
+    return {
+      weekdays: [],
+      opensTime: "08:00",
+      closesTime: "21:00",
+      hasMixedSchedule: false,
+      notice: null,
+    };
+  }
+
+  const weekdays = Array.from(new Set(openSlots.map((slot) => slot.weekday)));
+  const hasMixedSchedule = openSlots.some(
+    (slot) => slot.opensMinute !== first.opensMinute || slot.closesMinute !== first.closesMinute,
+  );
+  return {
+    weekdays,
+    opensTime: minutesToTimeString(first.opensMinute),
+    closesTime: minutesToTimeString(first.closesMinute),
+    hasMixedSchedule,
+    notice: hasMixedSchedule ? MIXED_BRANCH_HOURS_NOTICE : null,
+  };
+}
