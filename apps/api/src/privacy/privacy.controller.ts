@@ -100,6 +100,21 @@ export class PrivacyController {
     if (saved === "missing") {
       throw new NotFoundException();
     }
+    if (saved === "wrong_kind") {
+      throw new HttpException(
+        { message: "El documento no corresponde al propósito del consentimiento" },
+        422,
+      );
+    }
+    if ("kind" in saved) {
+      throw new HttpException(
+        {
+          message: "La versión del documento está desactualizada",
+          currentLegalDocumentId: saved.currentLegalDocumentId,
+        },
+        422,
+      );
+    }
     return saved;
   }
 

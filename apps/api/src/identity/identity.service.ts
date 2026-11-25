@@ -12,7 +12,9 @@ import {
 import {
   IdentityRepository,
   MissingLegalVersionError,
+  OutdatedLegalVersionError,
   type PublicUser,
+  type RecordedRegistrationConsent,
 } from "./identity.repository.js";
 import { createSessionToken, hashSessionToken } from "./session-token.js";
 import { readSessionCookie } from "./session-cookie.js";
@@ -69,24 +71,31 @@ export class IdentityService {
   async register(
     input: RegistrationInput,
     meta?: { ip?: string; userAgent?: string },
-  ): Promise<{ user: PublicUser; token: string; legalVersion: string; consentPurposes: string[] }> {
+  ): Promise<{
+    user: PublicUser;
+    token: string;
+    legalVersion: string;
+    consentPurposes: string[];
+    consents: RecordedRegistrationConsent[];
+  }> {
     const passwordHash = hashPassword(input.password);
     try {
-      const { user, consentPurposes, legalVersion } = await this.repository.insertUserWithConsents({
-        email: input.email,
-        phoneE164: input.phoneE164,
-        passwordHash,
-        consents: {
-          ...input.consents,
-          channel: input.client,
-          ...(meta?.ip === undefined ? {} : { ip: meta.ip }),
-          ...(meta?.userAgent === undefined ? {} : { userAgent: meta.userAgent }),
-        },
-      });
+      const { user, consentPurposes, legalVersion, consents } =
+        await this.repository.insertUserWithConsents({
+          email: input.email,
+          phoneE164: input.phoneE164,
+          passwordHash,
+          consents: {
+            ...input.consents,
+            channel: input.client,
+            ...(meta?.ip === undefined ? {} : { ip: meta.ip }),
+            ...(meta?.userAgent === undefined ? {} : { userAgent: meta.userAgent }),
+          },
+        });
       const token = await this.openSession(user.id, input.client);
-      return { user, token, legalVersion, consentPurposes };
+      return { user, token, legalVersion, consentPurposes, consents };
     } catch (error) {
-      if (error instanceof MissingLegalVersionError) {
+      if (error instanceof MissingLegalVersionError || error instanceof OutdatedLegalVersionError) {
         throw new AuthError(422, error.message, { cause: error });
       }
       if (isUniqueViolation(error)) {

@@ -1,6 +1,10 @@
 import type { AuditRecorder } from "../audit/audit.service.js";
 import type { Database } from "../database.js";
-import { IdentityRepository, MissingLegalVersionError } from "./identity.repository.js";
+import {
+  IdentityRepository,
+  MissingLegalVersionError,
+  OutdatedLegalVersionError,
+} from "./identity.repository.js";
 import {
   AuthError,
   CURRENT_LEGAL_VERSION,
@@ -43,7 +47,7 @@ function createFakeDb(initialDocs: DocRow[] = []) {
         const kind = String(params?.[0]);
         const sorted = docs
           .filter((d) => d.kind === kind)
-          .sort((a, b) => b.publishedAt - a.publishedAt);
+          .sort((a, b) => b.publishedAt - a.publishedAt || b.id.localeCompare(a.id));
         const top = sorted[0];
         return Promise.resolve({ rows: top ? [top] : [], rowCount: top ? 1 : 0 });
       }
@@ -193,7 +197,7 @@ describe("integridad de documentos legales en registro (ORDEN 020)", () => {
     expect(fake.sqlLog).toContain("ROLLBACK");
   });
 
-  it("con consents.version existente pero no vigente la acepta sin crear filas nuevas", async () => {
+  it("con consents.version existente pero no vigente rechaza con OutdatedLegalVersionError y ROLLBACK, y acepta la versión vigente explícita (D19 / ORDEN 023)", async () => {
     const fake = createFakeDb([
       { id: "doc-terms-1", kind: "TERMS", version: "2026-01", publishedAt: 10 },
       { id: "doc-terms-2", kind: "TERMS", version: "2026-02", publishedAt: 20 },
@@ -201,13 +205,34 @@ describe("integridad de documentos legales en registro (ORDEN 020)", () => {
       { id: "doc-priv-2", kind: "PRIVACY_NOTICE", version: "2026-02", publishedAt: 20 },
     ]);
     const repo = new IdentityRepository(fake.database);
-    const res = await repo.insertUserWithConsents({
-      email: "previa@example.invalid",
+    await expect(
+      repo.insertUserWithConsents({
+        email: "previa@example.invalid",
+        phoneE164: null,
+        passwordHash: "hash",
+        consents: {
+          version: "2026-01",
+          requestedVersion: "2026-01",
+          termsAccepted: true,
+          privacyAccepted: true,
+          sensitiveDataAccepted: false,
+          marketingAccepted: false,
+          channel: "WEB",
+        },
+      }),
+    ).rejects.toThrow(OutdatedLegalVersionError);
+    expect(fake.docs).toHaveLength(4);
+    expect(fake.users).toHaveLength(0);
+    expect(fake.consents).toHaveLength(0);
+    expect(fake.sqlLog).toContain("ROLLBACK");
+
+    const okRes = await repo.insertUserWithConsents({
+      email: "vigente-explicita@example.invalid",
       phoneE164: null,
       passwordHash: "hash",
       consents: {
-        version: "2026-01",
-        requestedVersion: "2026-01",
+        version: "2026-02",
+        requestedVersion: "2026-02",
         termsAccepted: true,
         privacyAccepted: true,
         sensitiveDataAccepted: false,
@@ -215,23 +240,27 @@ describe("integridad de documentos legales en registro (ORDEN 020)", () => {
         channel: "WEB",
       },
     });
-    expect(res.legalVersion).toBe("2026-01");
+    expect(okRes.legalVersion).toBe("2026-02");
     expect(fake.docs).toHaveLength(4);
     expect(fake.consents).toEqual([
-      { userId: res.user.id, legalDocumentId: "doc-terms-1", purpose: "TERMS_ACCEPTANCE" },
-      { userId: res.user.id, legalDocumentId: "doc-priv-1", purpose: "ACCOUNT" },
+      { userId: okRes.user.id, legalDocumentId: "doc-terms-2", purpose: "TERMS_ACCEPTANCE" },
+      { userId: okRes.user.id, legalDocumentId: "doc-priv-2", purpose: "ACCOUNT" },
+    ]);
+    expect(okRes.consents).toEqual([
+      { purpose: "TERMS_ACCEPTANCE", legalDocumentId: "doc-terms-2", version: "2026-02" },
+      { purpose: "ACCOUNT", legalDocumentId: "doc-priv-2", version: "2026-02" },
     ]);
   });
 
-  it("IdentityService.register convierte MissingLegalVersionError en AuthError 422 con el mensaje exacto", async () => {
-    const repo = {
+  it("IdentityService.register convierte MissingLegalVersionError y OutdatedLegalVersionError en AuthError 422 con mensajes exactos", async () => {
+    const missingRepo = {
       insertUserWithConsents: () => Promise.reject(new MissingLegalVersionError()),
     } as unknown as IdentityRepository;
-    const service = new IdentityService(repo, {} as AuditRecorder);
+    const missingService = new IdentityService(missingRepo, {} as AuditRecorder);
 
-    let caught: unknown = null;
+    let caughtMissing: unknown = null;
     try {
-      await service.register(
+      await missingService.register(
         parseRegistrationInput({
           email: "fail422@example.invalid",
           password: "clave-de-prueba-12",
@@ -240,10 +269,36 @@ describe("integridad de documentos legales en registro (ORDEN 020)", () => {
         }),
       );
     } catch (err) {
-      caught = err;
+      caughtMissing = err;
     }
-    expect(caught).toBeInstanceOf(AuthError);
-    expect((caught as AuthError).status).toBe(422);
-    expect((caught as AuthError).message).toBe("La versión de los documentos legales no existe");
+    expect(caughtMissing).toBeInstanceOf(AuthError);
+    expect((caughtMissing as AuthError).status).toBe(422);
+    expect((caughtMissing as AuthError).message).toBe(
+      "La versión de los documentos legales no existe",
+    );
+
+    const outdatedRepo = {
+      insertUserWithConsents: () => Promise.reject(new OutdatedLegalVersionError()),
+    } as unknown as IdentityRepository;
+    const outdatedService = new IdentityService(outdatedRepo, {} as AuditRecorder);
+
+    let caughtOutdated: unknown = null;
+    try {
+      await outdatedService.register(
+        parseRegistrationInput({
+          email: "outdated422@example.invalid",
+          password: "clave-de-prueba-12",
+          client: "WEB",
+          consents: { termsAccepted: true, privacyAccepted: true, version: "2026-01" },
+        }),
+      );
+    } catch (err) {
+      caughtOutdated = err;
+    }
+    expect(caughtOutdated).toBeInstanceOf(AuthError);
+    expect((caughtOutdated as AuthError).status).toBe(422);
+    expect((caughtOutdated as AuthError).message).toBe(
+      "La versión de los documentos legales está desactualizada",
+    );
   });
 });

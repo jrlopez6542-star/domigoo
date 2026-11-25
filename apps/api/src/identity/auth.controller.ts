@@ -54,6 +54,7 @@ export class AuthController {
       ...this.publicBody(result.user, registration.client, result.token),
       legalVersion: result.legalVersion,
       consentPurposes: result.consentPurposes,
+      consents: result.consents,
     };
   }
 

@@ -1,6 +1,12 @@
 import { Injectable } from "@nestjs/common";
 import type { Pool } from "pg";
 import { Database } from "../database.js";
+import {
+  PURPOSE_TO_LEGAL_DOCUMENT_KIND,
+  SELECT_CURRENT_LEGAL_DOCUMENT_BY_KIND_SQL,
+  type LegalDocumentKind,
+  type MappedConsentPurpose,
+} from "../privacy/legal-documents.js";
 
 export type PublicUser = {
   id: string;
@@ -34,6 +40,12 @@ export type RegistrationConsentInput = {
   userAgent?: string;
 };
 
+export type RecordedRegistrationConsent = {
+  purpose: string;
+  legalDocumentId: string;
+  version: string;
+};
+
 export class MissingLegalVersionError extends Error {
   constructor() {
     super("La versión de los documentos legales no existe");
@@ -41,9 +53,16 @@ export class MissingLegalVersionError extends Error {
   }
 }
 
+export class OutdatedLegalVersionError extends Error {
+  constructor() {
+    super("La versión de los documentos legales está desactualizada");
+    this.name = "OutdatedLegalVersionError";
+  }
+}
+
 const DEFAULT_LEGAL_VERSION = "0.1-borrador";
 
-const DEFAULT_DOCUMENT_HASHES: Record<string, string> = {
+export const DEFAULT_DOCUMENT_HASHES: Readonly<Record<string, string>> = {
   TERMS: "fdb4df73fe68e0fb046efb0780f820fc259736bfaa63eb8287139eba27db33ae",
   PRIVACY_NOTICE: "1fbf6783816887d20674fdd01fd70c70ce58bc4ee20d9e21a7b923e611bc6061",
   DOCUMENT_PROCESSING: "634f193272c15d53a869db7ee8c462da4b70f3f7fb43695f5355202f203f2892",
@@ -80,41 +99,41 @@ export class IdentityRepository {
     phoneE164: string | null;
     passwordHash: string;
     consents: RegistrationConsentInput;
-  }): Promise<{ user: PublicUser; consentPurposes: string[]; legalVersion: string }> {
+  }): Promise<{
+    user: PublicUser;
+    consentPurposes: string[];
+    legalVersion: string;
+    consents: RecordedRegistrationConsent[];
+  }> {
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
 
-      const entries: Array<{
-        kind: "TERMS" | "PRIVACY_NOTICE" | "DOCUMENT_PROCESSING";
-        purpose: string;
-      }> = [
-        { kind: "TERMS", purpose: "TERMS_ACCEPTANCE" },
-        { kind: "PRIVACY_NOTICE", purpose: "ACCOUNT" },
-      ];
+      const purposes: MappedConsentPurpose[] = ["TERMS_ACCEPTANCE", "ACCOUNT"];
       if (input.consents.sensitiveDataAccepted) {
-        entries.push({ kind: "DOCUMENT_PROCESSING", purpose: "DOCUMENT_STORAGE" });
+        purposes.push("DOCUMENT_STORAGE");
       }
       if (input.consents.marketingAccepted) {
-        entries.push({ kind: "PRIVACY_NOTICE", purpose: "MARKETING" });
+        purposes.push("MARKETING");
       }
+      const entries: Array<{ kind: LegalDocumentKind; purpose: MappedConsentPurpose }> =
+        purposes.map((purpose) => ({
+          kind: PURPOSE_TO_LEGAL_DOCUMENT_KIND[purpose],
+          purpose,
+        }));
 
       const requestedVersion = input.consents.requestedVersion;
-      const docsByKind = new Map<string, { id: string; version: string }>();
+      const docsByKind = new Map<LegalDocumentKind, { id: string; version: string }>();
 
       for (const entry of entries) {
         if (docsByKind.has(entry.kind)) {
           continue;
         }
         const latestRes = await client.query<{ id: string; version: string }>(
-          `SELECT id, version
-           FROM legal_documents
-           WHERE kind = $1::"LegalDocumentKind"
-           ORDER BY "publishedAt" DESC, id DESC
-           LIMIT 1`,
+          SELECT_CURRENT_LEGAL_DOCUMENT_BY_KIND_SQL,
           [entry.kind],
         );
-        const latest = latestRes.rows[0];
+        let latest = latestRes.rows[0];
 
         let resolved: { id: string; version: string } | undefined;
         if (requestedVersion === undefined) {
@@ -132,11 +151,7 @@ export class IdentityRepository {
               [entry.kind, DEFAULT_LEGAL_VERSION, defaultHash],
             );
             const bootstrappedRes = await client.query<{ id: string; version: string }>(
-              `SELECT id, version
-               FROM legal_documents
-               WHERE kind = $1::"LegalDocumentKind"
-               ORDER BY "publishedAt" DESC, id DESC
-               LIMIT 1`,
+              SELECT_CURRENT_LEGAL_DOCUMENT_BY_KIND_SQL,
               [entry.kind],
             );
             resolved = bootstrappedRes.rows[0];
@@ -156,16 +171,29 @@ export class IdentityRepository {
                ON CONFLICT (kind, version) DO NOTHING`,
               [entry.kind, DEFAULT_LEGAL_VERSION, defaultHash],
             );
+            const bootstrappedRes = await client.query<{ id: string; version: string }>(
+              SELECT_CURRENT_LEGAL_DOCUMENT_BY_KIND_SQL,
+              [entry.kind],
+            );
+            latest = bootstrappedRes.rows[0];
           }
-          const exactRes = await client.query<{ id: string; version: string }>(
-            `SELECT id, version
-             FROM legal_documents
-             WHERE kind = $1::"LegalDocumentKind" AND version = $2
-             LIMIT 1`,
-            [entry.kind, requestedVersion],
-          );
-          resolved = exactRes.rows[0];
-          if (resolved === undefined) {
+
+          if (latest === undefined) {
+            throw new MissingLegalVersionError();
+          }
+          if (latest.version === requestedVersion) {
+            resolved = latest;
+          } else {
+            const exactRes = await client.query<{ id: string; version: string }>(
+              `SELECT id, version
+               FROM legal_documents
+               WHERE kind = $1::"LegalDocumentKind" AND version = $2
+               LIMIT 1`,
+              [entry.kind, requestedVersion],
+            );
+            if (exactRes.rows[0] !== undefined) {
+              throw new OutdatedLegalVersionError();
+            }
             throw new MissingLegalVersionError();
           }
         }
@@ -187,6 +215,7 @@ export class IdentityRepository {
         throw new Error("No se pudo crear la cuenta");
       }
 
+      const recordedConsents: RecordedRegistrationConsent[] = [];
       for (const entry of entries) {
         const doc = docsByKind.get(entry.kind);
         if (doc === undefined) {
@@ -207,6 +236,11 @@ export class IdentityRepository {
             input.consents.userAgent ?? null,
           ],
         );
+        recordedConsents.push({
+          purpose: entry.purpose,
+          legalDocumentId: doc.id,
+          version: doc.version,
+        });
       }
 
       const termsDoc = docsByKind.get("TERMS");
@@ -219,6 +253,7 @@ export class IdentityRepository {
         user,
         consentPurposes: entries.map((e) => e.purpose),
         legalVersion: termsDoc.version,
+        consents: recordedConsents,
       };
     } catch (error) {
       await client.query("ROLLBACK");

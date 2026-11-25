@@ -1,6 +1,11 @@
 import { createHash } from "node:crypto";
 import { Injectable } from "@nestjs/common";
 import { Database } from "../database.js";
+import {
+  CURRENT_LEGAL_DOCUMENT_ORDER_BY,
+  SELECT_ALL_CURRENT_LEGAL_DOCUMENTS_SQL,
+  expectedLegalDocumentKindForPurpose,
+} from "./legal-documents.js";
 
 export type LegalDocument = {
   id: string;
@@ -8,6 +13,13 @@ export type LegalDocument = {
   version: string;
   contentHash: string;
 };
+
+export type InsertConsentResult =
+  | { id: string; legalDocumentId: string }
+  | "missing"
+  | "invalid"
+  | "wrong_kind"
+  | { kind: "outdated"; currentLegalDocumentId: string };
 
 @Injectable()
 export class PrivacyRepository {
@@ -41,9 +53,7 @@ export class PrivacyRepository {
 
   async listCurrentDocuments(): Promise<LegalDocument[]> {
     const result = await this.database.pool.query<LegalDocument>(
-      `SELECT DISTINCT ON (kind) id, kind::text AS kind, version, "contentHash"
-       FROM legal_documents
-       ORDER BY kind, "publishedAt" DESC`,
+      SELECT_ALL_CURRENT_LEGAL_DOCUMENTS_SQL,
     );
     return result.rows;
   }
@@ -55,14 +65,67 @@ export class PrivacyRepository {
     channel: string;
     ip?: string;
     userAgent?: string;
-  }): Promise<{ id: string; legalDocumentId: string } | "missing" | "invalid"> {
+  }): Promise<InsertConsentResult> {
+    const expectedKind = expectedLegalDocumentKindForPurpose(input.purpose);
     try {
-      const result = await this.database.pool.query<{ id: string; legalDocumentId: string }>(
-        `INSERT INTO consent_records (
-           id, "userId", "legalDocumentId", purpose, channel, "grantedAt", ip, "userAgent"
+      if (expectedKind === null) {
+        const result = await this.database.pool.query<{ id: string; legalDocumentId: string }>(
+          `INSERT INTO consent_records (
+             id, "userId", "legalDocumentId", purpose, channel, "grantedAt", ip, "userAgent"
+           )
+           VALUES (gen_random_uuid(), $1, $2, $3::"ConsentPurpose", $4::"ConsentChannel", now(), $5, $6)
+           RETURNING id, "legalDocumentId"`,
+          [
+            input.userId,
+            input.legalDocumentId,
+            input.purpose,
+            input.channel,
+            input.ip ?? null,
+            input.userAgent ?? null,
+          ],
+        );
+        const row = result.rows[0];
+        if (row === undefined) {
+          throw new Error("No se pudo registrar el consentimiento");
+        }
+        return row;
+      }
+
+      const result = await this.database.pool.query<{
+        targetId: string | null;
+        targetKind: string | null;
+        currentId: string | null;
+        consentId: string | null;
+        legalDocumentId: string | null;
+      }>(
+        `WITH target AS (
+           SELECT id, kind
+           FROM legal_documents
+           WHERE id = $2
+         ),
+         current_doc AS (
+           SELECT id
+           FROM legal_documents
+           WHERE kind = $7::"LegalDocumentKind"
+           ORDER BY ${CURRENT_LEGAL_DOCUMENT_ORDER_BY}
+           LIMIT 1
+         ),
+         inserted AS (
+           INSERT INTO consent_records (
+             id, "userId", "legalDocumentId", purpose, channel, "grantedAt", ip, "userAgent"
+           )
+           SELECT gen_random_uuid(), $1, target.id, $3::"ConsentPurpose", $4::"ConsentChannel", now(), $5, $6
+           FROM target
+           JOIN current_doc ON current_doc.id = target.id
+           WHERE target.kind = $7::"LegalDocumentKind"
+           RETURNING id, "legalDocumentId"
          )
-         VALUES (gen_random_uuid(), $1, $2, $3::"ConsentPurpose", $4::"ConsentChannel", now(), $5, $6)
-         RETURNING id, "legalDocumentId"`,
+         SELECT
+           (SELECT id FROM target) AS "targetId",
+           (SELECT kind::text FROM target) AS "targetKind",
+           (SELECT id FROM current_doc) AS "currentId",
+           (SELECT id FROM inserted) AS "consentId",
+           (SELECT "legalDocumentId" FROM inserted) AS "legalDocumentId"`,
         [
           input.userId,
           input.legalDocumentId,
@@ -70,13 +133,26 @@ export class PrivacyRepository {
           input.channel,
           input.ip ?? null,
           input.userAgent ?? null,
+          expectedKind,
         ],
       );
       const row = result.rows[0];
       if (row === undefined) {
         throw new Error("No se pudo registrar el consentimiento");
       }
-      return row;
+      if (row.targetId === null) {
+        return "missing";
+      }
+      if (row.targetKind !== expectedKind) {
+        return "wrong_kind";
+      }
+      if (row.consentId === null || row.legalDocumentId === null) {
+        if (row.currentId === null) {
+          throw new Error("No se pudo resolver la versión vigente del documento legal");
+        }
+        return { kind: "outdated", currentLegalDocumentId: row.currentId };
+      }
+      return { id: row.consentId, legalDocumentId: row.legalDocumentId };
     } catch (error) {
       const code = pgCode(error);
       if (code === "22P02") {

@@ -76,7 +76,7 @@ describe("consentimiento", () => {
     currentApp = undefined;
   });
 
-  it("conserva dos versiones y deja de contar un consentimiento revocado", async () => {
+  it("conserva dos versiones, rechaza tipo incorrecto o versión desactualizada y deja de contar un consentimiento revocado (D19)", async () => {
     const adminToken = await register("aviso@example.invalid");
     const userToken = await register("persona-aviso@example.invalid");
     const pool = new Pool({ connectionString: databaseUrl });
@@ -94,28 +94,70 @@ describe("consentimiento", () => {
     );
     await pool.end();
 
-    const first = await request(server())
+    const firstPrivacy = await request(server())
       .post("/v1/legal-documents")
       .set("Authorization", `Bearer ${adminToken}`)
       .send({ kind: "PRIVACY_NOTICE", version: "2026-01", content: "texto uno" })
       .expect(201);
-    const second = await request(server())
+    const secondPrivacy = await request(server())
       .post("/v1/legal-documents")
       .set("Authorization", `Bearer ${adminToken}`)
       .send({ kind: "PRIVACY_NOTICE", version: "2026-02", content: "texto dos" })
       .expect(201);
-    expect(record(first.body)["id"]).not.toBe(record(second.body)["id"]);
+    expect(record(firstPrivacy.body)["id"]).not.toBe(record(secondPrivacy.body)["id"]);
 
+    const firstGeo = await request(server())
+      .post("/v1/legal-documents")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ kind: "GEOLOCATION_CONSENT", version: "2026-01-geo", content: "geo uno" })
+      .expect(201);
+    const secondGeo = await request(server())
+      .post("/v1/legal-documents")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ kind: "GEOLOCATION_CONSENT", version: "2026-02-geo", content: "geo dos" })
+      .expect(201);
+    expect(record(firstGeo.body)["id"]).not.toBe(record(secondGeo.body)["id"]);
+
+    // D19: documento de otro tipo para GEOLOCATION -> 422
+    const wrongKind = await request(server())
+      .post("/v1/consents")
+      .set("Authorization", `Bearer ${userToken}`)
+      .send({
+        legalDocumentId: record(secondPrivacy.body)["id"],
+        purpose: "GEOLOCATION",
+        channel: "MOBILE",
+      })
+      .expect(422);
+    expect(record(wrongKind.body)).toEqual({
+      message: "El documento no corresponde al propósito del consentimiento",
+    });
+
+    // D19: versión no vigente del tipo correcto -> 422 con currentLegalDocumentId
+    const outdated = await request(server())
+      .post("/v1/consents")
+      .set("Authorization", `Bearer ${userToken}`)
+      .send({
+        legalDocumentId: record(firstGeo.body)["id"],
+        purpose: "GEOLOCATION",
+        channel: "MOBILE",
+      })
+      .expect(422);
+    expect(record(outdated.body)).toEqual({
+      message: "La versión del documento está desactualizada",
+      currentLegalDocumentId: record(secondGeo.body)["id"],
+    });
+
+    // Documento vigente del tipo correcto -> 201
     const consent = await request(server())
       .post("/v1/consents")
       .set("Authorization", `Bearer ${userToken}`)
       .send({
-        legalDocumentId: record(first.body)["id"],
+        legalDocumentId: record(secondGeo.body)["id"],
         purpose: "GEOLOCATION",
         channel: "MOBILE",
       })
       .expect(201);
-    expect(record(consent.body)["legalDocumentId"]).toBe(record(first.body)["id"]);
+    expect(record(consent.body)["legalDocumentId"]).toBe(record(secondGeo.body)["id"]);
 
     await request(server())
       .get("/v1/consents/current")
