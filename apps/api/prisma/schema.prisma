@@ -572,6 +572,8 @@ model LegalDocument {
   kind        LegalDocumentKind
   version     String            @db.VarChar(20)
   contentHash String            @db.VarChar(64)
+  /// Copia inmutable del texto publicado (nullable para filas previas a D19 parte 2).
+  content     String?
   publishedAt DateTime          @db.Timestamptz(6)
 
   consents ConsentRecord[]

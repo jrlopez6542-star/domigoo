@@ -33,10 +33,10 @@ export class PrivacyRepository {
     const contentHash = createHash("sha256").update(input.content).digest("hex");
     try {
       const result = await this.database.pool.query<LegalDocument>(
-        `INSERT INTO legal_documents (id, kind, version, "contentHash", "publishedAt")
-         VALUES (gen_random_uuid(), $1::"LegalDocumentKind", $2, $3, now())
+        `INSERT INTO legal_documents (id, kind, version, "contentHash", content, "publishedAt")
+         VALUES (gen_random_uuid(), $1::"LegalDocumentKind", $2, $3, $4, now())
          RETURNING id, kind::text AS kind, version, "contentHash"`,
-        [input.kind, input.version, contentHash],
+        [input.kind, input.version, contentHash, input.content],
       );
       const row = result.rows[0];
       if (row === undefined) {

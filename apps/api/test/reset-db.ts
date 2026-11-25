@@ -22,8 +22,18 @@ export async function resetDatabase(databaseUrl: string): Promise<void> {
     await pool.query(`DELETE FROM couriers`);
     await pool.query(`DELETE FROM courier_invitations`);
     await pool.query(`DELETE FROM data_subject_requests`);
-    await pool.query(`DELETE FROM consent_records`);
-    await pool.query(`DELETE FROM legal_documents`);
+    await pool.query(`ALTER TABLE consent_records DISABLE TRIGGER consent_records_no_mutate`);
+    try {
+      await pool.query(`DELETE FROM consent_records`);
+    } finally {
+      await pool.query(`ALTER TABLE consent_records ENABLE TRIGGER consent_records_no_mutate`);
+    }
+    await pool.query(`ALTER TABLE legal_documents DISABLE TRIGGER legal_documents_no_mutate`);
+    try {
+      await pool.query(`DELETE FROM legal_documents`);
+    } finally {
+      await pool.query(`ALTER TABLE legal_documents ENABLE TRIGGER legal_documents_no_mutate`);
+    }
     await pool.query(`ALTER TABLE audit_logs DISABLE TRIGGER audit_logs_no_update`);
     await pool.query(`DELETE FROM audit_logs`);
     await pool.query(`ALTER TABLE audit_logs ENABLE TRIGGER audit_logs_no_update`);
