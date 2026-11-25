@@ -11,10 +11,13 @@ import {
 } from "./login-throttle.js";
 import {
   IdentityRepository,
+  InvalidLegalDocumentError,
   MissingLegalVersionError,
   OutdatedLegalVersionError,
   type PublicUser,
   type RecordedRegistrationConsent,
+  type RegistrationDocumentKind,
+  type RegistrationDocumentsMap,
 } from "./identity.repository.js";
 import { createSessionToken, hashSessionToken } from "./session-token.js";
 import { readSessionCookie } from "./session-cookie.js";
@@ -29,24 +32,36 @@ export type Credentials = {
 };
 
 export class AuthError extends Error {
+  readonly details?: Record<string, unknown>;
+
   constructor(
     readonly status: number,
     message: string,
-    options?: ErrorOptions,
+    options?: ErrorOptions & { details?: Record<string, unknown> },
   ) {
     super(message, options);
     this.name = "AuthError";
+    if (options?.details !== undefined) {
+      this.details = options.details;
+    }
   }
 }
 
 const INVALID = "Credenciales inválidas";
 const DUMMY_PASSWORD = hashPassword("marcador-interno-no-es-una-clave");
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const ALLOWED_REGISTRATION_DOCUMENT_KINDS = new Set<string>([
+  "TERMS",
+  "PRIVACY_NOTICE",
+  "DOCUMENT_PROCESSING",
+]);
 
 export type RegistrationRole = "CUSTOMER" | "RESTAURANT" | "COURIER";
 
 export type RegistrationConsentsPayload = {
   version: string;
   requestedVersion?: string;
+  requestedDocuments?: RegistrationDocumentsMap;
   termsAccepted: boolean;
   privacyAccepted: boolean;
   sensitiveDataAccepted: boolean;
@@ -95,7 +110,15 @@ export class IdentityService {
       const token = await this.openSession(user.id, input.client);
       return { user, token, legalVersion, consentPurposes, consents };
     } catch (error) {
-      if (error instanceof MissingLegalVersionError || error instanceof OutdatedLegalVersionError) {
+      if (error instanceof OutdatedLegalVersionError) {
+        throw new AuthError(422, error.message, {
+          cause: error,
+          ...(error.currentDocuments !== undefined
+            ? { details: { currentDocuments: error.currentDocuments } }
+            : {}),
+        });
+      }
+      if (error instanceof MissingLegalVersionError || error instanceof InvalidLegalDocumentError) {
         throw new AuthError(422, error.message, { cause: error });
       }
       if (isUniqueViolation(error)) {
@@ -284,12 +307,44 @@ export function parseRegistrationInput(body: unknown): RegistrationInput {
     );
   }
 
+  const rawDocuments = rawConsents["documents"];
+  let requestedDocuments: RegistrationDocumentsMap | undefined;
+  if (rawDocuments !== undefined) {
+    if (!isRecord(rawDocuments)) {
+      throw new AuthError(422, "Los documentos legales enviados no son válidos");
+    }
+    const parsedDocs: RegistrationDocumentsMap = {};
+    for (const [key, value] of Object.entries(rawDocuments)) {
+      if (value === undefined) {
+        continue;
+      }
+      if (!ALLOWED_REGISTRATION_DOCUMENT_KINDS.has(key)) {
+        throw new AuthError(422, "Los documentos legales enviados no son válidos");
+      }
+      if (typeof value !== "string" || !UUID_PATTERN.test(value)) {
+        throw new AuthError(422, "El identificador del documento legal es inválido");
+      }
+      parsedDocs[key as RegistrationDocumentKind] = value;
+    }
+    const requiredKinds: RegistrationDocumentKind[] = ["TERMS", "PRIVACY_NOTICE"];
+    if (sensitiveDataAccepted) {
+      requiredKinds.push("DOCUMENT_PROCESSING");
+    }
+    for (const kind of requiredKinds) {
+      if (parsedDocs[kind] === undefined) {
+        throw new AuthError(422, "Faltan documentos legales requeridos para completar el registro");
+      }
+    }
+    requestedDocuments = parsedDocs;
+  }
+
   return {
     ...credentials,
     role,
     consents: {
       version,
       ...(rawVersion !== null ? { requestedVersion: rawVersion } : {}),
+      ...(requestedDocuments !== undefined ? { requestedDocuments } : {}),
       termsAccepted,
       privacyAccepted,
       sensitiveDataAccepted,

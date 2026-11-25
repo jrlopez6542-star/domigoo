@@ -1,6 +1,6 @@
 import { BRAND_COLORS, BRAND_IDENTITY, BRAND_RADII } from "@domigoo/brand";
 import { StatusBar } from "expo-status-bar";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Button,
   Pressable,
@@ -12,7 +12,13 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { CourierApiClient } from "./api/client.js";
+import {
+  CourierApiClient,
+  CourierApiError,
+  MOBILE_GEO_ALREADY_REVOKED_MESSAGE,
+  OutdatedLegalDocumentsError,
+  type CurrentLegalDocument,
+} from "./api/client.js";
 import {
   initialCourierState,
   nextScreenAfterLogin,
@@ -33,7 +39,39 @@ export default function App() {
   const [password, setPassword] = useState("");
   const [pinDigits, setPinDigits] = useState("");
   const [geoConsentBox, setGeoConsentBox] = useState(false);
+  const [geoDocument, setGeoDocument] = useState<CurrentLegalDocument | null>(null);
+  const [loadingGeoDoc, setLoadingGeoDoc] = useState(false);
+  const [geoDocError, setGeoDocError] = useState("");
   const [feedback, setFeedback] = useState("");
+
+  const loadGeoDocument = useCallback(async () => {
+    setLoadingGeoDoc(true);
+    setGeoDocError("");
+    try {
+      const docs = await client.getCurrentLegalDocuments();
+      const found = docs.find((doc) => doc.kind === "GEOLOCATION_CONSENT") ?? null;
+      setGeoDocument(found);
+      if (found === null) {
+        setGeoDocError(
+          "No pudimos cargar la versión vigente del Consentimiento de geolocalización. Intenta de nuevo.",
+        );
+      }
+    } catch {
+      setGeoDocument(null);
+      setGeoDocError(
+        "No pudimos cargar la versión vigente del Consentimiento de geolocalización. Intenta de nuevo.",
+      );
+    } finally {
+      setLoadingGeoDoc(false);
+    }
+  }, [client]);
+
+  useEffect(() => {
+    if (state.screen !== "GEOLOCATION_CONSENT") {
+      return;
+    }
+    void loadGeoDocument();
+  }, [state.screen, loadGeoDocument]);
 
   async function onLogin() {
     setFeedback("");
@@ -57,7 +95,7 @@ export default function App() {
       return;
     }
     try {
-      const { consentId } = await client.grantGeolocationConsent();
+      const { consentId } = await client.grantGeolocationConsent(geoDocument?.id);
       setState((prev) => ({
         ...prev,
         hasGeolocationConsent: true,
@@ -65,8 +103,22 @@ export default function App() {
         screen: nextScreenAfterLogin(prev.hasProfile),
       }));
     } catch (err) {
+      if (err instanceof OutdatedLegalDocumentsError) {
+        const refreshedGeo =
+          err.currentDocuments.find((doc) => doc.kind === "GEOLOCATION_CONSENT") ?? null;
+        if (refreshedGeo !== null) {
+          setGeoDocument(refreshedGeo);
+        } else {
+          void loadGeoDocument();
+        }
+        setGeoConsentBox(false);
+        setFeedback(err.message);
+        return;
+      }
       setFeedback(
-        err instanceof Error ? err.message : "No se pudo registrar el consentimiento de ubicación",
+        err instanceof Error
+          ? err.message
+          : "No se pudo registrar el Consentimiento de geolocalización",
       );
     }
   }
@@ -104,6 +156,17 @@ export default function App() {
         "Ubicación desactivada. DOMIGOO dejó de recibir la ubicación de este dispositivo. Los datos ya recogidos se conservarán solo durante los plazos de la Política de Tratamiento de Datos.",
       );
     } catch (err) {
+      if (err instanceof CourierApiError && err.status === 404) {
+        setGeoConsentBox(false);
+        setState((prev) => ({
+          ...prev,
+          hasGeolocationConsent: false,
+          geolocationConsentId: null,
+          available: false,
+        }));
+        setFeedback(MOBILE_GEO_ALREADY_REVOKED_MESSAGE);
+        return;
+      }
       setFeedback(err instanceof Error ? err.message : "No se pudo revocar la ubicación");
     }
   }
@@ -273,6 +336,27 @@ export default function App() {
         {state.screen === "GEOLOCATION_CONSENT" ? (
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>Compartir tu ubicación con DOMIGOO</Text>
+            {geoDocument ? (
+              <Text style={styles.versionText}>
+                Consentimiento de geolocalización — Versión vigente: {geoDocument.version}
+              </Text>
+            ) : loadingGeoDoc ? (
+              <Text style={styles.versionText}>
+                Cargando versión vigente del Consentimiento de geolocalización...
+              </Text>
+            ) : geoDocError ? (
+              <View style={styles.retryRow}>
+                <Text style={styles.error}>{geoDocError}</Text>
+                <Pressable
+                  style={styles.secondaryLink}
+                  accessibilityRole="button"
+                  accessibilityLabel="Reintentar"
+                  onPress={() => void loadGeoDocument()}
+                >
+                  <Text style={styles.secondaryLinkText}>Reintentar</Text>
+                </Pressable>
+              </View>
+            ) : null}
             <Text style={styles.bodyText}>
               Para recibir y realizar entregas necesitamos conocer tu ubicación en tiempo real solo
               mientras tengas el turno activado o una entrega en curso. Cuando terminas el turno,
@@ -529,6 +613,14 @@ const styles = StyleSheet.create({
   bodyText: {
     color: BRAND_COLORS.textPrimary,
     fontSize: 14,
+  },
+  versionText: {
+    color: BRAND_COLORS.textMuted,
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  retryRow: {
+    gap: 8,
   },
   locationBadge: {
     backgroundColor: BRAND_COLORS.successBg,

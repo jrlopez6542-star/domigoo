@@ -15,6 +15,13 @@ import {
 import { ClipboardList, Home, PlusCircle, ShieldCheck, Store } from "lucide-react";
 import { callProxy } from "@/lib/api-client";
 import type { CreateRestaurantPayload, QuotePayload } from "@/lib/contracts";
+import {
+  findCurrentDocumentByKind,
+  GEO_CONSENT_UNAVAILABLE_MESSAGE,
+  resolveGeolocationConsentError,
+  resolveRevokeGeolocationError,
+  type CurrentLegalDocument,
+} from "@/lib/legal-consents";
 import { orderStatusLabel } from "@/lib/order-status";
 import {
   branchHoursSignature,
@@ -96,6 +103,9 @@ type RestaurantContextValue = {
   geoConsentChecked: boolean;
   setGeoConsentChecked: (v: boolean) => void;
   geoConsentId: string | null;
+  geoConsentDoc: CurrentLegalDocument | null;
+  loadingGeoDoc: boolean;
+  loadGeoConsentDocument: () => Promise<CurrentLegalDocument | null>;
   branchGeoStatus: string;
   dropoffGeoStatus: string;
   requestBrowserLocation: (target: "branch" | "dropoff") => void;
@@ -252,6 +262,8 @@ export function RestaurantPortalShell({
   const [showGeoConsent, setShowGeoConsent] = useState(false);
   const [geoConsentChecked, setGeoConsentChecked] = useState(false);
   const [geoConsentId, setGeoConsentId] = useState<string | null>(null);
+  const [geoConsentDoc, setGeoConsentDoc] = useState<CurrentLegalDocument | null>(null);
+  const [loadingGeoDoc, setLoadingGeoDoc] = useState(false);
   const [branchGeoStatus, setBranchGeoStatus] = useState(
     "Coordenadas por defecto: Tocancipá centro.",
   );
@@ -472,6 +484,30 @@ export function RestaurantPortalShell({
     );
   }
 
+  const loadGeoConsentDocument = useCallback(async (): Promise<CurrentLegalDocument | null> => {
+    setLoadingGeoDoc(true);
+    try {
+      const docs = await callProxy<{
+        documents?: CurrentLegalDocument[];
+      }>("legal-documents/current", "GET");
+      const found = findCurrentDocumentByKind(docs.documents, "GEOLOCATION_CONSENT");
+      setGeoConsentDoc(found);
+      return found;
+    } catch {
+      setGeoConsentDoc(null);
+      return null;
+    } finally {
+      setLoadingGeoDoc(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!showGeoConsent) {
+      return;
+    }
+    void loadGeoConsentDocument();
+  }, [showGeoConsent, loadGeoConsentDocument]);
+
   async function handleAllowGeoConsent() {
     setErrorMessage("");
     if (!geoConsentChecked) {
@@ -480,14 +516,16 @@ export function RestaurantPortalShell({
     }
     try {
       if (sessionUser) {
-        const docs = await callProxy<{
-          documents?: Array<{ id: string; kind: string }>;
-        }>("legal-documents/current", "GET");
-        const geoDoc = docs.documents?.find((doc) => doc.kind === "GEOLOCATION_CONSENT");
+        let geoDoc = geoConsentDoc;
         if (!geoDoc?.id) {
-          setErrorMessage(
-            "No se encontró el documento vigente de consentimiento de geolocalización.",
-          );
+          const docs = await callProxy<{
+            documents?: CurrentLegalDocument[];
+          }>("legal-documents/current", "GET");
+          geoDoc = docs.documents?.find((doc) => doc.kind === "GEOLOCATION_CONSENT") ?? null;
+          setGeoConsentDoc(geoDoc);
+        }
+        if (!geoDoc?.id) {
+          setErrorMessage(GEO_CONSENT_UNAVAILABLE_MESSAGE);
           return;
         }
         const granted = await callProxy<{ id: string }>("consents", "POST", {
@@ -500,7 +538,14 @@ export function RestaurantPortalShell({
       setShowGeoConsent(false);
       requestBrowserLocation("dropoff");
     } catch (err) {
-      setErrorMessage(err instanceof Error ? err.message : "No se pudo guardar el consentimiento.");
+      const resolved = resolveGeolocationConsentError(err);
+      if (resolved.shouldUncheckConsent) {
+        setGeoConsentChecked(false);
+      }
+      if (resolved.shouldRefetchCurrent) {
+        await loadGeoConsentDocument();
+      }
+      setErrorMessage(resolved.message);
     }
   }
 
@@ -509,10 +554,21 @@ export function RestaurantPortalShell({
       return;
     }
     await runAction("revoke-geo", async () => {
-      await callProxy<unknown>(`consents/${encodeURIComponent(geoConsentId)}/revoke`, "POST", {});
-      setGeoConsentId(null);
-      setGeoConsentChecked(false);
-      setStatusMessage("Consentimiento de geolocalización revocado.");
+      try {
+        await callProxy<unknown>(`consents/${encodeURIComponent(geoConsentId)}/revoke`, "POST", {});
+        setGeoConsentId(null);
+        setGeoConsentChecked(false);
+        setStatusMessage("Consentimiento de geolocalización revocado.");
+      } catch (err) {
+        const resolved = resolveRevokeGeolocationError(err);
+        if (resolved.alreadyRevoked) {
+          setGeoConsentId(null);
+          setGeoConsentChecked(false);
+          setStatusMessage(resolved.message);
+          return;
+        }
+        throw new Error(resolved.message, { cause: err });
+      }
     });
   }
 
@@ -864,6 +920,9 @@ export function RestaurantPortalShell({
         geoConsentChecked,
         setGeoConsentChecked,
         geoConsentId,
+        geoConsentDoc,
+        loadingGeoDoc,
+        loadGeoConsentDocument,
         branchGeoStatus,
         dropoffGeoStatus,
         requestBrowserLocation,
@@ -1493,6 +1552,8 @@ export function RestaurantNuevoDomicilioScreen() {
     geoConsentChecked,
     setGeoConsentChecked,
     geoConsentId,
+    geoConsentDoc,
+    loadingGeoDoc,
     dropoffGeoStatus,
     handleAllowGeoConsent,
     handleRevokeGeoConsent,
@@ -1778,6 +1839,19 @@ export function RestaurantNuevoDomicilioScreen() {
                   </Link>
                   .
                 </p>
+                {geoConsentDoc ? (
+                  <p
+                    className="dg-muted"
+                    data-testid="geo-consent-version"
+                    style={{ marginTop: 0, marginBottom: "10px" }}
+                  >
+                    Consentimiento de geolocalización — Versión vigente: {geoConsentDoc.version}
+                  </p>
+                ) : loadingGeoDoc ? (
+                  <p className="dg-muted" style={{ marginTop: 0, marginBottom: "10px" }}>
+                    Cargando versión vigente del Consentimiento de geolocalización...
+                  </p>
+                ) : null}
                 {errorMessage ? (
                   <div
                     role="alert"

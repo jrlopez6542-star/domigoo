@@ -1,9 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { callProxy } from "@/lib/api-client";
 import { buildLoginPayload } from "@/lib/contracts";
+import {
+  buildRegisterPayload,
+  buildRegistrationDocumentsForRole,
+  extractCurrentDocumentsFromError,
+  findCurrentDocumentByKind,
+  REGISTRATION_DOCS_LOAD_ERROR,
+  resolveRegistrationError,
+  sanitizeUserFacingMessage,
+  type CurrentLegalDocument,
+} from "@/lib/legal-consents";
 import {
   clearStoredActiveRole,
   getStoredActiveRole,
@@ -44,10 +54,39 @@ export function RoleAuthCard({
   const [privacyAccepted, setPrivacyAccepted] = useState(false);
   const [sensitiveDataAccepted, setSensitiveDataAccepted] = useState(false);
   const [marketingAccepted, setMarketingAccepted] = useState(false);
+  const [legalDocs, setLegalDocs] = useState<CurrentLegalDocument[]>([]);
+  const [loadingLegalDocs, setLoadingLegalDocs] = useState(false);
+  const [legalDocsError, setLegalDocsError] = useState("");
   const [loading, setLoading] = useState(false);
   const [checkingSession, setCheckingSession] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
+
+  const loadCurrentLegalDocuments = useCallback(async () => {
+    setLoadingLegalDocs(true);
+    setLegalDocsError("");
+    try {
+      const response = await callProxy<{ documents?: CurrentLegalDocument[] }>(
+        "legal-documents/current",
+        "GET",
+      );
+      const docs = Array.isArray(response.documents) ? response.documents : [];
+      const selection = buildRegistrationDocumentsForRole(accountRole, docs);
+      if (!selection.ok) {
+        setLegalDocs(docs);
+        setLegalDocsError(REGISTRATION_DOCS_LOAD_ERROR);
+        return false;
+      }
+      setLegalDocs(docs);
+      return true;
+    } catch {
+      setLegalDocs([]);
+      setLegalDocsError(REGISTRATION_DOCS_LOAD_ERROR);
+      return false;
+    } finally {
+      setLoadingLegalDocs(false);
+    }
+  }, [accountRole]);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -82,11 +121,29 @@ export function RoleAuthCard({
     };
   }, [accountRole, onAuthenticated]);
 
+  useEffect(() => {
+    if (mode !== "register" || sessionUser !== null) {
+      return;
+    }
+    void loadCurrentLegalDocuments();
+  }, [mode, sessionUser, loadCurrentLegalDocuments]);
+
+  const docsSelection = buildRegistrationDocumentsForRole(accountRole, legalDocs);
+  const termsDoc = findCurrentDocumentByKind(legalDocs, "TERMS");
+  const privacyDoc = findCurrentDocumentByKind(legalDocs, "PRIVACY_NOTICE");
+  const sensitiveDoc = findCurrentDocumentByKind(legalDocs, "DOCUMENT_PROCESSING");
+  const registerBlockedByLegalDocs =
+    mode === "register" && (loadingLegalDocs || Boolean(legalDocsError) || !docsSelection.ok);
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setErrorMessage("");
     setStatusMessage("");
     if (mode === "register") {
+      if (!docsSelection.ok) {
+        setLegalDocsError(REGISTRATION_DOCS_LOAD_ERROR);
+        return;
+      }
       if (!termsAccepted || !privacyAccepted) {
         setErrorMessage(
           "Debes aceptar los Términos y Condiciones y la Autorización de Tratamiento de Datos Personales.",
@@ -105,17 +162,16 @@ export function RoleAuthCard({
       const credentials = buildLoginPayload(identifier, password, "WEB");
       const endpoint = mode === "login" ? "auth/login" : "auth/register";
       const payload =
-        mode === "register"
-          ? {
-              ...credentials,
+        mode === "register" && docsSelection.ok
+          ? buildRegisterPayload({
+              credentials,
               role: accountRole,
-              consents: {
-                termsAccepted,
-                privacyAccepted,
-                ...(accountRole === "COURIER" ? { sensitiveDataAccepted } : {}),
-                marketingAccepted,
-              },
-            }
+              termsAccepted,
+              privacyAccepted,
+              sensitiveDataAccepted,
+              marketingAccepted,
+              documents: docsSelection.documents,
+            })
           : credentials;
       const data = await callProxy<SessionUser>(endpoint, "POST", payload);
       setStoredActiveRole(accountRole);
@@ -127,11 +183,33 @@ export function RoleAuthCard({
           : "Cuenta creada y sesión iniciada correctamente.",
       );
     } catch (err) {
-      setErrorMessage(
-        err instanceof Error
-          ? err.message
-          : "No fue posible autenticar. Verifica tus datos e intenta de nuevo.",
-      );
+      if (mode === "register") {
+        const resolved = resolveRegistrationError(err);
+        if (resolved.shouldUncheckConsents) {
+          setTermsAccepted(false);
+          setPrivacyAccepted(false);
+          setSensitiveDataAccepted(false);
+          setMarketingAccepted(false);
+        }
+        if (resolved.shouldRefetchCurrent) {
+          const refreshed = await loadCurrentLegalDocuments();
+          if (!refreshed) {
+            const fallbackDocs = extractCurrentDocumentsFromError(err);
+            if (fallbackDocs.length > 0) {
+              setLegalDocs(fallbackDocs);
+              setLegalDocsError("");
+            }
+          }
+        }
+        setErrorMessage(resolved.message);
+      } else {
+        setErrorMessage(
+          sanitizeUserFacingMessage(
+            err instanceof Error ? err.message : "",
+            "No fue posible autenticar. Verifica tus datos e intenta de nuevo.",
+          ),
+        );
+      }
     } finally {
       setLoading(false);
     }
@@ -276,6 +354,18 @@ export function RoleAuthCard({
 
             {mode === "register" ? (
               <div className="dg-check-group" data-testid="register-consents">
+                {legalDocsError ? (
+                  <div
+                    role="alert"
+                    aria-live="polite"
+                    className="dg-alert dg-alert--error"
+                    data-testid="legal-docs-error"
+                    style={{ margin: 0 }}
+                  >
+                    {legalDocsError}
+                  </div>
+                ) : null}
+
                 <label className="dg-check-row">
                   <input
                     type="checkbox"
@@ -291,6 +381,14 @@ export function RoleAuthCard({
                       Términos y Condiciones
                     </Link>{" "}
                     de DOMIGOO. (Obligatorio)
+                    {termsDoc ? (
+                      <>
+                        {" "}
+                        <span className="dg-muted" data-testid="legal-version-terms">
+                          Versión vigente: {termsDoc.version}
+                        </span>
+                      </>
+                    ) : null}
                   </span>
                 </label>
 
@@ -313,6 +411,14 @@ export function RoleAuthCard({
                       Política de Privacidad
                     </Link>
                     . (Obligatorio)
+                    {privacyDoc ? (
+                      <>
+                        {" "}
+                        <span className="dg-muted" data-testid="legal-version-privacy">
+                          Versión vigente: {privacyDoc.version}
+                        </span>
+                      </>
+                    ) : null}
                   </span>
                 </label>
 
@@ -333,6 +439,14 @@ export function RoleAuthCard({
                         Términos de Domiciliarios
                       </Link>
                       . (Obligatorio)
+                      {sensitiveDoc ? (
+                        <>
+                          {" "}
+                          <span className="dg-muted" data-testid="legal-version-sensitive">
+                            Versión vigente: {sensitiveDoc.version}
+                          </span>
+                        </>
+                      ) : null}
                     </span>
                   </label>
                 ) : null}
@@ -354,7 +468,11 @@ export function RoleAuthCard({
             ) : null}
 
             <div className="dg-btn-row">
-              <button type="submit" className="dg-btn" disabled={loading}>
+              <button
+                type="submit"
+                className="dg-btn"
+                disabled={loading || registerBlockedByLegalDocs}
+              >
                 {loading
                   ? mode === "login"
                     ? "Ingresando..."
@@ -363,6 +481,17 @@ export function RoleAuthCard({
                     ? "Ingresar"
                     : "Registrarme"}
               </button>
+              {mode === "register" && legalDocsError ? (
+                <button
+                  type="button"
+                  className="dg-btn dg-btn--secondary"
+                  data-testid="retry-legal-docs"
+                  onClick={() => void loadCurrentLegalDocuments()}
+                  disabled={loadingLegalDocs}
+                >
+                  {loadingLegalDocs ? "Reintentando..." : "Reintentar"}
+                </button>
+              ) : null}
             </div>
           </form>
         </>

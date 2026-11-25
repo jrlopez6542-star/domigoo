@@ -182,5 +182,11 @@ function oneHeader(value: string | string[] | undefined): string | undefined {
 }
 
 function httpError(error: AuthError): HttpException {
-  return new HttpException({ message: error.message }, error.status);
+  return new HttpException(
+    {
+      message: error.message,
+      ...(error.details ?? {}),
+    },
+    error.status,
+  );
 }

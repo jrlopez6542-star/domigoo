@@ -250,4 +250,97 @@ test.describe("M49-MOVIL: Auditoría móvil (iPhone 13 390x844 y Android 360x780
       }
     }
   });
+
+  test("ORDEN 025: registro con versiones vigentes y estado Reintentar a 390/360 px sin desborde y objetivos >= 44 px", async ({
+    page,
+  }) => {
+    let failCurrent = false;
+    await page.route("**/api/proxy/**", async (route) => {
+      const url = route.request().url();
+      if (url.includes("/auth/me")) {
+        await route.fulfill({ status: 401, contentType: "application/json", body: "{}" });
+        return;
+      }
+      if (url.includes("/legal-documents/current")) {
+        if (failCurrent) {
+          await route.fulfill({
+            status: 503,
+            contentType: "application/json",
+            body: JSON.stringify({ message: "Servicio temporalmente no disponible" }),
+          });
+          return;
+        }
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            documents: [
+              {
+                id: "11111111-1111-4111-8111-111111111111",
+                kind: "TERMS",
+                version: "2026-02",
+                contentHash: "a".repeat(64),
+              },
+              {
+                id: "22222222-2222-4222-8222-222222222222",
+                kind: "PRIVACY_NOTICE",
+                version: "2026-02",
+                contentHash: "b".repeat(64),
+              },
+              {
+                id: "33333333-3333-4333-8333-333333333333",
+                kind: "DOCUMENT_PROCESSING",
+                version: "0.1-borrador",
+                contentHash: "c".repeat(64),
+              },
+            ],
+          }),
+        });
+        return;
+      }
+      await route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
+    });
+
+    await page.goto("/domiciliario?modo=registro");
+    await expect(page.getByTestId("legal-version-terms")).toContainText("Versión vigente: 2026-02");
+    await expect(page.getByTestId("legal-version-privacy")).toContainText(
+      "Versión vigente: 2026-02",
+    );
+    await expect(page.getByTestId("legal-version-sensitive")).toContainText(
+      "Versión vigente: 0.1-borrador",
+    );
+    await assertNoHorizontalOverflow(page);
+
+    const checkRows = page.getByTestId("register-consents").locator("label.dg-check-row");
+    const checkCount = await checkRows.count();
+    expect(checkCount).toBe(4);
+    for (let i = 0; i < checkCount; i += 1) {
+      const box = await checkRows.nth(i).boundingBox();
+      expect(box).not.toBeNull();
+      if (box) {
+        expect(box.height).toBeGreaterThanOrEqual(44);
+      }
+    }
+
+    const links = page.getByTestId("register-consents").locator("a.dg-inline-link");
+    const linkCount = await links.count();
+    for (let i = 0; i < linkCount; i += 1) {
+      const h = await links.nth(i).evaluate((el) => el.getBoundingClientRect().height);
+      expect(h).toBeGreaterThanOrEqual(44);
+    }
+
+    // Estado de error al cargar documentos vigentes -> muestra Reintentar >= 44px y bloquea envío
+    failCurrent = true;
+    await page.goto("/cliente?modo=registro");
+    await expect(page.getByTestId("legal-docs-error")).toBeVisible();
+    const retryBtn = page.getByTestId("retry-legal-docs");
+    await expect(retryBtn).toBeVisible();
+    const retryBox = await retryBtn.boundingBox();
+    expect(retryBox).not.toBeNull();
+    if (retryBox) {
+      expect(retryBox.height).toBeGreaterThanOrEqual(44);
+    }
+    await expect(page.getByRole("button", { name: "Registrarme" })).toBeDisabled();
+    await assertNoHorizontalOverflow(page);
+  });
 });
