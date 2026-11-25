@@ -24,6 +24,7 @@ export type StoredSession = {
 
 export type RegistrationConsentInput = {
   version: string;
+  requestedVersion?: string;
   termsAccepted: boolean;
   privacyAccepted: boolean;
   sensitiveDataAccepted: boolean;
@@ -32,6 +33,15 @@ export type RegistrationConsentInput = {
   ip?: string;
   userAgent?: string;
 };
+
+export class MissingLegalVersionError extends Error {
+  constructor() {
+    super("La versión de los documentos legales no existe");
+    this.name = "MissingLegalVersionError";
+  }
+}
+
+const DEFAULT_LEGAL_VERSION = "0.1-borrador";
 
 const DEFAULT_DOCUMENT_HASHES: Record<string, string> = {
   TERMS: "fdb4df73fe68e0fb046efb0780f820fc259736bfaa63eb8287139eba27db33ae",
@@ -74,16 +84,6 @@ export class IdentityRepository {
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
-      const userRes = await client.query<PublicUser>(
-        `INSERT INTO users (id, email, "phoneE164", "passwordHash", status, "createdAt", "updatedAt")
-         VALUES (gen_random_uuid(), $1, $2, $3, 'ACTIVE', now(), now())
-         RETURNING id, email, "phoneE164", status`,
-        [input.email, input.phoneE164, input.passwordHash],
-      );
-      const user = userRes.rows[0];
-      if (user === undefined) {
-        throw new Error("No se pudo crear la cuenta");
-      }
 
       const entries: Array<{
         kind: "TERMS" | "PRIVACY_NOTICE" | "DOCUMENT_PROCESSING";
@@ -99,28 +99,99 @@ export class IdentityRepository {
         entries.push({ kind: "PRIVACY_NOTICE", purpose: "MARKETING" });
       }
 
-      const docIds = new Map<string, string>();
+      const requestedVersion = input.consents.requestedVersion;
+      const docsByKind = new Map<string, { id: string; version: string }>();
+
       for (const entry of entries) {
-        if (!docIds.has(entry.kind)) {
-          const defaultHash = DEFAULT_DOCUMENT_HASHES[entry.kind] ?? "0".repeat(64);
-          await client.query(
-            `INSERT INTO legal_documents (id, kind, version, "contentHash", "publishedAt")
-             VALUES (gen_random_uuid(), $1::"LegalDocumentKind", $2, $3, now())
-             ON CONFLICT (kind, version) DO NOTHING`,
-            [entry.kind, input.consents.version, defaultHash],
-          );
-          const docRes = await client.query<{ id: string }>(
-            `SELECT id FROM legal_documents WHERE kind = $1::"LegalDocumentKind" AND version = $2 LIMIT 1`,
-            [entry.kind, input.consents.version],
-          );
-          const docId = docRes.rows[0]?.id;
-          if (docId === undefined) {
-            throw new Error(`No se pudo resolver el documento legal ${entry.kind}`);
+        if (docsByKind.has(entry.kind)) {
+          continue;
+        }
+        const latestRes = await client.query<{ id: string; version: string }>(
+          `SELECT id, version
+           FROM legal_documents
+           WHERE kind = $1::"LegalDocumentKind"
+           ORDER BY "publishedAt" DESC, id DESC
+           LIMIT 1`,
+          [entry.kind],
+        );
+        const latest = latestRes.rows[0];
+
+        let resolved: { id: string; version: string } | undefined;
+        if (requestedVersion === undefined) {
+          if (latest !== undefined) {
+            resolved = latest;
+          } else {
+            const defaultHash = DEFAULT_DOCUMENT_HASHES[entry.kind] ?? "0".repeat(64);
+            await client.query(
+              `INSERT INTO legal_documents (id, kind, version, "contentHash", "publishedAt")
+               SELECT gen_random_uuid(), $1::"LegalDocumentKind", $2, $3, now()
+               WHERE NOT EXISTS (
+                 SELECT 1 FROM legal_documents WHERE kind = $1::"LegalDocumentKind"
+               )
+               ON CONFLICT (kind, version) DO NOTHING`,
+              [entry.kind, DEFAULT_LEGAL_VERSION, defaultHash],
+            );
+            const bootstrappedRes = await client.query<{ id: string; version: string }>(
+              `SELECT id, version
+               FROM legal_documents
+               WHERE kind = $1::"LegalDocumentKind"
+               ORDER BY "publishedAt" DESC, id DESC
+               LIMIT 1`,
+              [entry.kind],
+            );
+            resolved = bootstrappedRes.rows[0];
           }
-          docIds.set(entry.kind, docId);
+        } else {
+          if (latest === undefined) {
+            if (requestedVersion !== DEFAULT_LEGAL_VERSION) {
+              throw new MissingLegalVersionError();
+            }
+            const defaultHash = DEFAULT_DOCUMENT_HASHES[entry.kind] ?? "0".repeat(64);
+            await client.query(
+              `INSERT INTO legal_documents (id, kind, version, "contentHash", "publishedAt")
+               SELECT gen_random_uuid(), $1::"LegalDocumentKind", $2, $3, now()
+               WHERE NOT EXISTS (
+                 SELECT 1 FROM legal_documents WHERE kind = $1::"LegalDocumentKind"
+               )
+               ON CONFLICT (kind, version) DO NOTHING`,
+              [entry.kind, DEFAULT_LEGAL_VERSION, defaultHash],
+            );
+          }
+          const exactRes = await client.query<{ id: string; version: string }>(
+            `SELECT id, version
+             FROM legal_documents
+             WHERE kind = $1::"LegalDocumentKind" AND version = $2
+             LIMIT 1`,
+            [entry.kind, requestedVersion],
+          );
+          resolved = exactRes.rows[0];
+          if (resolved === undefined) {
+            throw new MissingLegalVersionError();
+          }
         }
 
-        const legalDocumentId = docIds.get(entry.kind);
+        if (resolved === undefined) {
+          throw new Error(`No se pudo resolver el documento legal ${entry.kind}`);
+        }
+        docsByKind.set(entry.kind, resolved);
+      }
+
+      const userRes = await client.query<PublicUser>(
+        `INSERT INTO users (id, email, "phoneE164", "passwordHash", status, "createdAt", "updatedAt")
+         VALUES (gen_random_uuid(), $1, $2, $3, 'ACTIVE', now(), now())
+         RETURNING id, email, "phoneE164", status`,
+        [input.email, input.phoneE164, input.passwordHash],
+      );
+      const user = userRes.rows[0];
+      if (user === undefined) {
+        throw new Error("No se pudo crear la cuenta");
+      }
+
+      for (const entry of entries) {
+        const doc = docsByKind.get(entry.kind);
+        if (doc === undefined) {
+          throw new Error(`No se pudo resolver el documento legal ${entry.kind}`);
+        }
         await client.query(
           `INSERT INTO consent_records (
              id, "userId", "legalDocumentId", purpose, channel, "grantedAt", ip, "userAgent"
@@ -129,7 +200,7 @@ export class IdentityRepository {
            )`,
           [
             user.id,
-            legalDocumentId,
+            doc.id,
             entry.purpose,
             input.consents.channel,
             input.consents.ip ?? null,
@@ -138,11 +209,16 @@ export class IdentityRepository {
         );
       }
 
+      const termsDoc = docsByKind.get("TERMS");
+      if (termsDoc === undefined) {
+        throw new Error("No se pudo resolver el documento legal TERMS");
+      }
+
       await client.query("COMMIT");
       return {
         user,
         consentPurposes: entries.map((e) => e.purpose),
-        legalVersion: input.consents.version,
+        legalVersion: termsDoc.version,
       };
     } catch (error) {
       await client.query("ROLLBACK");

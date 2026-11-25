@@ -14,7 +14,7 @@ import {
 import { Bike, Home, MapPin, ShieldCheck, UserCheck } from "lucide-react";
 import { callProxy } from "@/lib/api-client";
 import { orderStatusLabel } from "@/lib/order-status";
-import { pickActiveCourierOrder } from "@/lib/portal-helpers";
+import { courierStatusLabel, pickActiveCourierOrder } from "@/lib/portal-helpers";
 import {
   clearStoredActiveRole,
   getStoredActiveRole,
@@ -325,7 +325,9 @@ export function CourierPortalShell({ children }: { children: ReactNode }) {
         documentNumber,
       });
       setCourierId(data.id);
-      setStatusMessage(`Perfil de domiciliario creado (${data.status}). ID: ${data.id}`);
+      setStatusMessage(
+        `Perfil de domiciliario creado (${courierStatusLabel(data.status)}). ID: ${data.id}`,
+      );
     });
   }
 
@@ -409,13 +411,13 @@ export function CourierPortalShell({ children }: { children: ReactNode }) {
       return;
     }
     await runAction(`decline-${targetOfferId}`, async () => {
-      const data = await callProxy<{ status: string }>(
+      await callProxy<{ status: string }>(
         `offers/${encodeURIComponent(targetOfferId.trim())}/decline`,
         "POST",
         {},
       );
       setAvailableOffers((prev) => prev.filter((item) => item.offerId !== targetOfferId));
-      setStatusMessage(`Oferta rechazada (${data.status}).`);
+      setStatusMessage("Oferta rechazada.");
     });
   }
 

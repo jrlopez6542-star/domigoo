@@ -9,7 +9,11 @@ import {
   LoginLimitedError,
   recordLoginFailure,
 } from "./login-throttle.js";
-import { IdentityRepository, type PublicUser } from "./identity.repository.js";
+import {
+  IdentityRepository,
+  MissingLegalVersionError,
+  type PublicUser,
+} from "./identity.repository.js";
 import { createSessionToken, hashSessionToken } from "./session-token.js";
 import { readSessionCookie } from "./session-cookie.js";
 
@@ -26,8 +30,9 @@ export class AuthError extends Error {
   constructor(
     readonly status: number,
     message: string,
+    options?: ErrorOptions,
   ) {
-    super(message);
+    super(message, options);
     this.name = "AuthError";
   }
 }
@@ -39,6 +44,7 @@ export type RegistrationRole = "CUSTOMER" | "RESTAURANT" | "COURIER";
 
 export type RegistrationConsentsPayload = {
   version: string;
+  requestedVersion?: string;
   termsAccepted: boolean;
   privacyAccepted: boolean;
   sensitiveDataAccepted: boolean;
@@ -80,8 +86,11 @@ export class IdentityService {
       const token = await this.openSession(user.id, input.client);
       return { user, token, legalVersion, consentPurposes };
     } catch (error) {
+      if (error instanceof MissingLegalVersionError) {
+        throw new AuthError(422, error.message, { cause: error });
+      }
       if (isUniqueViolation(error)) {
-        throw new AuthError(409, "Ya existe una cuenta con esos datos");
+        throw new AuthError(409, "Ya existe una cuenta con esos datos", { cause: error });
       }
       throw error;
     }
@@ -271,6 +280,7 @@ export function parseRegistrationInput(body: unknown): RegistrationInput {
     role,
     consents: {
       version,
+      ...(rawVersion !== null ? { requestedVersion: rawVersion } : {}),
       termsAccepted,
       privacyAccepted,
       sensitiveDataAccepted,

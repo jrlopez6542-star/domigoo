@@ -14,6 +14,15 @@ const ALLOWED_EXACT_ROUTES = new Set([
 
 const ALLOWED_PREFIXES = ["consents", "couriers", "offers/", "orders", "tracking/"];
 
+// Formas exactas con un solo segmento de id (ORDEN 020): alta del restaurante desde la web.
+const ALLOWED_ID_ROUTES: ReadonlyArray<{ collection: string; action: string; method: string }> = [
+  { collection: "branches", action: "hours", method: "PUT" },
+  { collection: "branches", action: "activate", method: "POST" },
+  { collection: "restaurants", action: "submit", method: "POST" },
+];
+
+const ID_SEGMENT = /^[A-Za-z0-9_-]{1,64}$/;
+
 function hasUnsafeSegment(segment: string): boolean {
   let decoded: string;
   try {
@@ -33,7 +42,7 @@ function hasUnsafeSegment(segment: string): boolean {
   );
 }
 
-function isAllowedWebProxyPath(segments: string[]): boolean {
+function isAllowedWebProxyPath(segments: string[], method: string): boolean {
   if (segments.length === 0) {
     return false;
   }
@@ -43,6 +52,17 @@ function isAllowedWebProxyPath(segments: string[]): boolean {
   const joined = segments.join("/");
   if (ALLOWED_EXACT_ROUTES.has(joined)) {
     return true;
+  }
+  if (segments.length === 3) {
+    const [collection, id, action] = segments as [string, string, string];
+    if (
+      ALLOWED_ID_ROUTES.some(
+        (route) =>
+          route.collection === collection && route.action === action && route.method === method,
+      )
+    ) {
+      return ID_SEGMENT.test(id);
+    }
   }
   return ALLOWED_PREFIXES.some(
     (prefix) =>
@@ -55,7 +75,7 @@ async function forward(
   context: { params: Promise<{ path: string[] }> },
 ): Promise<NextResponse> {
   const { path } = await context.params;
-  if (!isAllowedWebProxyPath(path)) {
+  if (!isAllowedWebProxyPath(path, request.method.toUpperCase())) {
     return NextResponse.json({ message: "Not Found" }, { status: 404 });
   }
   const { apiBaseUrl } = getWebServerConfig();

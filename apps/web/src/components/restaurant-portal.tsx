@@ -16,9 +16,15 @@ import { callProxy } from "@/lib/api-client";
 import type { CreateRestaurantPayload, QuotePayload } from "@/lib/contracts";
 import { orderStatusLabel } from "@/lib/order-status";
 import {
+  branchStatusLabel,
+  buildBranchHoursSlots,
+  formatBogotaDateTime,
+  getRestaurantInactiveMessage,
   isRestaurantOrBranchInactive,
   resolveRestaurantOrderActionError,
   RESTAURANT_INACTIVE_MESSAGE,
+  restaurantStatusLabel,
+  WEEKDAY_OPTIONS,
 } from "@/lib/portal-helpers";
 import {
   clearStoredActiveRole,
@@ -111,10 +117,21 @@ type RestaurantContextValue = {
   branchId: string;
   setBranchId: (v: string) => void;
   branches: RestaurantBranchItem[];
+  selectedBranch: RestaurantBranchItem | undefined;
   loadingBranches: boolean;
   restaurantNotActive: boolean;
+  restaurantInactiveMessage: string | null;
+  hoursWeekdays: number[];
+  toggleHoursWeekday: (weekday: number) => void;
+  opensTime: string;
+  setOpensTime: (v: string) => void;
+  closesTime: string;
+  setClosesTime: (v: string) => void;
   loadMyBranches: () => Promise<void>;
   handleCreateBranch: (e: FormEvent) => Promise<void>;
+  handleSaveBranchHours: (e: FormEvent) => Promise<void>;
+  handleActivateBranch: () => Promise<void>;
+  handleSubmitRestaurant: () => Promise<void>;
   // Order wizard
   foodAmountCop: string;
   setFoodAmountCop: (v: string) => void;
@@ -248,6 +265,9 @@ export function RestaurantPortalShell({
   const [branchId, setBranchId] = useState("");
   const [branches, setBranches] = useState<RestaurantBranchItem[]>([]);
   const [loadingBranches, setLoadingBranches] = useState(false);
+  const [hoursWeekdays, setHoursWeekdays] = useState<number[]>([1, 2, 3, 4, 5, 6, 7]);
+  const [opensTime, setOpensTime] = useState("08:00");
+  const [closesTime, setClosesTime] = useState("21:00");
 
   // Borrador y cotización
   const [foodAmountCop, setFoodAmountCop] = useState("25000");
@@ -324,7 +344,14 @@ export function RestaurantPortalShell({
         setBranchId(list[0].id);
         setRestaurantId(list[0].restaurantId);
       } else if (list.length > 1) {
-        setBranchId((prev) => (list.some((b) => b.id === prev) ? prev : (list[0]?.id ?? "")));
+        setBranchId((prev) => {
+          const nextBranch = list.find((b) => b.id === prev) ?? list[0];
+          if (nextBranch) {
+            setRestaurantId(nextBranch.restaurantId);
+            return nextBranch.id;
+          }
+          return "";
+        });
       }
     } catch {
       // Si el listado no responde en mocks parciales, conservamos el branchId actual.
@@ -492,7 +519,7 @@ export function RestaurantPortalShell({
         longitude: Number(branchLongitude),
         latitude: Number(branchLatitude),
       };
-      const data = await callProxy<{ id: string; branchId: string }>(
+      const data = await callProxy<{ id: string; branchId: string; status?: string }>(
         "restaurants",
         "POST",
         payload,
@@ -508,11 +535,84 @@ export function RestaurantPortalShell({
           name: branchName,
           addressLine,
           status: "DRAFT",
+          restaurantStatus: data.status ?? "DRAFT",
         },
         ...prev.filter((b) => b.id !== data.branchId),
       ]);
-      void loadMyBranches();
+      await loadMyBranches();
       setStatusMessage("Sucursal creada y seleccionada.");
+    });
+  }
+
+  function toggleHoursWeekday(weekday: number) {
+    setHoursWeekdays((prev) =>
+      prev.includes(weekday)
+        ? prev.filter((day) => day !== weekday)
+        : [...prev, weekday].sort((a, b) => a - b),
+    );
+  }
+
+  const selectedBranch = branches.find((b) => b.id === branchId) ?? branches[0];
+  const restaurantInactiveMessage = getRestaurantInactiveMessage(selectedBranch);
+  const restaurantNotActive = isRestaurantOrBranchInactive(selectedBranch);
+
+  async function handleSaveBranchHours(e: FormEvent) {
+    e.preventDefault();
+    const targetBranchId = selectedBranch?.id ?? branchId;
+    if (!targetBranchId) {
+      setErrorMessage("Primero crea o selecciona una sucursal.");
+      return;
+    }
+    const built = buildBranchHoursSlots({
+      weekdays: hoursWeekdays,
+      opensTime,
+      closesTime,
+    });
+    if (!built.ok) {
+      setErrorMessage(built.message);
+      return;
+    }
+    await runAction("hours", async () => {
+      await callProxy<{ replaced: number }>(
+        `branches/${encodeURIComponent(targetBranchId)}/hours`,
+        "PUT",
+        { slots: built.slots },
+      );
+      setStatusMessage("Horario guardado correctamente.");
+    });
+  }
+
+  async function handleActivateBranch() {
+    const targetBranchId = selectedBranch?.id ?? branchId;
+    if (!targetBranchId) {
+      setErrorMessage("Primero crea o selecciona una sucursal.");
+      return;
+    }
+    await runAction("activate-branch", async () => {
+      await callProxy<{ status: string }>(
+        `branches/${encodeURIComponent(targetBranchId)}/activate`,
+        "POST",
+        {},
+      );
+      await loadMyBranches();
+      setStatusMessage("Sucursal activada correctamente.");
+    });
+  }
+
+  async function handleSubmitRestaurant() {
+    const targetRestaurantId = selectedBranch?.restaurantId ?? restaurantId;
+    if (!targetRestaurantId) {
+      setErrorMessage("Primero crea tu restaurante y sucursal.");
+      return;
+    }
+    await runAction("submit-restaurant", async () => {
+      await callProxy<{ status: string }>(
+        `restaurants/${encodeURIComponent(targetRestaurantId)}/submit`,
+        "POST",
+        {},
+      );
+      await loadMyBranches();
+      setStatusMessage("Registro enviado a revisión. DOMIGOO revisará tu solicitud.");
     });
   }
 
@@ -540,9 +640,6 @@ export function RestaurantPortalShell({
     });
   }
 
-  const selectedBranch = branches.find((b) => b.id === branchId) ?? branches[0];
-  const restaurantNotActive = isRestaurantOrBranchInactive(selectedBranch);
-
   async function handleCreateDraft(e: FormEvent) {
     e.preventDefault();
     if (!branchId) {
@@ -550,7 +647,7 @@ export function RestaurantPortalShell({
       return;
     }
     if (restaurantNotActive) {
-      setErrorMessage(RESTAURANT_INACTIVE_MESSAGE);
+      setErrorMessage(restaurantInactiveMessage ?? RESTAURANT_INACTIVE_MESSAGE);
       return;
     }
     await runAction("draft", async () => {
@@ -565,9 +662,10 @@ export function RestaurantPortalShell({
         setOrderView({ id: data.id, status: data.status });
         setStatusMessage(`Borrador creado (${data.id}).`);
       } catch (err) {
-        throw new Error(resolveRestaurantOrderActionError(err, "No se pudo crear el borrador."), {
-          cause: err,
-        });
+        throw new Error(
+          resolveRestaurantOrderActionError(err, "No se pudo crear el borrador.", selectedBranch),
+          { cause: err },
+        );
       }
     });
   }
@@ -575,7 +673,7 @@ export function RestaurantPortalShell({
   async function handlePublish(e: FormEvent) {
     e.preventDefault();
     if (restaurantNotActive) {
-      setErrorMessage(RESTAURANT_INACTIVE_MESSAGE);
+      setErrorMessage(restaurantInactiveMessage ?? RESTAURANT_INACTIVE_MESSAGE);
       return;
     }
     await runAction("publish", async () => {
@@ -608,9 +706,10 @@ export function RestaurantPortalShell({
         setStatusMessage(`Pedido publicado: ${orderStatusLabel(data.status)}`);
         await loadMyOrders();
       } catch (err) {
-        throw new Error(resolveRestaurantOrderActionError(err, "No se pudo publicar el pedido."), {
-          cause: err,
-        });
+        throw new Error(
+          resolveRestaurantOrderActionError(err, "No se pudo publicar el pedido.", selectedBranch),
+          { cause: err },
+        );
       }
     });
   }
@@ -760,10 +859,21 @@ export function RestaurantPortalShell({
         branchId,
         setBranchId,
         branches,
+        selectedBranch,
         loadingBranches,
         restaurantNotActive,
+        restaurantInactiveMessage,
+        hoursWeekdays,
+        toggleHoursWeekday,
+        opensTime,
+        setOpensTime,
+        closesTime,
+        setClosesTime,
         loadMyBranches,
         handleCreateBranch,
+        handleSaveBranchHours,
+        handleActivateBranch,
+        handleSubmitRestaurant,
         foodAmountCop,
         setFoodAmountCop,
         deliveryFeeCop,
@@ -840,7 +950,8 @@ function useRestaurantPortal() {
 }
 
 export function RestaurantHomeScreen() {
-  const { branchId, orderId, orderView, restaurantNotActive } = useRestaurantPortal();
+  const { branchId, orderId, orderView, restaurantNotActive, restaurantInactiveMessage } =
+    useRestaurantPortal();
 
   return (
     <div className="dg-stack" data-testid="restaurante-home-screen">
@@ -851,7 +962,7 @@ export function RestaurantHomeScreen() {
           data-testid="restaurante-inactivo-banner"
           style={{ marginBottom: 0 }}
         >
-          {RESTAURANT_INACTIVE_MESSAGE}
+          {restaurantInactiveMessage ?? RESTAURANT_INACTIVE_MESSAGE}
         </div>
       ) : null}
 
@@ -941,12 +1052,189 @@ export function RestaurantNegocioScreen() {
     branchGeoStatus,
     restaurantId,
     branchId,
+    setBranchId,
+    branches,
+    selectedBranch,
+    restaurantNotActive,
+    restaurantInactiveMessage,
+    hoursWeekdays,
+    toggleHoursWeekday,
+    opensTime,
+    setOpensTime,
+    closesTime,
+    setClosesTime,
     requestBrowserLocation,
     handleCreateBranch,
+    handleSaveBranchHours,
+    handleActivateBranch,
+    handleSubmitRestaurant,
   } = useRestaurantPortal();
+
+  const activeBranch = selectedBranch;
 
   return (
     <div className="dg-stack" data-testid="restaurante-negocio-screen">
+      {activeBranch ? (
+        <section
+          className="dg-card dg-stack"
+          aria-labelledby="restaurant-onboarding-title"
+          data-testid="restaurante-alta-card"
+        >
+          <div>
+            <span className="dg-badge" style={{ marginBottom: "8px" }}>
+              Activación · Sucursal
+            </span>
+            <h2 id="restaurant-onboarding-title" style={{ margin: "4px 0 6px" }}>
+              Estado y horario de tu negocio
+            </h2>
+            <p className="dg-muted" style={{ margin: 0 }}>
+              Configura el horario de tu sucursal, actívala y envía tu registro para que DOMIGOO lo
+              apruebe.
+            </p>
+          </div>
+
+          {branches.length > 1 ? (
+            <label className="dg-field" htmlFor="negocio-branch-select">
+              <span>Sucursal a configurar</span>
+              <select
+                id="negocio-branch-select"
+                className="dg-select"
+                value={activeBranch.id}
+                onChange={(e) => {
+                  setBranchId(e.target.value);
+                }}
+              >
+                {branches.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.restaurantName} — {b.name} ({branchStatusLabel(b.status)})
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+
+          <div className="dg-btn-row">
+            <span className="dg-pill" data-testid="restaurant-status-pill">
+              Restaurante: {restaurantStatusLabel(activeBranch.restaurantStatus)}
+            </span>
+            <span className="dg-pill" data-testid="branch-status-pill">
+              Sucursal ({activeBranch.name}): {branchStatusLabel(activeBranch.status)}
+            </span>
+          </div>
+
+          {restaurantNotActive ? (
+            <div role="status" className="dg-alert dg-alert--info" style={{ marginBottom: 0 }}>
+              {restaurantInactiveMessage ?? RESTAURANT_INACTIVE_MESSAGE}
+            </div>
+          ) : null}
+
+          <form
+            onSubmit={(e) => {
+              void handleSaveBranchHours(e);
+            }}
+            className="dg-stack"
+            data-testid="branch-hours-form"
+          >
+            <fieldset style={{ border: 0, margin: 0, padding: 0, minWidth: 0 }}>
+              <legend
+                style={{
+                  fontSize: "0.92rem",
+                  fontWeight: 600,
+                  marginBottom: "8px",
+                  color: "var(--dg-text)",
+                }}
+              >
+                Días de atención
+              </legend>
+              <div className="dg-weekday-grid">
+                {WEEKDAY_OPTIONS.map((day) => (
+                  <label key={day.weekday} className="dg-weekday-option">
+                    <input
+                      type="checkbox"
+                      checked={hoursWeekdays.includes(day.weekday)}
+                      onChange={() => {
+                        toggleHoursWeekday(day.weekday);
+                      }}
+                    />
+                    <span>{day.label}</span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+
+            <div className="dg-grid-2">
+              <label className="dg-field" htmlFor="branch-opens-time">
+                <span>Hora de apertura</span>
+                <input
+                  id="branch-opens-time"
+                  className="dg-input"
+                  type="time"
+                  value={opensTime}
+                  onChange={(e) => {
+                    setOpensTime(e.target.value);
+                  }}
+                  required
+                />
+              </label>
+              <label className="dg-field" htmlFor="branch-closes-time">
+                <span>Hora de cierre</span>
+                <input
+                  id="branch-closes-time"
+                  className="dg-input"
+                  type="time"
+                  value={closesTime}
+                  onChange={(e) => {
+                    setClosesTime(e.target.value);
+                  }}
+                  required
+                />
+              </label>
+            </div>
+
+            <div className="dg-btn-row">
+              <button
+                type="submit"
+                className="dg-btn"
+                data-testid="save-branch-hours-btn"
+                disabled={!sessionUser || busyAction === "hours"}
+              >
+                {busyAction === "hours" ? "Guardando horario..." : "Guardar horario"}
+              </button>
+
+              {activeBranch.status !== "ACTIVE" ? (
+                <button
+                  type="button"
+                  className="dg-btn dg-btn--accent"
+                  data-testid="activate-branch-btn"
+                  disabled={!sessionUser || busyAction === "activate-branch"}
+                  onClick={() => {
+                    void handleActivateBranch();
+                  }}
+                >
+                  {busyAction === "activate-branch" ? "Activando sucursal..." : "Activar sucursal"}
+                </button>
+              ) : null}
+
+              {activeBranch.restaurantStatus === "DRAFT" ? (
+                <button
+                  type="button"
+                  className="dg-btn dg-btn--secondary"
+                  data-testid="submit-restaurant-btn"
+                  disabled={!sessionUser || busyAction === "submit-restaurant"}
+                  onClick={() => {
+                    void handleSubmitRestaurant();
+                  }}
+                >
+                  {busyAction === "submit-restaurant"
+                    ? "Enviando registro..."
+                    : "Enviar registro a revisión"}
+                </button>
+              ) : null}
+            </div>
+          </form>
+        </section>
+      ) : null}
+
       <section className="dg-card" aria-labelledby="restaurant-branch-title">
         <h1 id="restaurant-branch-title" style={{ marginBottom: "8px" }}>
           Mi negocio y sucursal
@@ -1133,6 +1421,7 @@ export function RestaurantNuevoDomicilioScreen() {
     branches,
     loadingBranches,
     restaurantNotActive,
+    restaurantInactiveMessage,
     foodAmountCop,
     setFoodAmountCop,
     deliveryFeeCop,
@@ -1203,7 +1492,7 @@ export function RestaurantNuevoDomicilioScreen() {
             data-testid="restaurante-inactivo-banner"
             style={{ marginBottom: "16px" }}
           >
-            {RESTAURANT_INACTIVE_MESSAGE}
+            {restaurantInactiveMessage ?? RESTAURANT_INACTIVE_MESSAGE}
           </div>
         ) : null}
 
@@ -1829,7 +2118,8 @@ export function RestaurantPedidosScreen() {
             {events.map((ev) => (
               <li key={ev.id}>
                 {ev.fromStatus ? orderStatusLabel(ev.fromStatus) : "Inicio"} →{" "}
-                <strong>{orderStatusLabel(ev.toStatus)}</strong> ({ev.createdAt})
+                <strong>{orderStatusLabel(ev.toStatus)}</strong> (
+                {formatBogotaDateTime(ev.createdAt)})
               </li>
             ))}
           </ul>

@@ -53,6 +53,13 @@ export class SafeHttpExceptionFilter implements ExceptionFilter {
       });
       return;
     }
+    if (isInvalidTextRepresentation(exception)) {
+      response.status(HttpStatus.NOT_FOUND).json({
+        message: "Not Found",
+        statusCode: HttpStatus.NOT_FOUND,
+      });
+      return;
+    }
     const requestId = resolveRequestId(request);
     console.error(`[api] requestId=${requestId} status=500`, formatSafeErrorLog(exception));
     response.setHeader("x-request-id", requestId);
@@ -62,6 +69,14 @@ export class SafeHttpExceptionFilter implements ExceptionFilter {
       requestId,
     });
   }
+}
+function isInvalidTextRepresentation(exception: unknown): boolean {
+  return (
+    typeof exception === "object" &&
+    exception !== null &&
+    "code" in exception &&
+    (exception as { code?: unknown }).code === "22P02"
+  );
 }
 function formatSafeErrorLog(exception: unknown): {
   name: string;

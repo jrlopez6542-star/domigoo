@@ -11,6 +11,7 @@ export type MyBranchItem = {
   id: string;
   restaurantId: string;
   restaurantName: string;
+  restaurantStatus: string;
   establishmentName: string;
   name: string;
   addressLine: string;
@@ -326,6 +327,7 @@ export class RestaurantRepository {
          b.id,
          r.id AS "restaurantId",
          r."tradeName" AS "restaurantName",
+         r.status::text AS "restaurantStatus",
          e.name AS "establishmentName",
          b.name,
          b."addressLine",
